@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
+import ClientLogo from "@/components/client-logo";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,14 +31,9 @@ export default function RootLayout({
           <header className="border-b border-gray-200 bg-white">
             <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
               <div className="flex items-center gap-3">
-                {/* Client logo — falls back to text if image missing */}
-                <img
+                <ClientLogo
                   src={clientConfig.logo}
                   alt={`${clientConfig.name} logo`}
-                  className="h-8 w-auto"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
                 />
                 <span className="text-lg font-medium text-gray-900">
                   {clientConfig.name}
