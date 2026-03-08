@@ -14,10 +14,17 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
 
   const clientConfig = getClientConfigFromHeaders();
 
-  // Decode campaign name from URL (e.g. "March%202025" → "March 2025")
-  const campaignName = decodeURIComponent(params.campaign);
+  // Decode campaign name from URL (e.g. "avene-spring-2026" → "Avene Spring 2026")
+  const campaignSlug = decodeURIComponent(params.campaign);
+  // Support both slug format and direct name
+  const campaignName = campaignSlug
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 
-  // Fetch banners from Airtable, filtered by campaign
+  // TODO: derive role from Clerk session claims
+  const userRole = "division_admin";
+
   let banners;
   try {
     banners = await fetchBanners(
@@ -25,6 +32,15 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
       campaignName,
       clientConfig.languages
     );
+
+    // If no results with formatted name, try the raw slug
+    if (banners.length === 0) {
+      banners = await fetchBanners(
+        clientConfig.airtable.baseId,
+        campaignSlug,
+        clientConfig.languages
+      );
+    }
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return (
@@ -33,8 +49,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
           {campaignName}
         </h1>
         <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-600">
-          Failed to load banners. Please check your Airtable API key and try
-          again.
+          Failed to load banners. Please check your Airtable API key and try again.
         </div>
       </div>
     );
@@ -47,12 +62,11 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
           {campaignName}
         </h1>
         <p className="text-sm text-gray-500">
-          {banners.length} banner{banners.length !== 1 ? "s" : ""} in this
-          campaign
+          {banners.length} banner{banners.length !== 1 ? "s" : ""} in this campaign
         </p>
       </div>
 
-      <BannerGrid banners={banners} />
+      <BannerGrid banners={banners} userRole={userRole} />
     </div>
   );
 }

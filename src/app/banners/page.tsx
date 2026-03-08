@@ -40,7 +40,7 @@ export default async function BannersPage() {
         </p>
       </div>
 
-      <BannerGrid banners={banners} />
+      <BannerGrid banners={banners} userRole="division_admin" />
     </div>
   );
 }

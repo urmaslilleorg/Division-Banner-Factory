@@ -1,79 +1,50 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
+import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
+import CalendarGrid from "@/components/calendar-grid";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 
 export default async function HomePage() {
   const { userId } = await auth();
-
-  if (!userId) {
-    redirect("/sign-in");
-  }
+  if (!userId) redirect("/sign-in");
 
   const clientConfig = getClientConfigFromHeaders();
 
+  // Fetch all campaigns + banner summaries in parallel
+  const [campaigns, bannerSummaries] = await Promise.all([
+    fetchAllCampaigns(),
+    fetchBannerSummaries(),
+  ]);
+
+  // TODO: derive role from Clerk session claims when roles are configured
+  const userRole = "division_admin";
+
   return (
-    <div className="space-y-8">
-      {/* Welcome section */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-light tracking-tight text-gray-900">
-          {clientConfig.name}
-        </h1>
-        <p className="text-gray-500">
-          Banner production platform — manage campaigns, review banners, and
-          approve deliverables.
-        </p>
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-light text-gray-900">Campaign Calendar</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {clientConfig.name} · {campaigns.length} campaign
+            {campaigns.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <Link
+          href="/dashboard/campaigns/new"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          New campaign
+        </Link>
       </div>
 
-      {/* Placeholder navigation cards */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-        <a
-          href="/campaigns"
-          className="group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:border-gray-300 hover:shadow-sm"
-        >
-          <h2 className="text-lg font-medium text-gray-900 group-hover:text-[var(--color-primary)]">
-            Campaigns
-          </h2>
-          <p className="mt-2 text-sm text-gray-500">
-            View active campaigns and their banner sets.
-          </p>
-        </a>
-
-        <a
-          href="/banners"
-          className="group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:border-gray-300 hover:shadow-sm"
-        >
-          <h2 className="text-lg font-medium text-gray-900 group-hover:text-[var(--color-primary)]">
-            Banners
-          </h2>
-          <p className="mt-2 text-sm text-gray-500">
-            Browse all banners, filter by status, and approve deliverables.
-          </p>
-        </a>
-
-        <a
-          href="/settings"
-          className="group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:border-gray-300 hover:shadow-sm"
-        >
-          <h2 className="text-lg font-medium text-gray-900 group-hover:text-[var(--color-primary)]">
-            Settings
-          </h2>
-          <p className="mt-2 text-sm text-gray-500">
-            Account settings and preferences.
-          </p>
-        </a>
-      </div>
-
-      {/* Client config debug (dev only) */}
-      {process.env.NODE_ENV === "development" && (
-        <details className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <summary className="cursor-pointer text-sm font-medium text-gray-600">
-            Client Config (dev only)
-          </summary>
-          <pre className="mt-3 overflow-auto text-xs text-gray-500">
-            {JSON.stringify(clientConfig, null, 2)}
-          </pre>
-        </details>
-      )}
-    </div>
+      <CalendarGrid
+        campaigns={campaigns}
+        bannerSummaries={bannerSummaries}
+        userRole={userRole}
+      />
+    </main>
   );
 }

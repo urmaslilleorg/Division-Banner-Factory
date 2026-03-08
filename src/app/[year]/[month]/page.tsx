@@ -1,0 +1,156 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
+import Link from "next/link";
+import { ChevronLeft, Plus, ArrowRight } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+
+interface PageProps {
+  params: { year: string; month: string };
+}
+
+const MONTH_NAMES: Record<string, string> = {
+  january: "January", february: "February", march: "March",
+  april: "April", may: "May", june: "June",
+  july: "July", august: "August", september: "September",
+  october: "October", november: "November", december: "December",
+};
+
+export default async function MonthDetailPage({ params }: PageProps) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
+  const year = parseInt(params.year, 10);
+  const monthSlug = params.month.toLowerCase();
+  const monthName = MONTH_NAMES[monthSlug];
+
+  if (!monthName || isNaN(year)) {
+    redirect("/");
+  }
+
+  const launchMonthLabel = `${monthName} ${year}`;
+
+  const [campaigns, bannerSummaries] = await Promise.all([
+    fetchAllCampaigns(),
+    fetchBannerSummaries(),
+  ]);
+
+  // Filter campaigns for this month
+  const monthCampaigns = campaigns.filter(
+    (c) => c.launchMonth === launchMonthLabel
+  );
+
+  // Build banner lookup by campaign name
+  const bannersByCampaign = new Map<string, typeof bannerSummaries>();
+  for (const b of bannerSummaries) {
+    if (!bannersByCampaign.has(b.campaignName)) {
+      bannersByCampaign.set(b.campaignName, []);
+    }
+    bannersByCampaign.get(b.campaignName)!.push(b);
+  }
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Header */}
+      <div className="mb-8 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-light text-gray-900">{launchMonthLabel}</h1>
+            <p className="mt-0.5 text-sm text-gray-500">
+              {monthCampaigns.length} campaign{monthCampaigns.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/dashboard/campaigns/new"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          New campaign
+        </Link>
+      </div>
+
+      {/* Campaign list */}
+      {monthCampaigns.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center">
+          <p className="text-sm text-gray-400">No campaigns for {launchMonthLabel}.</p>
+          <Link
+            href="/dashboard/campaigns/new"
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-gray-900"
+          >
+            <Plus className="h-4 w-4" />
+            Create the first one
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {monthCampaigns.map((campaign) => {
+            const banners = bannersByCampaign.get(campaign.name) || [];
+            const total = banners.length;
+            const approved = banners.filter((b) => b.approvalStatus === "Approved").length;
+            const revision = banners.filter((b) => b.approvalStatus === "Revision_Requested").length;
+            const pending = banners.filter(
+              (b) => !b.approvalStatus || b.approvalStatus === "Pending"
+            ).length;
+            const progress = total > 0 ? Math.round((approved / total) * 100) : 0;
+
+            return (
+              <div
+                key={campaign.id}
+                className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-5"
+              >
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <h2 className="font-medium text-gray-900">{campaign.name}</h2>
+                    <span className="text-xs text-gray-400">{campaign.clientName}</span>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>{total} formats</span>
+                    {revision > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                        {revision} revision{revision > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {revision === 0 && pending > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">
+                        {pending} pending
+                      </span>
+                    )}
+                    {revision === 0 && pending === 0 && total > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                        All approved ✓
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <span>{approved} of {total} approved</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <Progress value={progress} className="h-1" />
+                  </div>
+                </div>
+
+                <Link
+                  href={`/campaigns/${encodeURIComponent(campaign.name.toLowerCase().replace(/\s+/g, "-"))}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                >
+                  Open
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}

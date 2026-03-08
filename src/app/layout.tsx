@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import ClientLogo from "@/components/client-logo";
+import NotificationBadge from "@/components/notification-badge";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,6 +25,9 @@ export default function RootLayout({
     "--color-background": clientConfig.colors.background,
   } as React.CSSProperties;
 
+  // TODO: derive role from Clerk session claims when roles are configured
+  const userRole = "division_admin";
+
   return (
     <ClerkProvider>
       <html lang="en">
@@ -40,22 +44,17 @@ export default function RootLayout({
                 </span>
               </div>
               <nav className="flex items-center gap-6 text-sm text-gray-600">
-                <a
-                  href="/"
-                  className="hover:text-gray-900 transition-colors"
-                >
+                <a href="/" className="hover:text-gray-900 transition-colors">
                   Campaigns
                 </a>
                 <a
                   href="/banners"
-                  className="hover:text-gray-900 transition-colors"
+                  className="relative flex items-center gap-1.5 hover:text-gray-900 transition-colors"
                 >
                   Banners
+                  <NotificationBadge userRole={userRole} />
                 </a>
-                <a
-                  href="/settings"
-                  className="hover:text-gray-900 transition-colors"
-                >
+                <a href="/settings" className="hover:text-gray-900 transition-colors">
                   Settings
                 </a>
               </nav>
