@@ -28,7 +28,6 @@ async function airtablePost<T>(tablePath: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-
 /**
  * Fetch Figma_Frame_Base values from the Formats table for a set of record IDs.
  */
@@ -83,6 +82,38 @@ function generateFigmaFrame(
   return `_MASTER_${channelNorm}_${formatNorm}_${width}x${height}`;
 }
 
+/**
+ * Map a variable ID + language to the correct Airtable field name.
+ *
+ * Rules:
+ *   - Text variables (H1, H2, H3, CTA) → `${varId}_${language}` (e.g. H1_ET, CTA_EN)
+ *   - Non-language variables (Price_Tag, Illustration, Output_Format, Safe_Area, …)
+ *     → use the varId directly as the field name
+ *
+ * Empty values are skipped (not written to Airtable).
+ */
+const LANGUAGE_SUFFIXED_VARS = new Set(["H1", "H2", "H3", "CTA"]);
+
+function buildCopyFields(
+  variables: string[],
+  copyValues: Record<string, string>,
+  language: string
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const varId of variables) {
+    const value = copyValues[varId];
+    if (!value || value.trim() === "") continue; // skip empty
+    const fieldName = LANGUAGE_SUFFIXED_VARS.has(varId)
+      ? `${varId}_${language}`
+      : varId;
+    fields[fieldName] = value.trim();
+  }
+  return fields;
+}
+
+// Per-slide copy: Record<varId, value>
+type SlideCopy = Record<string, string>;
+
 export interface FormatInput {
   id: string;
   formatName: string;
@@ -96,6 +127,8 @@ export interface FormatInput {
   variables: string[];
   carousel: boolean;
   slideCount: number;
+  /** Per-slide copy values, indexed 0…slideCount-1. Only present when carousel=true. */
+  slides?: SlideCopy[];
 }
 
 export interface CreateCampaignRequest {
@@ -164,12 +197,10 @@ export async function POST(request: NextRequest) {
     const figmaFrames: string[] = [];
     const standardBannerRecords: { fields: Record<string, unknown> }[] = [];
 
-    // We need to create carousel parents first, then link slides to them
-    // So we separate carousel from standard
     const carouselFormats = formats.filter((f) => f.carousel);
     const standardFormats = formats.filter((f) => !f.carousel);
 
-    // Build standard banner records
+    // ── Standard banners ─────────────────────────────────────────────────────
     for (const format of standardFormats) {
       const figmaFrame =
         figmaFrameBaseMap[format.id] ||
@@ -182,16 +213,15 @@ export async function POST(request: NextRequest) {
           format.outputFormat ||
           (format.channel?.toLowerCase().includes("dooh") ? "JPG" : "PNG");
 
-        // Build copy fields from defaultCopy
-        const copyFields: Record<string, string> = {};
+        // Merge defaultCopy into copy fields using language-aware mapping
+        const defaultCopyValues: Record<string, string> = {};
         if (defaultCopy) {
           for (const varId of format.variables) {
-            const langKey = `${varId}_${language}`;
-            const globalKey = varId; // language-neutral variables (Price_Tag, Illustration)
-            if (defaultCopy[langKey]) copyFields[langKey] = defaultCopy[langKey] as string;
-            else if (defaultCopy[globalKey]) copyFields[globalKey] = defaultCopy[globalKey] as string;
+            const v = defaultCopy[varId];
+            if (v) defaultCopyValues[varId] = v;
           }
         }
+        const copyFields = buildCopyFields(format.variables, defaultCopyValues, language);
 
         standardBannerRecords.push({
           fields: {
@@ -224,7 +254,7 @@ export async function POST(request: NextRequest) {
       createdBannerIds.push(...res.records.map((r) => r.id));
     }
 
-    // Handle carousel formats: create parent then slides
+    // ── Carousel banners ──────────────────────────────────────────────────────
     for (const format of carouselFormats) {
       const figmaFrame =
         figmaFrameBaseMap[format.id] ||
@@ -237,16 +267,15 @@ export async function POST(request: NextRequest) {
         (format.channel?.toLowerCase().includes("dooh") ? "JPG" : "PNG");
 
       for (const language of languages) {
-        // Build copy fields from defaultCopy for parent
-        const copyFields: Record<string, string> = {};
+        // Parent copy from defaultCopy
+        const defaultCopyValues: Record<string, string> = {};
         if (defaultCopy) {
           for (const varId of format.variables) {
-            const langKey = `${varId}_${language}`;
-            const globalKey = varId;
-            if (defaultCopy[langKey]) copyFields[langKey] = defaultCopy[langKey] as string;
-            else if (defaultCopy[globalKey]) copyFields[globalKey] = defaultCopy[globalKey] as string;
+            const v = defaultCopy[varId];
+            if (v) defaultCopyValues[varId] = v;
           }
         }
+        const parentCopyFields = buildCopyFields(format.variables, defaultCopyValues, language);
 
         // Create parent (Carousel) record
         const parentRes = await airtablePost<{ records: AirtableRecord[] }>(BANNERS_TABLE, {
@@ -264,7 +293,7 @@ export async function POST(request: NextRequest) {
               Status: "Brief_received",
               Approval_Status: "Pending",
               Banner_Type: "Carousel",
-              ...copyFields,
+              ...parentCopyFields,
             },
           }],
           typecast: true,
@@ -275,8 +304,24 @@ export async function POST(request: NextRequest) {
 
         // Create slide records and link to parent
         const slideCount = format.slideCount ?? 3;
+        const slidesData: SlideCopy[] = format.slides ?? [];
         const slideRecords: { fields: Record<string, unknown> }[] = [];
-        for (let s = 1; s <= slideCount; s++) {
+
+        for (let s = 0; s < slideCount; s++) {
+          const slideValues = slidesData[s] ?? {};
+          // Merge defaultCopy as fallback for empty slide fields
+          const mergedValues: Record<string, string> = {};
+          for (const varId of format.variables) {
+            const slideVal = slideValues[varId];
+            const defaultVal = defaultCopy?.[varId];
+            if (slideVal && slideVal.trim()) {
+              mergedValues[varId] = slideVal.trim();
+            } else if (defaultVal && defaultVal.trim()) {
+              mergedValues[varId] = defaultVal.trim();
+            }
+          }
+          const slideCopyFields = buildCopyFields(format.variables, mergedValues, language);
+
           slideRecords.push({
             fields: {
               Campaign_Name: campaignName,
@@ -285,14 +330,15 @@ export async function POST(request: NextRequest) {
               Channel: format.channel,
               Device: format.device,
               Format: `${format.widthPx}x${format.heightPx}`,
-              Figma_Frame: `${figmaFrame}_Slide_${s}`,
+              Figma_Frame: `${figmaFrame}_Slide_${s + 1}`,
               Safe_Area: format.safeArea || "",
               Output_Format: outputFormat,
               Status: "Brief_received",
               Approval_Status: "Pending",
               Banner_Type: "Slide",
               Parent_Banner: [parentId],
-              Slide_Index: s,
+              Slide_Index: s + 1,
+              ...slideCopyFields,
             },
           });
         }

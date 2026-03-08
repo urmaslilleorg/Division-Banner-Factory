@@ -26,11 +26,16 @@ const LANGUAGE_OPTIONS = [
   { value: "EN", label: "EN" },
 ];
 
+// Per-slide copy: Record<varId, value>
+type SlideCopy = Record<string, string>;
+
 // Per-format config
 interface FormatConfig {
   variables: string[];   // active variables for this format
   carousel: boolean;
   slideCount: number;
+  // slides[slideIndex] = { H1: "...", H2: "...", ... }
+  slides: SlideCopy[];
 }
 
 interface SuccessResult {
@@ -88,8 +93,15 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
       variables: ["H1", "CTA"],
       carousel: false,
       slideCount: 3,
+      slides: [],
     };
   };
+
+  // Build an empty slides array of length n for a given variable set
+  const buildEmptySlides = (n: number, variables: string[]): SlideCopy[] =>
+    Array.from({ length: n }, () =>
+      Object.fromEntries(variables.map((v) => [v, ""]))
+    );
 
   const toggleLanguage = (lang: string) => {
     setSelectedLanguages((prev) =>
@@ -106,7 +118,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
         if (!formatConfigs[id]) {
           setFormatConfigs((c) => ({
             ...c,
-            [id]: { variables: ["H1", "CTA"], carousel: false, slideCount: 3 },
+            [id]: { variables: ["H1", "CTA"], carousel: false, slideCount: 3, slides: [] },
           }));
         }
         // Auto-expand when checked
@@ -126,21 +138,56 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
       const vars = cfg.variables.includes(variable)
         ? cfg.variables.filter((v) => v !== variable)
         : [...cfg.variables, variable];
-      return { ...prev, [formatId]: { ...cfg, variables: vars } };
+      // Rebuild slides to include/exclude this variable key
+      const slides = cfg.slides.map((s) => {
+        const next = { ...s };
+        if (!cfg.variables.includes(variable)) {
+          // adding variable — add key with empty string
+          next[variable] = "";
+        } else {
+          // removing variable — drop key
+          delete next[variable];
+        }
+        return next;
+      });
+      return { ...prev, [formatId]: { ...cfg, variables: vars, slides } };
     });
   };
 
   const setFormatCarousel = (formatId: string, on: boolean) => {
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
-      return { ...prev, [formatId]: { ...cfg, carousel: on } };
+      const slides = on ? buildEmptySlides(cfg.slideCount, cfg.variables) : [];
+      return { ...prev, [formatId]: { ...cfg, carousel: on, slides } };
     });
   };
 
   const setFormatSlideCount = (formatId: string, count: number) => {
+    const newCount = Math.max(2, count);
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
-      return { ...prev, [formatId]: { ...cfg, slideCount: Math.max(2, count) } };
+      let slides = [...cfg.slides];
+      if (newCount > slides.length) {
+        // Append empty slide objects
+        const toAdd = newCount - slides.length;
+        for (let i = 0; i < toAdd; i++) {
+          slides.push(Object.fromEntries(cfg.variables.map((v) => [v, ""])));
+        }
+      } else {
+        // Trim from end
+        slides = slides.slice(0, newCount);
+      }
+      return { ...prev, [formatId]: { ...cfg, slideCount: newCount, slides } };
+    });
+  };
+
+  const setSlideCopyField = (formatId: string, slideIndex: number, varId: string, value: string) => {
+    setFormatConfigs((prev) => {
+      const cfg = getFormatConfig(formatId);
+      const slides = cfg.slides.map((s, i) =>
+        i === slideIndex ? { ...s, [varId]: value } : s
+      );
+      return { ...prev, [formatId]: { ...cfg, slides } };
     });
   };
 
@@ -188,20 +235,25 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
           defaultCopy: Object.fromEntries(
             Object.entries(defaultCopy).map(([k, v]) => [k, v.trim() || null])
           ),
-          formats: selectedFormatData.map((f) => ({
-            id: f.id,
-            formatName: f.formatName,
-            widthPx: f.widthPx,
-            heightPx: f.heightPx,
-            channel: f.channel,
-            device: f.device,
-            safeArea: f.safeArea,
-            outputFormat: f.outputFormat,
-            figmaFrameBase: f.figmaFrameBase,
-            variables: getFormatConfig(f.id).variables,
-            carousel: getFormatConfig(f.id).carousel,
-            slideCount: getFormatConfig(f.id).carousel ? getFormatConfig(f.id).slideCount : 0,
-          })),
+          formats: selectedFormatData.map((f) => {
+            const cfg = getFormatConfig(f.id);
+            return {
+              id: f.id,
+              formatName: f.formatName,
+              widthPx: f.widthPx,
+              heightPx: f.heightPx,
+              channel: f.channel,
+              device: f.device,
+              safeArea: f.safeArea,
+              outputFormat: f.outputFormat,
+              figmaFrameBase: f.figmaFrameBase,
+              variables: cfg.variables,
+              carousel: cfg.carousel,
+              slideCount: cfg.carousel ? cfg.slideCount : 0,
+              // Only send slides array when carousel is on
+              slides: cfg.carousel ? cfg.slides : undefined,
+            };
+          }),
           fieldConfigFormats,
         }),
       });
@@ -444,7 +496,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                             </div>
                           </div>
 
-                          {/* Carousel toggle */}
+                          {/* Carousel toggle + slide count stepper */}
                           <div className="flex items-center gap-3">
                             <label className="flex items-center gap-2 cursor-pointer">
                               <input
@@ -479,6 +531,42 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                               </div>
                             )}
                           </div>
+
+                          {/* Per-slide copy editor — only when carousel is on */}
+                          {cfg.carousel && cfg.slides.length > 0 && (
+                            <div className="space-y-3 pt-1">
+                              {cfg.slides.map((slide, slideIdx) => (
+                                <div
+                                  key={slideIdx}
+                                  className="rounded-md border border-gray-200 bg-white px-3 py-2 space-y-2"
+                                >
+                                  <p className="text-xs font-semibold text-gray-500">
+                                    Slide {slideIdx + 1}
+                                  </p>
+                                  {cfg.variables.map((varId) => {
+                                    const varLabel =
+                                      variableOptions.find((v) => v.value === varId)?.label ?? varId;
+                                    return (
+                                      <div key={varId} className="flex items-center gap-2">
+                                        <label className="w-10 shrink-0 text-xs font-medium text-gray-500">
+                                          {varLabel}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={slide[varId] ?? ""}
+                                          onChange={(e) =>
+                                            setSlideCopyField(f.id, slideIdx, varId, e.target.value)
+                                          }
+                                          placeholder={`${varLabel} for slide ${slideIdx + 1}`}
+                                          className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
