@@ -26,15 +26,20 @@ const LANGUAGE_OPTIONS = [
   { value: "EN", label: "EN" },
 ];
 
+// Copy mode for each format
+type FormatMode = "default" | "specific" | "carousel";
+
 // Per-slide copy: Record<varId, value>
 type SlideCopy = Record<string, string>;
 
 // Per-format config
 interface FormatConfig {
-  variables: string[];   // active variables for this format
-  carousel: boolean;
+  variables: string[];
+  mode: FormatMode;
+  // mode=specific: one set of copy values for this format
+  copy: Record<string, string>;
+  // mode=carousel: slide count + per-slide copy
   slideCount: number;
-  // slides[slideIndex] = { H1: "...", H2: "...", ... }
   slides: SlideCopy[];
 }
 
@@ -68,7 +73,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   // Which format panels are expanded
   const [expandedFormats, setExpandedFormats] = useState<Record<string, boolean>>({});
 
-  // Default copy fields (union of all active variables across all selected formats)
+  // Campaign-level default copy
   const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>({});
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -91,7 +96,8 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   const getFormatConfig = (formatId: string): FormatConfig => {
     return formatConfigs[formatId] ?? {
       variables: ["H1", "CTA"],
-      carousel: false,
+      mode: "default",
+      copy: {},
       slideCount: 3,
       slides: [],
     };
@@ -114,14 +120,12 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
       if (prev.includes(id)) {
         return prev.filter((f) => f !== id);
       } else {
-        // Initialise config when first selected
         if (!formatConfigs[id]) {
           setFormatConfigs((c) => ({
             ...c,
-            [id]: { variables: ["H1", "CTA"], carousel: false, slideCount: 3, slides: [] },
+            [id]: { variables: ["H1", "CTA"], mode: "default", copy: {}, slideCount: 3, slides: [] },
           }));
         }
-        // Auto-expand when checked
         setExpandedFormats((e) => ({ ...e, [id]: true }));
         return [...prev, id];
       }
@@ -135,30 +139,39 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   const toggleFormatVariable = (formatId: string, variable: string) => {
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
-      const vars = cfg.variables.includes(variable)
-        ? cfg.variables.filter((v) => v !== variable)
-        : [...cfg.variables, variable];
-      // Rebuild slides to include/exclude this variable key
+      const adding = !cfg.variables.includes(variable);
+      const vars = adding
+        ? [...cfg.variables, variable]
+        : cfg.variables.filter((v) => v !== variable);
+
+      // Keep copy keys in sync
+      const copy = { ...cfg.copy };
+      if (adding) copy[variable] = copy[variable] ?? "";
+      else delete copy[variable];
+
+      // Keep slides keys in sync
       const slides = cfg.slides.map((s) => {
         const next = { ...s };
-        if (!cfg.variables.includes(variable)) {
-          // adding variable — add key with empty string
-          next[variable] = "";
-        } else {
-          // removing variable — drop key
-          delete next[variable];
-        }
+        if (adding) next[variable] = next[variable] ?? "";
+        else delete next[variable];
         return next;
       });
-      return { ...prev, [formatId]: { ...cfg, variables: vars, slides } };
+
+      return { ...prev, [formatId]: { ...cfg, variables: vars, copy, slides } };
     });
   };
 
-  const setFormatCarousel = (formatId: string, on: boolean) => {
+  const setFormatMode = (formatId: string, mode: FormatMode) => {
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
-      const slides = on ? buildEmptySlides(cfg.slideCount, cfg.variables) : [];
-      return { ...prev, [formatId]: { ...cfg, carousel: on, slides } };
+      let slides = cfg.slides;
+      // Initialise slides when switching to carousel
+      if (mode === "carousel" && slides.length === 0) {
+        slides = buildEmptySlides(cfg.slideCount, cfg.variables);
+      }
+      // Clear slides when leaving carousel
+      if (mode !== "carousel") slides = [];
+      return { ...prev, [formatId]: { ...cfg, mode, slides } };
     });
   };
 
@@ -168,16 +181,21 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
       const cfg = getFormatConfig(formatId);
       let slides = [...cfg.slides];
       if (newCount > slides.length) {
-        // Append empty slide objects
         const toAdd = newCount - slides.length;
         for (let i = 0; i < toAdd; i++) {
           slides.push(Object.fromEntries(cfg.variables.map((v) => [v, ""])));
         }
       } else {
-        // Trim from end
         slides = slides.slice(0, newCount);
       }
       return { ...prev, [formatId]: { ...cfg, slideCount: newCount, slides } };
+    });
+  };
+
+  const setSpecificCopyField = (formatId: string, varId: string, value: string) => {
+    setFormatConfigs((prev) => {
+      const cfg = getFormatConfig(formatId);
+      return { ...prev, [formatId]: { ...cfg, copy: { ...cfg.copy, [varId]: value } } };
     });
   };
 
@@ -193,9 +211,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
 
   // Union of all active variables across selected formats (for Default Copy section)
   const allActiveVariables = Array.from(
-    new Set(
-      selectedFormats.flatMap((id) => getFormatConfig(id).variables)
-    )
+    new Set(selectedFormats.flatMap((id) => getFormatConfig(id).variables))
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -211,13 +227,13 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
     const selectedFormatData = formats.filter((f) => selectedFormats.includes(f.id));
 
     // Build Field_Config.formats object
-    const fieldConfigFormats: Record<string, { variables: string[]; carousel: boolean; slideCount: number }> = {};
+    const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }> = {};
     for (const f of selectedFormatData) {
       const cfg = getFormatConfig(f.id);
       fieldConfigFormats[f.formatName] = {
         variables: cfg.variables,
-        carousel: cfg.carousel,
-        slideCount: cfg.carousel ? cfg.slideCount : 0,
+        mode: cfg.mode,
+        ...(cfg.mode === "carousel" ? { slideCount: cfg.slideCount } : {}),
       };
     }
 
@@ -237,7 +253,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
           ),
           formats: selectedFormatData.map((f) => {
             const cfg = getFormatConfig(f.id);
-            return {
+            const base = {
               id: f.id,
               formatName: f.formatName,
               widthPx: f.widthPx,
@@ -248,11 +264,15 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
               outputFormat: f.outputFormat,
               figmaFrameBase: f.figmaFrameBase,
               variables: cfg.variables,
-              carousel: cfg.carousel,
-              slideCount: cfg.carousel ? cfg.slideCount : 0,
-              // Only send slides array when carousel is on
-              slides: cfg.carousel ? cfg.slides : undefined,
+              mode: cfg.mode,
             };
+            if (cfg.mode === "specific") {
+              return { ...base, copy: cfg.copy };
+            }
+            if (cfg.mode === "carousel") {
+              return { ...base, slideCount: cfg.slideCount, slides: cfg.slides };
+            }
+            return base; // default — no extra fields
           }),
           fieldConfigFormats,
         }),
@@ -279,7 +299,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Success screen
+  // ── Success screen ────────────────────────────────────────────────────────
   if (result) {
     return (
       <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-6">
@@ -325,6 +345,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
     );
   }
 
+  // ── Form ──────────────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Campaign Name */}
@@ -416,15 +437,13 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
         </div>
       </div>
 
-      {/* Formats — grouped by channel, each with per-format config panel */}
+      {/* Formats */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <label className="block text-sm font-medium text-gray-700">
             Formats <span className="text-red-500">*</span>
           </label>
-          <span className="text-xs text-gray-400">
-            {selectedFormats.length} selected
-          </span>
+          <span className="text-xs text-gray-400">{selectedFormats.length} selected</span>
         </div>
 
         <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
@@ -440,8 +459,11 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                   const isExpanded = expandedFormats[f.id] ?? false;
 
                   return (
-                    <div key={f.id} className={`rounded-md border ${isChecked ? "border-gray-300 bg-gray-50" : "border-transparent"}`}>
-                      {/* Format row */}
+                    <div
+                      key={f.id}
+                      className={`rounded-md border ${isChecked ? "border-gray-300 bg-gray-50" : "border-transparent"}`}
+                    >
+                      {/* Format row header */}
                       <div className="flex cursor-pointer items-center gap-2.5 px-2 py-1.5">
                         <input
                           type="checkbox"
@@ -459,22 +481,35 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                           {f.widthPx}×{f.heightPx}
                         </span>
                         {isChecked && (
-                          <button
-                            type="button"
-                            onClick={() => toggleFormatExpanded(f.id)}
-                            className="ml-1 text-gray-400 hover:text-gray-600"
-                          >
-                            {isExpanded
-                              ? <ChevronDown className="h-3.5 w-3.5" />
-                              : <ChevronRight className="h-3.5 w-3.5" />
-                            }
-                          </button>
+                          <>
+                            {/* Mode badge */}
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              cfg.mode === "carousel"
+                                ? "bg-purple-100 text-purple-700"
+                                : cfg.mode === "specific"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-gray-100 text-gray-500"
+                            }`}>
+                              {cfg.mode}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleFormatExpanded(f.id)}
+                              className="ml-1 text-gray-400 hover:text-gray-600"
+                            >
+                              {isExpanded
+                                ? <ChevronDown className="h-3.5 w-3.5" />
+                                : <ChevronRight className="h-3.5 w-3.5" />
+                              }
+                            </button>
+                          </>
                         )}
                       </div>
 
                       {/* Per-format config panel */}
                       {isChecked && isExpanded && (
                         <div className="border-t border-gray-200 px-3 pb-3 pt-2 space-y-3">
+
                           {/* Variables */}
                           <div className="space-y-1.5">
                             <p className="text-xs font-medium text-gray-500">Variables</p>
@@ -496,21 +531,71 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                             </div>
                           </div>
 
-                          {/* Carousel toggle + slide count stepper */}
-                          <div className="flex items-center gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={cfg.carousel}
-                                onChange={(e) => setFormatCarousel(f.id, e.target.checked)}
-                                className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
-                              />
-                              <span className="text-xs font-medium text-gray-600">Carousel</span>
-                            </label>
+                          {/* Three-way mode selector */}
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-gray-500">Copy mode</p>
+                            <div className="flex gap-1">
+                              {(["default", "specific", "carousel"] as FormatMode[]).map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setFormatMode(f.id, m)}
+                                  className={`rounded-md border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                                    cfg.mode === m
+                                      ? m === "carousel"
+                                        ? "border-purple-600 bg-purple-600 text-white"
+                                        : m === "specific"
+                                        ? "border-blue-600 bg-blue-600 text-white"
+                                        : "border-gray-800 bg-gray-800 text-white"
+                                      : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {m}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
 
-                            {cfg.carousel && (
-                              <div className="flex items-center gap-1.5 ml-2">
-                                <span className="text-xs text-gray-500">Slides:</span>
+                          {/* DEFAULT mode: no extra inputs — uses campaign Default Copy */}
+                          {cfg.mode === "default" && (
+                            <p className="text-xs text-gray-400 italic">
+                              Uses campaign-level Default Copy values below.
+                            </p>
+                          )}
+
+                          {/* SPECIFIC mode: one set of copy fields for this format */}
+                          {cfg.mode === "specific" && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-gray-500">Format-specific copy</p>
+                              {cfg.variables.map((varId) => {
+                                const varLabel =
+                                  variableOptions.find((v) => v.value === varId)?.label ?? varId;
+                                return (
+                                  <div key={varId} className="flex items-center gap-2">
+                                    <label className="w-10 shrink-0 text-xs font-medium text-gray-500">
+                                      {varLabel}
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={cfg.copy[varId] ?? ""}
+                                      onChange={(e) =>
+                                        setSpecificCopyField(f.id, varId, e.target.value)
+                                      }
+                                      placeholder={`${varLabel} for ${f.formatName}`}
+                                      className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* CAROUSEL mode: slide count stepper + per-slide copy */}
+                          {cfg.mode === "carousel" && (
+                            <div className="space-y-3">
+                              {/* Slide count stepper */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-gray-500">Slides:</span>
                                 <button
                                   type="button"
                                   onClick={() => setFormatSlideCount(f.id, cfg.slideCount - 1)}
@@ -529,12 +614,8 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                                   +
                                 </button>
                               </div>
-                            )}
-                          </div>
 
-                          {/* Per-slide copy editor — only when carousel is on */}
-                          {cfg.carousel && cfg.slides.length > 0 && (
-                            <div className="space-y-3 pt-1">
+                              {/* Per-slide copy fields */}
                               {cfg.slides.map((slide, slideIdx) => (
                                 <div
                                   key={slideIdx}
@@ -578,12 +659,14 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
         </div>
       </div>
 
-      {/* Default Copy Fields — union of all active variables across selected formats */}
+      {/* Default Copy — campaign-level, used by all Default-mode formats */}
       {allActiveVariables.length > 0 && (
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Default Copy (optional)</label>
-            <p className="text-xs text-gray-400">Pre-fills all banner records. Edit per-banner in the Copy Editor after creation.</p>
+            <p className="text-xs text-gray-400">
+              Used by formats in Default mode. Edit per-banner in Copy Editor after creation.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {allActiveVariables.map((varId) => {
@@ -594,7 +677,9 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                   <input
                     type="text"
                     value={defaultCopy[varId] ?? ""}
-                    onChange={(e) => setDefaultCopy((prev) => ({ ...prev, [varId]: e.target.value }))}
+                    onChange={(e) =>
+                      setDefaultCopy((prev) => ({ ...prev, [varId]: e.target.value }))
+                    }
                     placeholder={`Default ${varLabel}`}
                     className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
