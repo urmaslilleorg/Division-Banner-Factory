@@ -9,7 +9,30 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks(.*)",
 ]);
 
+// /admin/* routes require division_admin role
+const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
+
 export default clerkMiddleware((auth, request: NextRequest) => {
+  // /admin routes: protect with Clerk auth, inject admin client config
+  if (isAdminRoute(request)) {
+    if (!isPublicRoute(request)) {
+      auth().protect();
+    }
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-client-id", "admin");
+    requestHeaders.set("x-client-config", JSON.stringify({
+      id: "admin",
+      name: "Division Admin",
+      subdomain: "admin",
+      logo: "/logos/division.svg",
+      colors: { primary: "#111827", secondary: "#374151", accent: "#6366F1", background: "#F9FAFB" },
+      languages: ["ET", "EN"],
+      airtable: { baseId: "appIqinespXjbIERp", campaignFilter: "" },
+      features: { download: true, comments: true, approvals: true, copyEditor: true, designerView: true, campaignBuilder: true },
+    }));
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   const hostname = request.headers.get("host") || "";
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "localhost:3000";
 
@@ -29,14 +52,15 @@ export default clerkMiddleware((auth, request: NextRequest) => {
     }
   }
 
-  // Look up client config
+  // Look up client config (static files only — dynamic Airtable lookup happens in pages)
   const clientConfig = getClientConfig(subdomain);
 
   if (!clientConfig) {
-    return NextResponse.json(
-      { error: "Unknown client" },
-      { status: 404 }
-    );
+    // Allow API routes through without a client config
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.next();
+    }
+    return NextResponse.json({ error: "Unknown client" }, { status: 404 });
   }
 
   // Protect non-public routes — redirect unauthenticated users to sign-in
