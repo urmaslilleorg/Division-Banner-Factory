@@ -133,10 +133,10 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
   do {
-    const params = new URLSearchParams({
-      pageSize: "100",
-      "fields[]": ["Campaign Name", "Approval_Status", "Status"].join("&fields[]="),
-    });
+    const params = new URLSearchParams({ pageSize: "100" });
+    params.append("fields[]", "Campaign Name");
+    params.append("fields[]", "Approval_Status");
+    params.append("fields[]", "Status");
     if (offset) params.set("offset", offset);
     const res = await airtableRequest<{ records: AirtableRecord[]; offset?: string }>(
       `${BANNERS_TABLE}?${params}`
