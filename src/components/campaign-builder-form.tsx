@@ -48,6 +48,12 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
   const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
   const [selectedVariables, setSelectedVariables] = useState<string[]>(["H1", "H2", "CTA"]);
 
+  // Default copy fields
+  const [defaultH1, setDefaultH1] = useState("");
+  const [defaultH2, setDefaultH2] = useState("");
+  const [defaultH3, setDefaultH3] = useState("");
+  const [defaultCta, setDefaultCta] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SuccessResult | null>(null);
@@ -105,6 +111,12 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
           startDate,
           endDate,
           languages: selectedLanguages,
+          defaultCopy: {
+            h1: defaultH1.trim() || null,
+            h2: defaultH2.trim() || null,
+            h3: defaultH3.trim() || null,
+            cta: defaultCta.trim() || null,
+          },
           formats: selectedFormatData.map((f) => ({
             id: f.id,
             formatName: f.formatName,
@@ -295,6 +307,64 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
               {v.label}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Default Copy Fields */}
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700">Default Copy (optional)</label>
+          <p className="text-xs text-gray-400">Pre-fills all banner records. Edit per-banner in the Copy Editor after creation.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {selectedVariables.includes("H1") && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600">H1</label>
+              <input
+                type="text"
+                value={defaultH1}
+                onChange={(e) => setDefaultH1(e.target.value)}
+                placeholder="Headline 1"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
+          {selectedVariables.includes("H2") && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600">H2</label>
+              <input
+                type="text"
+                value={defaultH2}
+                onChange={(e) => setDefaultH2(e.target.value)}
+                placeholder="Headline 2"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
+          {selectedVariables.includes("H3") && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600">H3</label>
+              <input
+                type="text"
+                value={defaultH3}
+                onChange={(e) => setDefaultH3(e.target.value)}
+                placeholder="Headline 3"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
+          {selectedVariables.includes("CTA") && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600">CTA</label>
+              <input
+                type="text"
+                value={defaultCta}
+                onChange={(e) => setDefaultCta(e.target.value)}
+                placeholder="Call to action"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
         </div>
       </div>
 

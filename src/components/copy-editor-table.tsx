@@ -65,6 +65,12 @@ export default function CopyEditorTable({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReadOnly = userRole === "client_reviewer";
 
+  // Bulk override state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkValues, setBulkValues] = useState<Record<string, string>>({});
+  const [isBulkSaving, setIsBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState<string | null>(null);
+
   const { variables, languages } = fieldConfig;
 
   // Build column list: for each variable × language
@@ -84,13 +90,11 @@ export default function CopyEditorTable({
 
   const handleBlur = useCallback(
     async (bannerId: string, fieldKey: keyof Banner, airtableField: string, value: string) => {
-      // Find original value
       const banner = banners.find((b) => b.id === bannerId);
       if (!banner) return;
       const originalValue = (banner[fieldKey] as string) || "";
-      if (value === originalValue) return; // No change
+      if (value === originalValue) return;
 
-      // Optimistic update
       setBanners((prev) =>
         prev.map((b) =>
           b.id === bannerId ? { ...b, [fieldKey]: value } : b
@@ -110,7 +114,6 @@ export default function CopyEditorTable({
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => setCellState(null), 1500);
       } catch {
-        // Revert on error
         setBanners((prev) =>
           prev.map((b) =>
             b.id === bannerId ? { ...b, [fieldKey]: originalValue } : b
@@ -124,137 +127,284 @@ export default function CopyEditorTable({
     [banners]
   );
 
-  return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-100 text-sm">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap">
-              Format
-            </th>
-            <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-              Lang
-            </th>
-            <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-              Status
-            </th>
-            {columns.map((col) => (
-              <th
-                key={`${col.variable}-${col.language}`}
-                className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 min-w-[160px]"
-              >
-                {col.label}
-              </th>
-            ))}
-            <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-              Ready
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
-          {banners.map((banner) => {
-            const isComplete = isBannerRowComplete(banner, variables, languages);
-            return (
-              <tr key={banner.id} className="hover:bg-gray-50/50">
-                {/* Format */}
-                <td className="sticky left-0 z-10 bg-white px-4 py-2 font-mono text-xs text-gray-600 whitespace-nowrap">
-                  {banner.format || `${banner.width}×${banner.height}`}
-                </td>
-                {/* Language */}
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      banner.language === "ET"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-green-100 text-green-700"
-                    }`}
-                  >
-                    {banner.language}
-                  </span>
-                </td>
-                {/* Status */}
-                <td className="px-3 py-2">
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
-                    {banner.status}
-                  </span>
-                </td>
-                {/* Copy cells */}
-                {columns.map((col) => {
-                  const value = (banner[col.fieldKey] as string) || "";
-                  const isEmpty = value.trim() === "";
-                  const isSaving =
-                    cellState?.bannerId === banner.id &&
-                    cellState.field === String(col.fieldKey) &&
-                    cellState.state === "saving";
-                  const isSuccess =
-                    cellState?.bannerId === banner.id &&
-                    cellState.field === String(col.fieldKey) &&
-                    cellState.state === "success";
-                  const isError =
-                    cellState?.bannerId === banner.id &&
-                    cellState.field === String(col.fieldKey) &&
-                    cellState.state === "error";
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
-                  return (
-                    <td
-                      key={`${banner.id}-${col.variable}-${col.language}`}
-                      className={`px-2 py-1.5 transition-colors ${
-                        col.variable === "H1" && isEmpty && !isReadOnly
-                          ? "bg-amber-50"
-                          : ""
-                      } ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
-                    >
-                      {isReadOnly ? (
-                        <span className="block min-h-[28px] text-sm text-gray-700">
-                          {value}
-                        </span>
-                      ) : (
-                        <input
-                          type="text"
-                          defaultValue={value}
-                          disabled={isSaving}
-                          onBlur={(e) =>
-                            handleBlur(
-                              banner.id,
-                              col.fieldKey,
-                              FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
-                              e.target.value
-                            )
-                          }
-                          placeholder={col.variable === "H1" ? "Required" : ""}
-                          className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 ${
-                            isSaving
-                              ? "border-gray-200 bg-gray-50 text-gray-400"
-                              : isSuccess
-                              ? "border-emerald-300 bg-emerald-50"
-                              : isError
-                              ? "border-red-300 bg-red-50"
-                              : col.variable === "H1" && isEmpty
-                              ? "border-amber-300 bg-amber-50"
-                              : "border-gray-200 bg-white"
-                          }`}
-                        />
-                      )}
-                    </td>
-                  );
-                })}
-                {/* Ready badge */}
-                <td className="px-3 py-2">
-                  {isComplete ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                      Ready ✓
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-400">
-                      Incomplete
-                    </span>
-                  )}
-                </td>
-              </tr>
+  const toggleSelectAll = () => {
+    if (selectedIds.size === banners.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(banners.map((b) => b.id)));
+    }
+  };
+
+  const handleBulkApply = async () => {
+    if (selectedIds.size === 0) return;
+    const fieldsToUpdate: Record<string, string> = {};
+    for (const [colKey, value] of Object.entries(bulkValues)) {
+      if (value.trim()) {
+        const airtableField = FIELD_TO_AIRTABLE[colKey];
+        if (airtableField) fieldsToUpdate[airtableField] = value.trim();
+      }
+    }
+    if (Object.keys(fieldsToUpdate).length === 0) return;
+
+    setIsBulkSaving(true);
+    setBulkResult(null);
+
+    const ids = Array.from(selectedIds);
+    let successCount = 0;
+    let errorCount = 0;
+
+    // Process in chunks of 10
+    for (let i = 0; i < ids.length; i += 10) {
+      const chunk = ids.slice(i, i + 10);
+      await Promise.all(
+        chunk.map(async (bannerId) => {
+          try {
+            const res = await fetch(`/api/banners/${bannerId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(fieldsToUpdate),
+            });
+            if (!res.ok) throw new Error();
+            successCount++;
+            // Update local state
+            const fieldKeyUpdates: Partial<Banner> = {};
+            for (const [colKey, value] of Object.entries(bulkValues)) {
+              if (value.trim()) {
+                (fieldKeyUpdates as Record<string, string>)[colKey] = value.trim();
+              }
+            }
+            setBanners((prev) =>
+              prev.map((b) =>
+                b.id === bannerId ? { ...b, ...fieldKeyUpdates } : b
+              )
             );
-          })}
-        </tbody>
-      </table>
+          } catch {
+            errorCount++;
+          }
+        })
+      );
+    }
+
+    setIsBulkSaving(false);
+    setBulkResult(
+      errorCount === 0
+        ? `✓ Updated ${successCount} records`
+        : `Updated ${successCount}, failed ${errorCount}`
+    );
+    setTimeout(() => setBulkResult(null), 3000);
+    setSelectedIds(new Set());
+    setBulkValues({});
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Bulk action bar — shown when rows are selected */}
+      {!isReadOnly && selectedIds.size > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-end gap-3">
+          <p className="text-sm font-medium text-blue-800 self-center">
+            {selectedIds.size} row{selectedIds.size > 1 ? "s" : ""} selected — apply to all:
+          </p>
+          {columns.map((col) => (
+            <div key={`bulk-${col.variable}-${col.language}`} className="space-y-0.5">
+              <label className="block text-[10px] font-medium text-blue-700 uppercase tracking-wide">
+                {col.label}
+              </label>
+              <input
+                type="text"
+                value={bulkValues[String(col.fieldKey)] || ""}
+                onChange={(e) =>
+                  setBulkValues((prev) => ({
+                    ...prev,
+                    [String(col.fieldKey)]: e.target.value,
+                  }))
+                }
+                placeholder={`${col.label}…`}
+                className="rounded border border-blue-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-36"
+              />
+            </div>
+          ))}
+          <button
+            onClick={handleBulkApply}
+            disabled={isBulkSaving}
+            className="self-end rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+          >
+            {isBulkSaving ? "Saving…" : "Apply to selected"}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="self-end rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+          >
+            Clear
+          </button>
+          {bulkResult && (
+            <p className="self-end text-xs font-medium text-emerald-700">{bulkResult}</p>
+          )}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="min-w-full divide-y divide-gray-100 text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              {!isReadOnly && (
+                <th className="sticky left-0 z-10 bg-gray-50 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === banners.length && banners.length > 0}
+                    onChange={toggleSelectAll}
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
+                  />
+                </th>
+              )}
+              <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                Format
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
+                Lang
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
+                Status
+              </th>
+              {columns.map((col) => (
+                <th
+                  key={`${col.variable}-${col.language}`}
+                  className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 min-w-[160px]"
+                >
+                  {col.label}
+                </th>
+              ))}
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
+                Ready
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 bg-white">
+            {banners.map((banner) => {
+              const isComplete = isBannerRowComplete(banner, variables, languages);
+              const isSelected = selectedIds.has(banner.id);
+              return (
+                <tr
+                  key={banner.id}
+                  className={`hover:bg-gray-50/50 ${isSelected ? "bg-blue-50/40" : ""}`}
+                >
+                  {!isReadOnly && (
+                    <td className="sticky left-0 z-10 bg-inherit px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(banner.id)}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
+                      />
+                    </td>
+                  )}
+                  {/* Format */}
+                  <td className="sticky left-0 z-10 bg-inherit px-4 py-2 font-mono text-xs text-gray-600 whitespace-nowrap">
+                    {banner.format || `${banner.width}×${banner.height}`}
+                  </td>
+                  {/* Language */}
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        banner.language === "ET"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-green-100 text-green-700"
+                      }`}
+                    >
+                      {banner.language}
+                    </span>
+                  </td>
+                  {/* Status */}
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                      {banner.status}
+                    </span>
+                  </td>
+                  {/* Copy cells */}
+                  {columns.map((col) => {
+                    const value = (banner[col.fieldKey] as string) || "";
+                    const isEmpty = value.trim() === "";
+                    const isSaving =
+                      cellState?.bannerId === banner.id &&
+                      cellState.field === String(col.fieldKey) &&
+                      cellState.state === "saving";
+                    const isSuccess =
+                      cellState?.bannerId === banner.id &&
+                      cellState.field === String(col.fieldKey) &&
+                      cellState.state === "success";
+                    const isError =
+                      cellState?.bannerId === banner.id &&
+                      cellState.field === String(col.fieldKey) &&
+                      cellState.state === "error";
+
+                    return (
+                      <td
+                        key={`${banner.id}-${col.variable}-${col.language}`}
+                        className={`px-2 py-1.5 transition-colors ${
+                          col.variable === "H1" && isEmpty && !isReadOnly
+                            ? "bg-amber-50"
+                            : ""
+                        } ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
+                      >
+                        {isReadOnly ? (
+                          <span className="block min-h-[28px] text-sm text-gray-700">
+                            {value}
+                          </span>
+                        ) : (
+                          <input
+                            type="text"
+                            defaultValue={value}
+                            disabled={isSaving}
+                            onBlur={(e) =>
+                              handleBlur(
+                                banner.id,
+                                col.fieldKey,
+                                FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
+                                e.target.value
+                              )
+                            }
+                            placeholder={col.variable === "H1" ? "Required" : ""}
+                            className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 ${
+                              isSaving
+                                ? "border-gray-200 bg-gray-50 text-gray-400"
+                                : isSuccess
+                                ? "border-emerald-300 bg-emerald-50"
+                                : isError
+                                ? "border-red-300 bg-red-50"
+                                : col.variable === "H1" && isEmpty
+                                ? "border-amber-300 bg-amber-50"
+                                : "border-gray-200 bg-white"
+                            }`}
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
+                  {/* Ready badge */}
+                  <td className="px-3 py-2">
+                    {isComplete ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Ready ✓
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-400">
+                        Incomplete
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

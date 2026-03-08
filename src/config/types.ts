@@ -5,9 +5,9 @@ export interface ClientConfig {
   logo: string;
   colors: {
     primary: string;
-    secondary: string;
-    accent: string;
-    background: string;
+    secondary?: string;
+    accent?: string;
+    background?: string;
   };
   languages: string[];
   airtable: {
@@ -15,8 +15,11 @@ export interface ClientConfig {
     campaignFilter: string;
   };
   features: {
-    download: boolean;
-    comments: boolean;
-    approvals: boolean;
+    download?: boolean;
+    comments?: boolean;
+    approvals?: boolean;
+    copyEditor?: boolean;
+    designerView?: boolean;
+    campaignBuilder?: boolean;
   };
 }
