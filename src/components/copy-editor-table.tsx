@@ -334,18 +334,27 @@ export default function CopyEditorTable({
                       />
                     </td>
                   )}
-                  {/* Format */}
-                  <td className="sticky left-0 z-10 bg-inherit px-4 py-2 font-mono text-xs text-gray-600 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      {banner.format || `${banner.width}×${banner.height}`}
-                      {isCarousel && (
-                        <button
-                          onClick={() => toggleCarousel(banner.id)}
-                          className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
-                          title={isExpanded ? "Collapse slides" : "Expand slides"}
-                        >
-                          {isLoadingSlides ? "…" : isExpanded ? `▲ ${slides.length} slides` : "▼ Carousel"}
-                        </button>
+                  {/* Format / Banner Name */}
+                  <td className="sticky left-0 z-10 bg-inherit px-4 py-2 whitespace-nowrap">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs text-gray-600">
+                          {banner.format || `${banner.width}×${banner.height}`}
+                        </span>
+                        {isCarousel && (
+                          <button
+                            onClick={() => toggleCarousel(banner.id)}
+                            className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                            title={isExpanded ? "Collapse slides" : "Expand slides"}
+                          >
+                            {isLoadingSlides ? "…" : isExpanded ? `▲ ${slides.length} slides` : "▼ Carousel"}
+                          </button>
+                        )}
+                      </div>
+                      {banner.bannerName && (
+                        <span className="font-mono text-[10px] text-gray-400 max-w-[220px] truncate" title={banner.bannerName}>
+                          {banner.bannerName}
+                        </span>
                       )}
                     </div>
                   </td>

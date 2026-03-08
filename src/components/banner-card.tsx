@@ -146,6 +146,13 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
           )}
         </div>
 
+        {/* Banner name — monospace identifier */}
+        {banner.bannerName && (
+          <p className="truncate font-mono text-[10px] text-gray-400" title={banner.bannerName}>
+            {banner.bannerName}
+          </p>
+        )}
+
         {/* Copy preview — show H1 in appropriate language */}
         {(banner.h1ET || banner.h1EN || banner.h1) && (
           <p className="truncate text-xs text-gray-500">

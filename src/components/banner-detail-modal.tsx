@@ -213,6 +213,21 @@ export default function BannerDetailModal({
               {(banner.approvalStatus || "Pending").replace(/_/g, " ")}
             </Badge>
           </DialogTitle>
+          {banner.bannerName && (
+            <div className="flex items-center gap-2 pt-0.5">
+              <span className="font-mono text-xs text-gray-500 break-all">{banner.bannerName}</span>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(banner.bannerName)}
+                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                title="Copy banner name"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
+          )}
           <DialogDescription>
             {banner.channel} · {banner.device} · {banner.language} ·{" "}
             {banner.width}×{banner.height}px · {banner.outputFormat}

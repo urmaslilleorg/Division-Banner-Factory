@@ -71,6 +71,30 @@ function normaliseForFigma(str: string): string {
     .replace(/\s+/g, "_");
 }
 
+/**
+ * Generate a human-readable banner name following the Division naming convention:
+ * Channel_FormatName_WxH_ProductName_Language[_Slide_N]
+ */
+function generateBannerName(
+  channel: string,
+  formatName: string,
+  width: number,
+  height: number,
+  productName: string,
+  language: string,
+  slideIndex?: number
+): string {
+  // Normalise channel: remove "/" and spaces
+  const channelNorm = channel.replace(/[\/\s]+/g, "");
+  // Normalise productName: apply Estonian char map, replace spaces with "_"
+  const productNorm = normaliseForFigma(productName);
+  let name = `${channelNorm}_${formatName}_${width}x${height}_${productNorm}_${language}`;
+  if (slideIndex !== undefined) {
+    name += `_Slide_${slideIndex}`;
+  }
+  return name;
+}
+
 function generateFigmaFrame(
   channel: string,
   formatName: string,
@@ -135,6 +159,7 @@ export interface FormatInput {
 
 export interface CreateCampaignRequest {
   campaignName: string;
+  productName?: string;
   clientName: string;
   launchMonth: string;
   startDate: string;
@@ -169,6 +194,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as CreateCampaignRequest;
     const {
       campaignName,
+      productName = "",
       clientName,
       launchMonth,
       startDate,
@@ -197,6 +223,7 @@ export async function POST(request: NextRequest) {
     const campaignRecord = await airtablePost<AirtableRecord>(CAMPAIGNS_TABLE, {
       fields: {
         "Campaign Name": campaignName,
+        Product_Name: productName || undefined,
         Client_Name: clientName,
         Active: true,
         "Start Date": startDate || undefined,
@@ -263,6 +290,7 @@ export async function POST(request: NextRequest) {
               ...baseFields,
               Language: language,
               Banner_Type: "Standard",
+              Banner_Name: generateBannerName(format.channel, format.formatName, format.widthPx, format.heightPx, productName, language),
               ...copyFields,
             },
           });
@@ -282,6 +310,7 @@ export async function POST(request: NextRequest) {
               ...baseFields,
               Language: language,
               Banner_Type: "Standard",
+              Banner_Name: generateBannerName(format.channel, format.formatName, format.widthPx, format.heightPx, productName, language),
               ...copyFields,
             },
           });
@@ -308,6 +337,7 @@ export async function POST(request: NextRequest) {
                 ...baseFields,
                 Language: language,
                 Banner_Type: "Carousel",
+                Banner_Name: generateBannerName(format.channel, format.formatName, format.widthPx, format.heightPx, productName, language),
                 ...parentCopyFields,
               },
             }],
@@ -339,6 +369,7 @@ export async function POST(request: NextRequest) {
                 Language: language,
                 Figma_Frame: `${figmaFrame}_Slide_${s + 1}`,
                 Banner_Type: "Slide",
+                Banner_Name: generateBannerName(format.channel, format.formatName, format.widthPx, format.heightPx, productName, language, s + 1),
                 Parent_Banner: [parentId],
                 Slide_Index: s + 1,
                 ...slideCopyFields,

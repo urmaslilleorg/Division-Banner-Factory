@@ -62,6 +62,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
 
   // Form state
   const [campaignName, setCampaignName] = useState("");
+  const [productName, setProductName] = useState("");
   const [clientName, setClientName] = useState("avene");
   const [launchMonth, setLaunchMonth] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -217,6 +218,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignName.trim()) { setError("Campaign name is required."); return; }
+    if (!productName.trim()) { setError("Product name is required."); return; }
     if (!launchMonth) { setError("Launch month is required."); return; }
     if (selectedLanguages.length === 0) { setError("Select at least one language."); return; }
     if (selectedFormats.length === 0) { setError("Select at least one format."); return; }
@@ -243,6 +245,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           campaignName: campaignName.trim(),
+          productName: productName.trim(),
           clientName,
           launchMonth,
           startDate,
@@ -360,6 +363,21 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
           placeholder="e.g. Avene Spring 2026"
           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
         />
+      </div>
+
+      {/* Product Name */}
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-gray-700">
+          Product name <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={productName}
+          onChange={(e) => setProductName(e.target.value)}
+          placeholder="e.g. HydraBoost, SunCream"
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+        />
+        <p className="text-xs text-gray-400">Used in banner file naming. No spaces — use CamelCase.</p>
       </div>
 
       {/* Client */}

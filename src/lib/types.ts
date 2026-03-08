@@ -96,6 +96,8 @@ export interface Banner {
   slideIndex: number | null;
   /** Parent banner record IDs (for Slide type only) */
   parentBannerIds: string[];
+  /** Human-readable banner name following Division naming convention */
+  bannerName: string;
 }
 
 /**
@@ -148,5 +150,6 @@ export function parseBannerRecord(record: {
     bannerType: (f["Banner_Type"] as BannerType) || "Standard",
     slideIndex: (f["Slide_Index"] as number) || null,
     parentBannerIds: Array.isArray(f["Parent_Banner"]) ? (f["Parent_Banner"] as string[]) : [],
+    bannerName: (f["Banner_Name"] as string) || "",
   };
 }
