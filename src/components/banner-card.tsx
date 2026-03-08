@@ -1,6 +1,7 @@
 "use client";
 
 import { Banner, ApprovalStatus, Language } from "@/lib/types";
+import { driveToDirectUrl } from "@/lib/drive";
 
 interface BannerCardProps {
   banner: Banner;
@@ -59,7 +60,7 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
       >
         {banner.imageUrl ? (
           <img
-            src={banner.imageUrl}
+            src={driveToDirectUrl(banner.imageUrl)}
             alt={`Banner ${banner.bannerId}`}
             className="max-h-full max-w-full object-contain"
           />
