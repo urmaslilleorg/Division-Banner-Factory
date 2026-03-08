@@ -170,8 +170,8 @@ export async function fetchFormats(): Promise<AirtableFormat[]> {
   return records.map((r) => ({
     id: r.id,
     formatName: (r.fields["Format_Name"] as string) || "",
-    widthPx: (r.fields["Width_px"] as number) || 0,
-    heightPx: (r.fields["Height_px"] as number) || 0,
+    widthPx: (r.fields["Width"] as number) || 0,
+    heightPx: (r.fields["Height"] as number) || 0,
     channel: (r.fields["Channel"] as string) || "Web",
     device: (r.fields["Device"] as string) || "Desktop",
     figmaFrameBase: (r.fields["Figma_Frame_Base"] as string) || "",

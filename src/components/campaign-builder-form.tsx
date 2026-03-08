@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AirtableFormat } from "@/lib/airtable-campaigns";
+import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
 import { Loader2, Copy, Check, ArrowLeft, Edit3 } from "lucide-react";
 
@@ -11,7 +12,8 @@ const CLIENT_OPTIONS = [
   { value: "demo", label: "Demo" },
 ];
 
-const VARIABLE_OPTIONS = [
+// Fallback if registry is empty
+const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
   { value: "H2", label: "H2" },
   { value: "H3", label: "H3" },
@@ -33,9 +35,13 @@ interface SuccessResult {
 
 interface CampaignBuilderFormProps {
   formats: AirtableFormat[];
+  variableRegistry?: VariableDefinition[];
 }
 
-export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProps) {
+export default function CampaignBuilderForm({ formats, variableRegistry }: CampaignBuilderFormProps) {
+  const variableOptions = variableRegistry && variableRegistry.length > 0
+    ? variableRegistry.map((v) => ({ value: v.id, label: v.label }))
+    : FALLBACK_VARIABLE_OPTIONS;
   const router = useRouter();
 
   // Form state
@@ -53,6 +59,8 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
   const [defaultH2, setDefaultH2] = useState("");
   const [defaultH3, setDefaultH3] = useState("");
   const [defaultCta, setDefaultCta] = useState("");
+  const [defaultPriceTag, setDefaultPriceTag] = useState("");
+  const [defaultIllustration, setDefaultIllustration] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +124,8 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
             h2: defaultH2.trim() || null,
             h3: defaultH3.trim() || null,
             cta: defaultCta.trim() || null,
+            priceTag: defaultPriceTag.trim() || null,
+            illustration: defaultIllustration.trim() || null,
           },
           formats: selectedFormatData.map((f) => ({
             id: f.id,
@@ -293,7 +303,7 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">Active Variables</label>
         <div className="flex flex-wrap gap-2">
-          {VARIABLE_OPTIONS.map((v) => (
+          {variableOptions.map((v) => (
             <button
               key={v.value}
               type="button"
@@ -361,6 +371,30 @@ export default function CampaignBuilderForm({ formats }: CampaignBuilderFormProp
                 value={defaultCta}
                 onChange={(e) => setDefaultCta(e.target.value)}
                 placeholder="Call to action"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
+          {selectedVariables.includes("Price_Tag") && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600">Price Tag</label>
+              <input
+                type="text"
+                value={defaultPriceTag}
+                onChange={(e) => setDefaultPriceTag(e.target.value)}
+                placeholder="e.g. 12.90€"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
+          {selectedVariables.includes("Illustration") && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600">Illustration</label>
+              <input
+                type="text"
+                value={defaultIllustration}
+                onChange={(e) => setDefaultIllustration(e.target.value)}
+                placeholder="Asset name or URL"
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               />
             </div>

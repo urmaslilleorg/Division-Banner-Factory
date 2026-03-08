@@ -54,9 +54,12 @@ export default function RootLayout({
                   Banners
                   <NotificationBadge userRole={userRole} />
                 </a>
-                <a href="/settings" className="hover:text-gray-900 transition-colors">
-                  Settings
-                </a>
+                {/* Settings — visible to division_admin only */}
+                {userRole === "division_admin" && (
+                  <a href="/settings" className="hover:text-gray-900 transition-colors">
+                    Settings
+                  </a>
+                )}
               </nav>
             </div>
           </header>

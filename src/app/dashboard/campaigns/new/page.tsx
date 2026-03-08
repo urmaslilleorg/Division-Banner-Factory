@@ -2,13 +2,35 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { fetchFormats } from "@/lib/airtable-campaigns";
 import CampaignBuilderForm from "@/components/campaign-builder-form";
+import { VariableDefinition } from "@/components/variables-manager";
+
+async function fetchVariableRegistry(): Promise<VariableDefinition[]> {
+  const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
+  const BASE_ID = "appIqinespXjbIERp";
+  const BRAND_ASSETS_TABLE = "tblXAWuxJ47Bejj5w";
+  const REGISTRY_RECORD_ID = "recCjnJ8I3v3STPfW";
+
+  try {
+    const res = await fetch(
+      `https://api.airtable.com/v0/${BASE_ID}/${BRAND_ASSETS_TABLE}/${REGISTRY_RECORD_ID}`,
+      { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` }, cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const record = await res.json();
+    return JSON.parse(record.fields.Registry_JSON || "[]");
+  } catch {
+    return [];
+  }
+}
 
 export default async function NewCampaignPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  // Fetch formats server-side
-  const formats = await fetchFormats();
+  const [formats, variableRegistry] = await Promise.all([
+    fetchFormats(),
+    fetchVariableRegistry(),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
@@ -18,7 +40,7 @@ export default async function NewCampaignPage() {
           Set up a campaign and generate banner records automatically.
         </p>
       </div>
-      <CampaignBuilderForm formats={formats} />
+      <CampaignBuilderForm formats={formats} variableRegistry={variableRegistry} />
     </main>
   );
 }
