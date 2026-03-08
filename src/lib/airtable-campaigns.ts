@@ -86,7 +86,7 @@ function parseCampaign(record: AirtableRecord): Campaign {
   }
   return {
     id: record.id,
-    name: (f["Campaign Name"] as string) || (f["Campaign_Name"] as string) || "",
+    name: (f["Campaign Name"] as string) || "",
     clientName: (f["Client_Name"] as string) || "",
     active: (f["Active"] as boolean) || false,
     launchMonth: (f["Launch_Month"] as string) || "",
@@ -135,7 +135,7 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
   do {
     const params = new URLSearchParams({
       pageSize: "100",
-      "fields[]": ["Campaign_Name", "Approval_Status", "Status"].join("&fields[]="),
+      "fields[]": ["Campaign Name", "Approval_Status", "Status"].join("&fields[]="),
     });
     if (offset) params.set("offset", offset);
     const res = await airtableRequest<{ records: AirtableRecord[]; offset?: string }>(
@@ -146,7 +146,7 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
   } while (offset);
   return records.map((r) => ({
     id: r.id,
-    campaignName: (r.fields["Campaign_Name"] as string) || "",
+    campaignName: (r.fields["Campaign Name"] as string) || "",
     approvalStatus: (r.fields["Approval_Status"] as string) || null,
     status: (r.fields["Status"] as string) || "Draft",
   }));
