@@ -3,6 +3,8 @@
  * Field names match Airtable exactly (case-sensitive).
  */
 
+export type BannerType = "Standard" | "Carousel" | "Slide";
+
 export type BannerStatus =
   | "Draft"
   | "Ready"
@@ -88,6 +90,12 @@ export interface Banner {
   safeArea: string;
   /** Output format */
   outputFormat: string;
+  /** Banner type: Standard, Carousel, or Slide */
+  bannerType: BannerType;
+  /** Slide index (1-based, for Slide type only) */
+  slideIndex: number | null;
+  /** Parent banner record IDs (for Slide type only) */
+  parentBannerIds: string[];
 }
 
 /**
@@ -137,5 +145,8 @@ export function parseBannerRecord(record: {
     illustration: (f["Illustration"] as string) || "",
     safeArea: (f["Safe_Area"] as string) || "",
     outputFormat: (f["Output_Format"] as string) || "PNG",
+    bannerType: (f["Banner_Type"] as BannerType) || "Standard",
+    slideIndex: (f["Slide_Index"] as number) || null,
+    parentBannerIds: Array.isArray(f["Parent_Banner"]) ? (f["Parent_Banner"] as string[]) : [],
   };
 }

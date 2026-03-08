@@ -60,7 +60,10 @@ export async function fetchBanners(
   const tableId = "tblE3Np8VIaKJsqoW";
 
   // Build filter formula
-  const conditions: string[] = [];
+  // Always exclude Slide records — they are child records of Carousel banners
+  const conditions: string[] = [
+    `{Banner_Type}!="Slide"`,
+  ];
 
   if (campaignFilter) {
     conditions.push(`FIND("${campaignFilter}", {Campaign_Name})`);
@@ -77,10 +80,10 @@ export async function fetchBanners(
     }
   }
 
-  const formula =
-    conditions.length > 1
-      ? `AND(${conditions.join(",")})`
-      : conditions[0] || "";
+  // Always at least 1 condition (Banner_Type!=Slide), so always wrap in AND
+  const formula = conditions.length === 1
+    ? conditions[0]
+    : `AND(${conditions.join(",")})`;
 
   const allRecords: AirtableRecord[] = [];
   let offset: string | undefined;

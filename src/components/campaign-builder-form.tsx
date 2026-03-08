@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import { AirtableFormat } from "@/lib/airtable-campaigns";
 import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, Check, ArrowLeft, Edit3 } from "lucide-react";
+import { Loader2, Copy, Check, ArrowLeft, Edit3, ChevronDown, ChevronRight } from "lucide-react";
 
 const CLIENT_OPTIONS = [
   { value: "avene", label: "Avene" },
   { value: "demo", label: "Demo" },
 ];
 
-// Fallback if registry is empty
 const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
   { value: "H2", label: "H2" },
@@ -26,6 +25,13 @@ const LANGUAGE_OPTIONS = [
   { value: "ET", label: "ET" },
   { value: "EN", label: "EN" },
 ];
+
+// Per-format config
+interface FormatConfig {
+  variables: string[];   // active variables for this format
+  carousel: boolean;
+  slideCount: number;
+}
 
 interface SuccessResult {
   campaignId: string;
@@ -52,15 +58,13 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   const [endDate, setEndDate] = useState("");
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(["ET"]);
   const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
-  const [selectedVariables, setSelectedVariables] = useState<string[]>(["H1", "H2", "CTA"]);
+  // Per-format config map: formatId → FormatConfig
+  const [formatConfigs, setFormatConfigs] = useState<Record<string, FormatConfig>>({});
+  // Which format panels are expanded
+  const [expandedFormats, setExpandedFormats] = useState<Record<string, boolean>>({});
 
-  // Default copy fields
-  const [defaultH1, setDefaultH1] = useState("");
-  const [defaultH2, setDefaultH2] = useState("");
-  const [defaultH3, setDefaultH3] = useState("");
-  const [defaultCta, setDefaultCta] = useState("");
-  const [defaultPriceTag, setDefaultPriceTag] = useState("");
-  const [defaultIllustration, setDefaultIllustration] = useState("");
+  // Default copy fields (union of all active variables across all selected formats)
+  const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>({});
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +82,15 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
     {}
   );
 
+  // Get or initialise per-format config
+  const getFormatConfig = (formatId: string): FormatConfig => {
+    return formatConfigs[formatId] ?? {
+      variables: ["H1", "CTA"],
+      carousel: false,
+      slideCount: 3,
+    };
+  };
+
   const toggleLanguage = (lang: string) => {
     setSelectedLanguages((prev) =>
       prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
@@ -85,16 +98,58 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   };
 
   const toggleFormat = (id: string) => {
-    setSelectedFormats((prev) =>
-      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
-    );
+    setSelectedFormats((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((f) => f !== id);
+      } else {
+        // Initialise config when first selected
+        if (!formatConfigs[id]) {
+          setFormatConfigs((c) => ({
+            ...c,
+            [id]: { variables: ["H1", "CTA"], carousel: false, slideCount: 3 },
+          }));
+        }
+        // Auto-expand when checked
+        setExpandedFormats((e) => ({ ...e, [id]: true }));
+        return [...prev, id];
+      }
+    });
   };
 
-  const toggleVariable = (v: string) => {
-    setSelectedVariables((prev) =>
-      prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
-    );
+  const toggleFormatExpanded = (id: string) => {
+    setExpandedFormats((e) => ({ ...e, [id]: !e[id] }));
   };
+
+  const toggleFormatVariable = (formatId: string, variable: string) => {
+    setFormatConfigs((prev) => {
+      const cfg = getFormatConfig(formatId);
+      const vars = cfg.variables.includes(variable)
+        ? cfg.variables.filter((v) => v !== variable)
+        : [...cfg.variables, variable];
+      return { ...prev, [formatId]: { ...cfg, variables: vars } };
+    });
+  };
+
+  const setFormatCarousel = (formatId: string, on: boolean) => {
+    setFormatConfigs((prev) => {
+      const cfg = getFormatConfig(formatId);
+      return { ...prev, [formatId]: { ...cfg, carousel: on } };
+    });
+  };
+
+  const setFormatSlideCount = (formatId: string, count: number) => {
+    setFormatConfigs((prev) => {
+      const cfg = getFormatConfig(formatId);
+      return { ...prev, [formatId]: { ...cfg, slideCount: Math.max(2, count) } };
+    });
+  };
+
+  // Union of all active variables across selected formats (for Default Copy section)
+  const allActiveVariables = Array.from(
+    new Set(
+      selectedFormats.flatMap((id) => getFormatConfig(id).variables)
+    )
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +163,17 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
 
     const selectedFormatData = formats.filter((f) => selectedFormats.includes(f.id));
 
+    // Build Field_Config.formats object
+    const fieldConfigFormats: Record<string, { variables: string[]; carousel: boolean; slideCount: number }> = {};
+    for (const f of selectedFormatData) {
+      const cfg = getFormatConfig(f.id);
+      fieldConfigFormats[f.formatName] = {
+        variables: cfg.variables,
+        carousel: cfg.carousel,
+        slideCount: cfg.carousel ? cfg.slideCount : 0,
+      };
+    }
+
     try {
       const res = await fetch("/api/campaigns/create", {
         method: "POST",
@@ -119,14 +185,9 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
           startDate,
           endDate,
           languages: selectedLanguages,
-          defaultCopy: {
-            h1: defaultH1.trim() || null,
-            h2: defaultH2.trim() || null,
-            h3: defaultH3.trim() || null,
-            cta: defaultCta.trim() || null,
-            priceTag: defaultPriceTag.trim() || null,
-            illustration: defaultIllustration.trim() || null,
-          },
+          defaultCopy: Object.fromEntries(
+            Object.entries(defaultCopy).map(([k, v]) => [k, v.trim() || null])
+          ),
           formats: selectedFormatData.map((f) => ({
             id: f.id,
             formatName: f.formatName,
@@ -136,8 +197,12 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
             device: f.device,
             safeArea: f.safeArea,
             outputFormat: f.outputFormat,
+            figmaFrameBase: f.figmaFrameBase,
+            variables: getFormatConfig(f.id).variables,
+            carousel: getFormatConfig(f.id).carousel,
+            slideCount: getFormatConfig(f.id).carousel ? getFormatConfig(f.id).slideCount : 0,
           })),
-          variables: selectedVariables,
+          fieldConfigFormats,
         }),
       });
 
@@ -299,110 +364,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
         </div>
       </div>
 
-      {/* Active Variables */}
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">Active Variables</label>
-        <div className="flex flex-wrap gap-2">
-          {variableOptions.map((v) => (
-            <button
-              key={v.value}
-              type="button"
-              onClick={() => toggleVariable(v.value)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                selectedVariables.includes(v.value)
-                  ? "border-gray-900 bg-gray-900 text-white"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Default Copy Fields */}
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Default Copy (optional)</label>
-          <p className="text-xs text-gray-400">Pre-fills all banner records. Edit per-banner in the Copy Editor after creation.</p>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {selectedVariables.includes("H1") && (
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-600">H1</label>
-              <input
-                type="text"
-                value={defaultH1}
-                onChange={(e) => setDefaultH1(e.target.value)}
-                placeholder="Headline 1"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-          )}
-          {selectedVariables.includes("H2") && (
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-600">H2</label>
-              <input
-                type="text"
-                value={defaultH2}
-                onChange={(e) => setDefaultH2(e.target.value)}
-                placeholder="Headline 2"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-          )}
-          {selectedVariables.includes("H3") && (
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-600">H3</label>
-              <input
-                type="text"
-                value={defaultH3}
-                onChange={(e) => setDefaultH3(e.target.value)}
-                placeholder="Headline 3"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-          )}
-          {selectedVariables.includes("CTA") && (
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-600">CTA</label>
-              <input
-                type="text"
-                value={defaultCta}
-                onChange={(e) => setDefaultCta(e.target.value)}
-                placeholder="Call to action"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-          )}
-          {selectedVariables.includes("Price_Tag") && (
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-600">Price Tag</label>
-              <input
-                type="text"
-                value={defaultPriceTag}
-                onChange={(e) => setDefaultPriceTag(e.target.value)}
-                placeholder="e.g. 12.90€"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-          )}
-          {selectedVariables.includes("Illustration") && (
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-600">Illustration</label>
-              <input
-                type="text"
-                value={defaultIllustration}
-                onChange={(e) => setDefaultIllustration(e.target.value)}
-                placeholder="Asset name or URL"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Formats — grouped by channel */}
+      {/* Formats — grouped by channel, each with per-format config panel */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <label className="block text-sm font-medium text-gray-700">
@@ -419,29 +381,141 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
                 {channel}
               </p>
-              <div className="space-y-1.5">
-                {channelFormats.map((f) => (
-                  <label
-                    key={f.id}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-gray-50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedFormats.includes(f.id)}
-                      onChange={() => toggleFormat(f.id)}
-                      className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
-                    />
-                    <span className="text-sm text-gray-700">{f.formatName}</span>
-                    <span className="ml-auto text-xs text-gray-400">
-                      {f.widthPx}×{f.heightPx}
-                    </span>
-                  </label>
-                ))}
+              <div className="space-y-2">
+                {channelFormats.map((f) => {
+                  const isChecked = selectedFormats.includes(f.id);
+                  const cfg = getFormatConfig(f.id);
+                  const isExpanded = expandedFormats[f.id] ?? false;
+
+                  return (
+                    <div key={f.id} className={`rounded-md border ${isChecked ? "border-gray-300 bg-gray-50" : "border-transparent"}`}>
+                      {/* Format row */}
+                      <div className="flex cursor-pointer items-center gap-2.5 px-2 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleFormat(f.id)}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
+                        />
+                        <span
+                          className="flex-1 text-sm text-gray-700"
+                          onClick={() => isChecked && toggleFormatExpanded(f.id)}
+                        >
+                          {f.formatName}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {f.widthPx}×{f.heightPx}
+                        </span>
+                        {isChecked && (
+                          <button
+                            type="button"
+                            onClick={() => toggleFormatExpanded(f.id)}
+                            className="ml-1 text-gray-400 hover:text-gray-600"
+                          >
+                            {isExpanded
+                              ? <ChevronDown className="h-3.5 w-3.5" />
+                              : <ChevronRight className="h-3.5 w-3.5" />
+                            }
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Per-format config panel */}
+                      {isChecked && isExpanded && (
+                        <div className="border-t border-gray-200 px-3 pb-3 pt-2 space-y-3">
+                          {/* Variables */}
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-gray-500">Variables</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {variableOptions.map((v) => (
+                                <button
+                                  key={v.value}
+                                  type="button"
+                                  onClick={() => toggleFormatVariable(f.id, v.value)}
+                                  className={`rounded border px-2 py-0.5 text-xs font-medium transition-colors ${
+                                    cfg.variables.includes(v.value)
+                                      ? "border-gray-800 bg-gray-800 text-white"
+                                      : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {v.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Carousel toggle */}
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={cfg.carousel}
+                                onChange={(e) => setFormatCarousel(f.id, e.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
+                              />
+                              <span className="text-xs font-medium text-gray-600">Carousel</span>
+                            </label>
+
+                            {cfg.carousel && (
+                              <div className="flex items-center gap-1.5 ml-2">
+                                <span className="text-xs text-gray-500">Slides:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setFormatSlideCount(f.id, cfg.slideCount - 1)}
+                                  className="flex h-5 w-5 items-center justify-center rounded border border-gray-200 text-xs text-gray-600 hover:bg-gray-100"
+                                >
+                                  −
+                                </button>
+                                <span className="w-6 text-center text-sm font-medium text-gray-700">
+                                  {cfg.slideCount}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setFormatSlideCount(f.id, cfg.slideCount + 1)}
+                                  className="flex h-5 w-5 items-center justify-center rounded border border-gray-200 text-xs text-gray-600 hover:bg-gray-100"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Default Copy Fields — union of all active variables across selected formats */}
+      {allActiveVariables.length > 0 && (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Default Copy (optional)</label>
+            <p className="text-xs text-gray-400">Pre-fills all banner records. Edit per-banner in the Copy Editor after creation.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {allActiveVariables.map((varId) => {
+              const varLabel = variableOptions.find((v) => v.value === varId)?.label ?? varId;
+              return (
+                <div key={varId} className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-600">{varLabel}</label>
+                  <input
+                    type="text"
+                    value={defaultCopy[varId] ?? ""}
+                    onChange={(e) => setDefaultCopy((prev) => ({ ...prev, [varId]: e.target.value }))}
+                    placeholder={`Default ${varLabel}`}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (

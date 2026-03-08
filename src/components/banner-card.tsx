@@ -137,6 +137,13 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
               {banner.channel}
             </span>
           )}
+
+          {/* Carousel badge */}
+          {banner.bannerType === "Carousel" && (
+            <span className="inline-flex items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+              ▤ Carousel
+            </span>
+          )}
         </div>
 
         {/* Copy preview — show H1 in appropriate language */}

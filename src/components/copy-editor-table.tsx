@@ -65,6 +65,30 @@ export default function CopyEditorTable({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReadOnly = userRole === "client_reviewer";
 
+  // Carousel expand/collapse state
+  const [expandedCarousels, setExpandedCarousels] = useState<Set<string>>(new Set());
+  const [slidesByParent, setSlidesByParent] = useState<Record<string, Banner[]>>({});
+  const [loadingSlides, setLoadingSlides] = useState<Set<string>>(new Set());
+
+  const toggleCarousel = async (parentId: string) => {
+    if (expandedCarousels.has(parentId)) {
+      setExpandedCarousels((prev) => { const n = new Set(prev); n.delete(parentId); return n; });
+      return;
+    }
+    setExpandedCarousels((prev) => new Set(Array.from(prev).concat(parentId)));
+    if (slidesByParent[parentId]) return; // already loaded
+    setLoadingSlides((prev) => new Set(Array.from(prev).concat(parentId)));
+    try {
+      const res = await fetch(`/api/banners?parentId=${parentId}`);
+      const data = await res.json();
+      setSlidesByParent((prev) => ({ ...prev, [parentId]: Array.isArray(data.banners) ? data.banners : [] }));
+    } catch {
+      setSlidesByParent((prev) => ({ ...prev, [parentId]: [] }));
+    } finally {
+      setLoadingSlides((prev) => { const n = new Set(prev); n.delete(parentId); return n; });
+    }
+  };
+
   // Bulk override state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkValues, setBulkValues] = useState<Record<string, string>>({});
@@ -290,7 +314,12 @@ export default function CopyEditorTable({
             {banners.map((banner) => {
               const isComplete = isBannerRowComplete(banner, variables, languages);
               const isSelected = selectedIds.has(banner.id);
+              const isCarousel = banner.bannerType === "Carousel";
+              const isExpanded = expandedCarousels.has(banner.id);
+              const slides = slidesByParent[banner.id] || [];
+              const isLoadingSlides = loadingSlides.has(banner.id);
               return (
+                <>
                 <tr
                   key={banner.id}
                   className={`hover:bg-gray-50/50 ${isSelected ? "bg-blue-50/40" : ""}`}
@@ -307,7 +336,18 @@ export default function CopyEditorTable({
                   )}
                   {/* Format */}
                   <td className="sticky left-0 z-10 bg-inherit px-4 py-2 font-mono text-xs text-gray-600 whitespace-nowrap">
-                    {banner.format || `${banner.width}×${banner.height}`}
+                    <div className="flex items-center gap-1.5">
+                      {banner.format || `${banner.width}×${banner.height}`}
+                      {isCarousel && (
+                        <button
+                          onClick={() => toggleCarousel(banner.id)}
+                          className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                          title={isExpanded ? "Collapse slides" : "Expand slides"}
+                        >
+                          {isLoadingSlides ? "…" : isExpanded ? `▲ ${slides.length} slides` : "▼ Carousel"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                   {/* Language */}
                   <td className="px-3 py-2">
@@ -400,6 +440,47 @@ export default function CopyEditorTable({
                     )}
                   </td>
                 </tr>
+                {/* Slide child rows — shown when carousel is expanded */}
+                {isCarousel && isExpanded && slides.map((slide) => (
+                  <tr key={slide.id} className="bg-purple-50/30 border-l-2 border-purple-200">
+                    {!isReadOnly && <td className="px-3 py-2" />}
+                    <td className="px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8">
+                      ↳ Slide {slide.slideIndex} · {slide.figmaFrame.split("_").pop()}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700">
+                        {slide.language}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                        {slide.status}
+                      </span>
+                    </td>
+                    {columns.map((col) => {
+                      const value = (slide[col.fieldKey] as string) || "";
+                      return (
+                        <td key={`${slide.id}-${col.variable}-${col.language}`} className="px-2 py-1.5">
+                          <input
+                            type="text"
+                            defaultValue={value}
+                            onBlur={(e) =>
+                              handleBlur(
+                                slide.id,
+                                col.fieldKey,
+                                FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
+                                e.target.value
+                              )
+                            }
+                            className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                          />
+                        </td>
+                      );
+                    })}
+                    <td className="px-3 py-2" />
+                  </tr>
+                ))}
+                </>
               );
             })}
           </tbody>

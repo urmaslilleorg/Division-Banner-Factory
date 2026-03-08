@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Banner } from "@/lib/types";
 import {
   Dialog,
@@ -40,6 +40,21 @@ export default function BannerDetailModal({
   const [revisionComment, setRevisionComment] = useState("");
   const [newComment, setNewComment] = useState("");
   const [isSendingComment, setIsSendingComment] = useState(false);
+  const [activeTab, setActiveTab] = useState<"preview" | "slides">("preview");
+  const [slides, setSlides] = useState<Banner[]>([]);
+  const [loadingSlides, setLoadingSlides] = useState(false);
+
+  // Fetch slides when a Carousel banner is opened
+  useEffect(() => {
+    if (!banner || banner.bannerType !== "Carousel" || !open) return;
+    setActiveTab("preview");
+    setLoadingSlides(true);
+    fetch(`/api/banners?parentId=${banner.id}`)
+      .then((r) => r.json())
+      .then((data) => setSlides(Array.isArray(data.banners) ? data.banners : []))
+      .catch(() => setSlides([]))
+      .finally(() => setLoadingSlides(false));
+  }, [banner?.id, banner?.bannerType, open]);
 
   const handleDownload = useCallback(() => {
     if (banner?.imageUrl) {
@@ -163,6 +178,32 @@ export default function BannerDetailModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl">
+        {/* Tab bar — only shown for Carousel banners */}
+        {banner.bannerType === "Carousel" && (
+          <div className="flex gap-1 border-b border-gray-100 pb-0 -mb-2">
+            <button
+              onClick={() => setActiveTab("preview")}
+              className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${
+                activeTab === "preview"
+                  ? "border border-b-white border-gray-200 bg-white text-gray-900 -mb-px"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Preview
+            </button>
+            <button
+              onClick={() => setActiveTab("slides")}
+              className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${
+                activeTab === "slides"
+                  ? "border border-b-white border-gray-200 bg-white text-gray-900 -mb-px"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Slides {slides.length > 0 && `(${slides.length})`}
+            </button>
+          </div>
+        )}
+
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <span className="font-light">
@@ -178,7 +219,40 @@ export default function BannerDetailModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Slides tab content */}
+        {activeTab === "slides" && (
+          <div className="min-h-48">
+            {loadingSlides ? (
+              <div className="flex items-center justify-center py-12 text-gray-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Loading slides...
+              </div>
+            ) : slides.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-400">No slides found for this carousel.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {slides.map((slide) => (
+                  <div key={slide.id} className="rounded-lg border border-gray-200 bg-gray-50 p-2">
+                    <div className="flex items-center justify-center rounded bg-gray-100 h-28 overflow-hidden">
+                      {slide.imageUrl ? (
+                        <img src={slide.imageUrl} alt={`Slide ${slide.slideIndex}`} className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <span className="text-xs text-gray-400">No preview</span>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-center text-xs font-medium text-gray-600">
+                      Slide {slide.slideIndex}
+                    </p>
+                    <p className="text-center text-[10px] text-gray-400">{slide.figmaFrame}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Banner image preview */}
+        {activeTab === "preview" && (
         <div className="relative overflow-auto rounded-lg border border-gray-100 bg-gray-50">
           {banner.imageUrl ? (
             <img
@@ -212,6 +286,7 @@ export default function BannerDetailModal({
             </div>
           )}
         </div>
+        )}
 
         {/* Metadata row */}
         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
