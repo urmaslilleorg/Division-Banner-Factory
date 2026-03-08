@@ -48,7 +48,7 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
 
   return (
     <div
-      className="group cursor-pointer rounded-lg border border-gray-200 bg-white transition-all hover:border-gray-300 hover:shadow-sm"
+      className="group cursor-pointer rounded-lg border border-gray-200 bg-white transition-all hover:border-gray-300 hover:shadow-sm min-h-64 flex flex-col"
       onClick={() => onClick?.(banner)}
     >
       {/* Thumbnail area */}

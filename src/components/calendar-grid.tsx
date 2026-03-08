@@ -156,7 +156,7 @@ export default function CalendarGrid({
             <Link
               key={data.month}
               href={href}
-              className={`group block rounded-xl border p-4 transition-all hover:shadow-md ${
+              className={`group block rounded-xl border p-4 transition-all hover:shadow-md min-h-52 ${
                 hasActivity
                   ? "border-gray-200 bg-white hover:border-gray-300"
                   : "border-gray-100 bg-gray-50 opacity-50 hover:opacity-70"
