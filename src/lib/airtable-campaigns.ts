@@ -134,7 +134,7 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
   let offset: string | undefined;
   do {
     const params = new URLSearchParams({ pageSize: "100" });
-    params.append("fields[]", "Campaign Name");
+    params.append("fields[]", "Campaign_Name");
     params.append("fields[]", "Approval_Status");
     params.append("fields[]", "Status");
     if (offset) params.set("offset", offset);
@@ -146,7 +146,7 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
   } while (offset);
   return records.map((r) => ({
     id: r.id,
-    campaignName: (r.fields["Campaign Name"] as string) || "",
+    campaignName: (r.fields["Campaign_Name"] as string) || "",
     approvalStatus: (r.fields["Approval_Status"] as string) || null,
     status: (r.fields["Status"] as string) || "Draft",
   }));
