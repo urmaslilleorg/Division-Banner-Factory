@@ -46,6 +46,9 @@ export interface Campaign {
   endDate: string;
   fieldConfig: FieldConfig | null;
   bannerIds: string[];
+  columnMapping: string | null;
+  lastImport: string | null;
+  productName: string;
 }
 
 export interface FieldConfig {
@@ -94,6 +97,9 @@ function parseCampaign(record: AirtableRecord): Campaign {
     endDate: (f["End Date"] as string) || (f["End_Date"] as string) || "",
     fieldConfig,
     bannerIds: (f["Banners"] as string[]) || [],
+    columnMapping: (f["Column_Mapping"] as string) || null,
+    lastImport: (f["Last_Import"] as string) || null,
+    productName: (f["Product_Name"] as string) || "",
   };
 }
 
