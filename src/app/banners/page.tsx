@@ -40,10 +40,7 @@ export default async function BannersPage() {
         </p>
       </div>
 
-      <BannerGrid
-        banners={banners}
-        availableLanguages={clientConfig.languages}
-      />
+      <BannerGrid banners={banners} />
     </div>
   );
 }

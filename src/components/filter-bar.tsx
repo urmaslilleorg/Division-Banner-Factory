@@ -1,6 +1,6 @@
 "use client";
 
-import { BannerStatus, Channel, Device } from "@/lib/types";
+import { Banner } from "@/lib/types";
 
 export interface FilterState {
   channel: string;
@@ -12,51 +12,34 @@ export interface FilterState {
 interface FilterBarProps {
   filters: FilterState;
   onFilterChange: (filters: FilterState) => void;
-  /** Only show languages from client config */
-  availableLanguages: string[];
+  /** The actual banner records — dropdown options are derived from these */
+  banners: Banner[];
   /** Counts for summary display */
   totalCount: number;
   filteredCount: number;
 }
 
-const allChannels: Channel[] = [
-  "Delfi",
-  "Postimees",
-  "Google",
-  "Õhtuleht",
-  "SmartAD",
-  "Neti.ee",
-  "Youtube",
-  "Facebook/Instagram",
-  "Web",
-  "DOOH",
-  "Email",
-];
-
-const allDevices: Device[] = [
-  "Desktop",
-  "Mobile",
-  "Desktop+Mobile",
-  "Tablet",
-  "DOOH",
-];
-
-const allStatuses: BannerStatus[] = [
-  "Draft",
-  "Ready",
-  "Client_Review",
-  "Approved",
-  "Exported",
-  "Archived",
-];
-
 export default function FilterBar({
   filters,
   onFilterChange,
-  availableLanguages,
+  banners,
   totalCount,
   filteredCount,
 }: FilterBarProps) {
+  // Derive dropdown options from the actual records
+  const channels = Array.from(
+    new Set(banners.map((b) => b.channel).filter((v): v is NonNullable<typeof v> => !!v))
+  ).sort();
+  const devices = Array.from(
+    new Set(banners.map((b) => b.device).filter((v): v is NonNullable<typeof v> => !!v))
+  ).sort();
+  const languages = Array.from(
+    new Set(banners.map((b) => b.language).filter((v): v is NonNullable<typeof v> => !!v))
+  ).sort();
+  const statuses = Array.from(
+    new Set(banners.map((b) => b.status).filter((v): v is NonNullable<typeof v> => !!v))
+  ).sort();
+
   const update = (key: keyof FilterState, value: string) => {
     onFilterChange({ ...filters, [key]: value });
   };
@@ -73,8 +56,8 @@ export default function FilterBar({
           onChange={(e) => update("channel", e.target.value)}
           className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
         >
-          <option value="">All channels</option>
-          {allChannels.map((ch) => (
+          <option value="">All channels ({channels.length})</option>
+          {channels.map((ch) => (
             <option key={ch} value={ch}>
               {ch}
             </option>
@@ -87,22 +70,22 @@ export default function FilterBar({
           onChange={(e) => update("device", e.target.value)}
           className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
         >
-          <option value="">All devices</option>
-          {allDevices.map((d) => (
+          <option value="">All devices ({devices.length})</option>
+          {devices.map((d) => (
             <option key={d} value={d}>
               {d}
             </option>
           ))}
         </select>
 
-        {/* Language filter — only shows client's configured languages */}
+        {/* Language filter */}
         <select
           value={filters.language}
           onChange={(e) => update("language", e.target.value)}
           className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
         >
-          <option value="">All languages</option>
-          {availableLanguages.map((lang) => (
+          <option value="">All languages ({languages.length})</option>
+          {languages.map((lang) => (
             <option key={lang} value={lang}>
               {lang}
             </option>
@@ -115,10 +98,10 @@ export default function FilterBar({
           onChange={(e) => update("status", e.target.value)}
           className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
         >
-          <option value="">All statuses</option>
-          {allStatuses.map((s) => (
+          <option value="">All statuses ({statuses.length})</option>
+          {statuses.map((s) => (
             <option key={s} value={s}>
-              {s.replace("_", " ")}
+              {s.replace(/_/g, " ")}
             </option>
           ))}
         </select>

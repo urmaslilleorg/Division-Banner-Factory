@@ -7,13 +7,9 @@ import FilterBar, { FilterState } from "./filter-bar";
 
 interface BannerGridProps {
   banners: Banner[];
-  availableLanguages: string[];
 }
 
-export default function BannerGrid({
-  banners,
-  availableLanguages,
-}: BannerGridProps) {
+export default function BannerGrid({ banners }: BannerGridProps) {
   const [filters, setFilters] = useState<FilterState>({
     channel: "",
     device: "",
@@ -41,7 +37,7 @@ export default function BannerGrid({
       <FilterBar
         filters={filters}
         onFilterChange={setFilters}
-        availableLanguages={availableLanguages}
+        banners={banners}
         totalCount={banners.length}
         filteredCount={filteredBanners.length}
       />

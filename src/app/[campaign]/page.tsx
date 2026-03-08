@@ -52,10 +52,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
         </p>
       </div>
 
-      <BannerGrid
-        banners={banners}
-        availableLanguages={clientConfig.languages}
-      />
+      <BannerGrid banners={banners} />
     </div>
   );
 }
