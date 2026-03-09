@@ -1,12 +1,11 @@
 "use client";
 
-import { useAuth, SignInButton } from "@clerk/nextjs";
+import { useAuth, SignInButton, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function LandingHeader() {
-  // isLoaded will be false if Clerk hasn't initialised (e.g. domain not whitelisted).
-  // We show the Sign In button regardless — it will work once Clerk loads.
-  // If signed in, we show "Go to app →" instead.
+  // isSignedIn defaults to false when Clerk hasn't loaded (e.g. domain not whitelisted).
+  // We always render the appropriate button regardless of Clerk load state.
   const { isSignedIn } = useAuth();
 
   return (
@@ -40,21 +39,40 @@ export default function LandingHeader() {
         MENTE
       </Link>
 
-      {/* Show "Go to app" when signed in, otherwise always show Sign In */}
+      {/* Auth controls */}
       {isSignedIn ? (
-        <Link
-          href="/campaigns"
-          style={{
-            fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 300,
-            fontSize: "0.75rem",
-            letterSpacing: "0.12em",
-            color: "rgba(245, 245, 240, 0.8)",
-            textDecoration: "none",
-          }}
-        >
-          Go to app →
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <Link
+            href="/campaigns"
+            style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontWeight: 300,
+              fontSize: "0.75rem",
+              letterSpacing: "0.12em",
+              color: "rgba(245, 245, 240, 0.8)",
+              textDecoration: "none",
+            }}
+          >
+            Go to app →
+          </Link>
+          <SignOutButton redirectUrl="/">
+            <button
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "rgba(245, 245, 240, 0.4)",
+                fontSize: "0.75rem",
+                cursor: "pointer",
+                letterSpacing: "0.1em",
+                fontFamily: "'DM Sans', sans-serif",
+                textTransform: "uppercase",
+                padding: 0,
+              }}
+            >
+              SIGN OUT
+            </button>
+          </SignOutButton>
+        </div>
       ) : (
         <SignInButton mode="modal" forceRedirectUrl="/campaigns">
           <button

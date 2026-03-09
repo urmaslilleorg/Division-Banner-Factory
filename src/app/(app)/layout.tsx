@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { SignOutButton } from "@clerk/nextjs";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import ClientLogo from "@/components/client-logo";
 import NotificationBadge from "@/components/notification-badge";
@@ -8,9 +9,9 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Get Clerk session to derive role
+  // Get Clerk session — treat missing role as least-privilege viewer, never crash
   const { sessionClaims } = await auth();
-  const role = (sessionClaims?.publicMetadata as { role?: string })?.role ?? "division_designer";
+  const role = (sessionClaims?.publicMetadata as { role?: string })?.role ?? "viewer";
 
   // Client config may be null on root domain (Division admin context)
   const clientConfig = getClientConfigFromHeaders();
@@ -57,6 +58,12 @@ export default async function AppLayout({
                 </a>
               </>
             )}
+            {/* Sign out — always visible for any authenticated user */}
+            <SignOutButton redirectUrl="/">
+              <button className="text-gray-400 hover:text-gray-600 transition-colors text-xs tracking-widest uppercase">
+                Sign out
+              </button>
+            </SignOutButton>
           </nav>
         </div>
       </header>

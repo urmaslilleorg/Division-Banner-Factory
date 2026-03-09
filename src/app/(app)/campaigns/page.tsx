@@ -10,7 +10,8 @@ export default async function CampaignsPage() {
   const { userId, sessionClaims } = await auth();
   if (!userId) redirect("/");
 
-  const role = (sessionClaims?.publicMetadata as { role?: string })?.role;
+  // Treat missing role as least-privilege viewer — never crash on undefined
+  const role = (sessionClaims?.publicMetadata as { role?: string })?.role ?? "viewer";
   if (role === "division_admin") redirect("/admin");
 
   const clientConfig = getClientConfigFromHeaders();
@@ -20,7 +21,7 @@ export default async function CampaignsPage() {
     fetchBannerSummaries(),
   ]);
 
-  const userRole = role || "division_designer";
+  const userRole = role;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
