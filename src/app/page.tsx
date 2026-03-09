@@ -1,26 +1,9 @@
 "use client";
 
-import { SignInButton, useAuth, useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import Link from "next/link";
 
 export default function LandingPage() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
-  const router = useRouter();
-
-  // If already signed in, redirect based on role
-  useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      const role = (user?.publicMetadata as { role?: string })?.role;
-      if (role === "division_admin") {
-        router.push("/admin");
-      } else {
-        router.push("/campaigns");
-      }
-    }
-  }, [isLoaded, isSignedIn, user, router]);
-
   return (
     <>
       <style>{`
@@ -87,6 +70,26 @@ export default function LandingPage() {
           border-color: #F5F5F0;
         }
 
+        .header-sign-in-btn {
+          font-family: 'DM Sans', sans-serif;
+          font-weight: 300;
+          font-size: 0.75rem;
+          letter-spacing: 0.15em;
+          text-transform: uppercase;
+          color: rgba(245, 245, 240, 0.7);
+          background: transparent;
+          border: 1px solid rgba(245, 245, 240, 0.25);
+          padding: 0.4rem 1.2rem;
+          cursor: pointer;
+          transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
+        }
+
+        .header-sign-in-btn:hover {
+          background: rgba(245, 245, 240, 0.1);
+          color: #F5F5F0;
+          border-color: rgba(245, 245, 240, 0.5);
+        }
+
         @media (max-width: 640px) {
           html, body { overflow: auto; }
         }
@@ -97,6 +100,64 @@ export default function LandingPage() {
 
       {/* Film grain texture overlay */}
       <div className="mente-grain" />
+
+      {/* Minimal fixed transparent header */}
+      <header
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "1.5rem 2rem",
+          background: "transparent",
+        }}
+      >
+        {/* MENTE wordmark — links to / */}
+        <Link
+          href="/"
+          style={{
+            fontFamily: "'Cormorant Garamond', serif",
+            fontWeight: 300,
+            fontSize: "1rem",
+            letterSpacing: "0.3em",
+            textTransform: "uppercase",
+            color: "#F5F5F0",
+            textDecoration: "none",
+          }}
+        >
+          MENTE
+        </Link>
+
+        {/* Right side: conditional auth state */}
+        <SignedOut>
+          <SignInButton mode="modal" forceRedirectUrl="/campaigns">
+            <button className="header-sign-in-btn">Sign In</button>
+          </SignInButton>
+        </SignedOut>
+
+        <SignedIn>
+          <Link
+            href="/campaigns"
+            style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontWeight: 300,
+              fontSize: "0.75rem",
+              letterSpacing: "0.12em",
+              color: "rgba(245, 245, 240, 0.7)",
+              textDecoration: "none",
+              transition: "color 200ms ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#F5F5F0")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(245, 245, 240, 0.7)")}
+          >
+            Go to app →
+          </Link>
+        </SignedIn>
+      </header>
 
       {/* Page content */}
       <main
@@ -161,10 +222,12 @@ export default function LandingPage() {
           <p style={{ margin: 0 }}>Campaigns delivered.</p>
         </div>
 
-        {/* Sign in button */}
-        <SignInButton mode="modal" forceRedirectUrl="/campaigns">
-          <button className="sign-in-btn">Sign in</button>
-        </SignInButton>
+        {/* Sign in button — only shown when signed out */}
+        <SignedOut>
+          <SignInButton mode="modal" forceRedirectUrl="/campaigns">
+            <button className="sign-in-btn">Sign in</button>
+          </SignInButton>
+        </SignedOut>
 
         {/* Footer */}
         <footer
@@ -181,7 +244,7 @@ export default function LandingPage() {
             opacity: 0.28,
           }}
         >
-          Built by Division&nbsp;&nbsp;·&nbsp;&nbsp;menteproductions.com
+          Built by Division&nbsp;&nbsp;·&nbsp;&nbsp;menteproduction.com
         </footer>
       </main>
     </>
