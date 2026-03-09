@@ -17,15 +17,6 @@ export default async function EditClientPage({ params }: Props) {
 
   if (!client) notFound();
 
-  const formatsData = formats.map((f) => ({
-    id: f.id,
-    formatName: f.formatName,
-    channel: f.channel,
-    device: f.device,
-    width: f.widthPx,
-    height: f.heightPx,
-  }));
-
   const initialData = {
     clientName: client.name,
     subdomain: client.subdomain,
@@ -51,7 +42,7 @@ export default async function EditClientPage({ params }: Props) {
         </p>
       </div>
       <NewClientWizard
-        formats={formatsData}
+        formats={formats}
         initialData={initialData}
         editId={params.clientId}
       />

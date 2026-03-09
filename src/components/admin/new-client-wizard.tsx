@@ -1,19 +1,11 @@
 "use client";
-
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-interface FormatOption {
-  id: string;
-  formatName: string;
-  channel: string;
-  device: string;
-  width: number;
-  height: number;
-}
+import FormatPicker from "@/components/format-picker";
+import type { AirtableFormat } from "@/lib/airtable-campaigns";
 
 interface Props {
-  formats: FormatOption[];
+  formats: AirtableFormat[];
   initialData?: Partial<WizardData>;
   editId?: string; // if set, we're editing an existing client
 }
@@ -36,24 +28,12 @@ interface WizardData {
 
 const LANGUAGE_OPTIONS = ["ET", "EN", "RU", "LV", "LT"];
 
-const CHANNEL_ORDER = ["Google", "DOOH", "Web", "Facebook/Instagram", "Email"];
-
 function slugify(name: string): string {
   return name
     .toLowerCase()
     .replace(/[äöüõ]/g, (c) => ({ ä: "a", ö: "o", ü: "u", õ: "o" }[c] || c))
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-function groupByChannel(formats: FormatOption[]): Record<string, FormatOption[]> {
-  const groups: Record<string, FormatOption[]> = {};
-  for (const f of formats) {
-    const ch = f.channel || "Other";
-    if (!groups[ch]) groups[ch] = [];
-    groups[ch].push(f);
-  }
-  return groups;
 }
 
 const STEPS = [
@@ -107,25 +87,7 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
     }));
   };
 
-  const toggleFormat = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      selectedFormatIds: prev.selectedFormatIds.includes(id)
-        ? prev.selectedFormatIds.filter((f) => f !== id)
-        : [...prev.selectedFormatIds, id],
-    }));
-  };
 
-  const toggleChannelAll = (channelFormats: FormatOption[]) => {
-    const ids = channelFormats.map((f) => f.id);
-    const allSelected = ids.every((id) => data.selectedFormatIds.includes(id));
-    setData((prev) => ({
-      ...prev,
-      selectedFormatIds: allSelected
-        ? prev.selectedFormatIds.filter((id) => !ids.includes(id))
-        : Array.from(new Set([...prev.selectedFormatIds, ...ids])),
-    }));
-  };
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -150,12 +112,6 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
       setSaving(false);
     }
   };
-
-  const grouped = groupByChannel(formats);
-  const orderedChannels = [
-    ...CHANNEL_ORDER.filter((c) => grouped[c]),
-    ...Object.keys(grouped).filter((c) => !CHANNEL_ORDER.includes(c)),
-  ];
 
   return (
     <div className="max-w-2xl">
@@ -313,51 +269,13 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
       {step === 2 && (
         <div className="space-y-4">
           <p className="text-sm text-gray-500">
-            Select the formats available to this client.{" "}
-            <span className="font-medium text-gray-700">{data.selectedFormatIds.length} selected</span>
+            Select the formats available to this client.
           </p>
-          {orderedChannels.map((channel) => {
-            const channelFormats = grouped[channel];
-            const allSelected = channelFormats.every((f) =>
-              data.selectedFormatIds.includes(f.id)
-            );
-            return (
-              <div key={channel} className="rounded-lg border border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-between bg-gray-50 px-4 py-2.5 border-b border-gray-200">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {channel}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => toggleChannelAll(channelFormats)}
-                    className="text-xs text-gray-500 hover:text-gray-700"
-                  >
-                    {allSelected ? "Deselect all" : "Select all"}
-                  </button>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {channelFormats.map((f) => (
-                    <label
-                      key={f.id}
-                      className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-gray-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={data.selectedFormatIds.includes(f.id)}
-                        onChange={() => toggleFormat(f.id)}
-                        className="h-4 w-4 rounded border-gray-300 text-gray-900"
-                      />
-                      <span className="flex-1 text-sm text-gray-700">{f.formatName}</span>
-                      <span className="text-xs text-gray-400">
-                        {f.width}×{f.height}
-                      </span>
-                      <span className="text-xs text-gray-400">{f.device}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+          <FormatPicker
+            formats={formats}
+            selected={data.selectedFormatIds}
+            onChange={(ids) => setData((prev) => ({ ...prev, selectedFormatIds: ids }))}
+          />
         </div>
       )}
 

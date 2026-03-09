@@ -82,14 +82,12 @@ export default function ClientCard({ client }: ClientCardProps) {
 
       {/* Actions */}
       <div className="mt-4 flex items-center gap-2 pt-3 border-t border-gray-100">
-        <a
-          href={`http://${client.subdomain}.${appDomain}`}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          href={`/admin/${client.id}/overview`}
           className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           Open
-        </a>
+        </Link>
         <Link
           href={`/admin/${client.id}/edit`}
           className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"

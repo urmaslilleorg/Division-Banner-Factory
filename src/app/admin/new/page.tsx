@@ -6,15 +6,6 @@ export const dynamic = "force-dynamic";
 export default async function NewClientPage() {
   const formats = await fetchFormats();
 
-  const formatsData = formats.map((f) => ({
-    id: f.id,
-    formatName: f.formatName,
-    channel: f.channel,
-    device: f.device,
-    width: f.widthPx,
-    height: f.heightPx,
-  }));
-
   return (
     <div className="space-y-6">
       <div>
@@ -23,7 +14,7 @@ export default async function NewClientPage() {
           Set up a new client in the Banner Factory.
         </p>
       </div>
-      <NewClientWizard formats={formatsData} />
+      <NewClientWizard formats={formats} />
     </div>
   );
 }

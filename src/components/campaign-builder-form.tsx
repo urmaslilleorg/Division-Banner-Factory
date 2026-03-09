@@ -73,6 +73,10 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   const [formatConfigs, setFormatConfigs] = useState<Record<string, FormatConfig>>({});
   // Which format panels are expanded
   const [expandedFormats, setExpandedFormats] = useState<Record<string, boolean>>({});
+  // Which channel groups are expanded (collapsed by default)
+  const [expandedChannels, setExpandedChannels] = useState<Record<string, boolean>>({});
+  const toggleChannelExpanded = (ch: string) =>
+    setExpandedChannels((prev) => ({ ...prev, [ch]: !prev[ch] }));
 
   // Campaign-level default copy
   const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>({});
@@ -465,12 +469,30 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
         </div>
 
         <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
-          {Object.entries(formatsByChannel).map(([channel, channelFormats]) => (
-            <div key={channel} className="p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                {channel}
-              </p>
-              <div className="space-y-2">
+          {Object.entries(formatsByChannel).map(([channel, channelFormats]) => {
+            const isChOpen = !!expandedChannels[channel];
+            const selectedInCh = channelFormats.filter((f) => selectedFormats.includes(f.id)).length;
+            return (
+            <div key={channel}>
+              {/* Channel header — collapsible */}
+              <button
+                type="button"
+                onClick={() => toggleChannelExpanded(channel)}
+                className="flex w-full items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+              >
+                <ChevronRight
+                  className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-150 ${isChOpen ? "rotate-90" : ""}`}
+                />
+                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  {channel}
+                </span>
+                {selectedInCh > 0 && (
+                  <span className="text-xs text-gray-400">{selectedInCh} selected</span>
+                )}
+              </button>
+              {/* Format rows — shown when channel is expanded */}
+              {isChOpen && (
+              <div className="px-3 py-2 space-y-2">
                 {channelFormats.map((f) => {
                   const isChecked = selectedFormats.includes(f.id);
                   const cfg = getFormatConfig(f.id);
@@ -672,8 +694,10 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
                   );
                 })}
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
