@@ -10,8 +10,11 @@ export default async function CampaignsPage() {
   const { userId, sessionClaims } = await auth();
   if (!userId) redirect("/");
 
-  // Treat missing role as least-privilege viewer — never crash on undefined
-  const role = (sessionClaims?.publicMetadata as { role?: string })?.role ?? "viewer";
+  // Check metadata (Clerk custom claim) first, fall back to publicMetadata, then 'viewer'
+  const role =
+    (sessionClaims?.metadata as { role?: string })?.role ??
+    (sessionClaims?.publicMetadata as { role?: string })?.role ??
+    "viewer";
   if (role === "division_admin") redirect("/admin");
 
   const clientConfig = getClientConfigFromHeaders();

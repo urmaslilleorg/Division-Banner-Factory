@@ -11,7 +11,11 @@ export default async function AppLayout({
 }) {
   // Get Clerk session — treat missing role as least-privilege viewer, never crash
   const { sessionClaims } = await auth();
-  const role = (sessionClaims?.publicMetadata as { role?: string })?.role ?? "viewer";
+  // Check metadata (Clerk custom claim) first, fall back to publicMetadata, then 'viewer'
+  const role =
+    (sessionClaims?.metadata as { role?: string })?.role ??
+    (sessionClaims?.publicMetadata as { role?: string })?.role ??
+    "viewer";
 
   // Client config may be null on root domain (Division admin context)
   const clientConfig = getClientConfigFromHeaders();
