@@ -38,25 +38,28 @@ export default clerkMiddleware((auth, request: NextRequest) => {
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "localhost:3000";
 
   // Extract subdomain from hostname
-  // e.g. "avene.bannerfactory.division.ee" → "avene"
+  // e.g. "avene.menteproduction.com" → "avene"
   // For local dev: "avene.localhost:3000" → "avene"
-  let subdomain = "demo";
+  const hostWithoutPort = hostname.split(":")[0];
+  const domainWithoutPort = appDomain.split(":")[0];
 
-  if (hostname !== appDomain && hostname !== `www.${appDomain}`) {
-    const hostWithoutPort = hostname.split(":")[0];
-    const domainWithoutPort = appDomain.split(":")[0];
+  let subdomain: string | null = null;
 
-    if (hostWithoutPort.endsWith(`.${domainWithoutPort}`)) {
-      subdomain = hostWithoutPort.replace(`.${domainWithoutPort}`, "");
-    } else if (hostWithoutPort.includes(".localhost")) {
-      subdomain = hostWithoutPort.split(".localhost")[0];
-    }
+  if (hostWithoutPort.endsWith(`.${domainWithoutPort}`)) {
+    // Has a subdomain: strip the root domain
+    subdomain = hostWithoutPort.replace(`.${domainWithoutPort}`, "");
+  } else if (hostWithoutPort.includes(".localhost")) {
+    // Local dev subdomain: e.g. "avene.localhost"
+    subdomain = hostWithoutPort.split(".localhost")[0];
   }
+  // else: root domain (menteproduction.com, www.menteproduction.com, localhost:3000)
+  // subdomain remains null → Division admin / landing context
 
-  // Look up client config (static files only — dynamic Airtable lookup happens in pages)
-  const clientConfig = getClientConfig(subdomain);
+  // Only look up client config if a subdomain is present
+  const clientConfig = subdomain ? getClientConfig(subdomain) : null;
 
-  if (!clientConfig) {
+  // Unknown subdomain → 404
+  if (subdomain && !clientConfig) {
     // Allow API routes through without a client config
     if (request.nextUrl.pathname.startsWith("/api/")) {
       return NextResponse.next();
@@ -70,9 +73,14 @@ export default clerkMiddleware((auth, request: NextRequest) => {
   }
 
   // Attach client config to request headers for downstream use
+  // On root domain (no subdomain), we do NOT set x-client-config — app layout
+  // will handle the null case gracefully (Division admin context).
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-client-id", clientConfig.id);
-  requestHeaders.set("x-client-config", JSON.stringify(clientConfig));
+
+  if (clientConfig) {
+    requestHeaders.set("x-client-id", clientConfig.id);
+    requestHeaders.set("x-client-config", JSON.stringify(clientConfig));
+  }
 
   return NextResponse.next({
     request: {
