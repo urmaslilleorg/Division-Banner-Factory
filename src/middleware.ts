@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { getClientConfig } from "@/config/clients";
 
 const isPublicRoute = createRouteMatcher([
+  "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/webhooks(.*)",
@@ -63,9 +64,9 @@ export default clerkMiddleware((auth, request: NextRequest) => {
     return NextResponse.json({ error: "Unknown client" }, { status: 404 });
   }
 
-  // Protect non-public routes — redirect unauthenticated users to sign-in
+  // Protect non-public routes — redirect unauthenticated users to landing page
   if (!isPublicRoute(request)) {
-    auth().protect();
+    auth().protect({ unauthenticatedUrl: new URL("/", request.url).toString() });
   }
 
   // Attach client config to request headers for downstream use
