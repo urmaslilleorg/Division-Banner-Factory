@@ -49,6 +49,8 @@ export interface Campaign {
   columnMapping: string | null;
   lastImport: string | null;
   productName: string;
+  copySheetUrl: string | null;
+  copyProgress: number;
 }
 
 export interface FieldConfig {
@@ -100,6 +102,8 @@ function parseCampaign(record: AirtableRecord): Campaign {
     columnMapping: (f["Column_Mapping"] as string) || null,
     lastImport: (f["Last_Import"] as string) || null,
     productName: (f["Product_Name"] as string) || "",
+    copySheetUrl: (f["Copy_Sheet_URL"] as string) || null,
+    copyProgress: (f["Copy_Progress"] as number) || 0,
   };
 }
 

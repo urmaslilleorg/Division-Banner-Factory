@@ -27,6 +27,7 @@ interface MonthData {
   pendingBanners: number;
   readyToExport: number;
   toBrief: number;
+  avgCopyProgress: number;
 }
 
 function parseMonthYear(launchMonth: string): { month: string; year: number } | null {
@@ -95,6 +96,13 @@ export default function CalendarGrid({
         toBrief += banners.filter((b) => b.status === "Brief_received").length;
       }
 
+      const avgCopyProgress =
+        monthCampaigns.length > 0
+          ? Math.round(
+              monthCampaigns.reduce((sum, c) => sum + (c.copyProgress || 0), 0) /
+                monthCampaigns.length
+            )
+          : 0;
       return {
         month,
         year: selectedYear,
@@ -105,6 +113,7 @@ export default function CalendarGrid({
         pendingBanners,
         readyToExport,
         toBrief,
+        avgCopyProgress,
       };
     });
   }, [campaigns, bannerSummaries, bannersByCampaign, selectedYear]);
@@ -191,6 +200,16 @@ export default function CalendarGrid({
                     </div>
                     <Progress value={progress} className="h-1" />
                   </div>
+                  {/* Copy progress */}
+                  {data.avgCopyProgress > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-gray-400">
+                        <span>Copy</span>
+                        <span>{data.avgCopyProgress}%</span>
+                      </div>
+                      <Progress value={data.avgCopyProgress} className="h-1 [&>div]:bg-violet-400" />
+                    </div>
+                  )}
 
                   {/* Urgent task badge */}
                   <UrgentBadge data={data} role={userRole} />

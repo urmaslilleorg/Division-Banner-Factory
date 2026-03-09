@@ -5,6 +5,7 @@ import { fetchBanners } from "@/lib/airtable";
 import { fetchAllCampaigns } from "@/lib/airtable-campaigns";
 import BannerGrid from "@/components/banner-grid";
 import CampaignImportBar from "@/components/campaign-import-bar";
+import CopyWorkflowBar from "@/components/copy-workflow-bar";
 
 interface CampaignPageProps {
   params: { campaign: string };
@@ -24,8 +25,10 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
   let campaignName = campaignSlug;
   let lastImport: string | null = null;
   let columnMapping: string | null = null;
+  let copySheetUrl: string | null = null;
+  let copyProgress = 0;
 
-  // Try to find campaign record to get ID, lastImport, columnMapping
+  // Try to find campaign record to get ID and metadata
   try {
     const campaigns = await fetchAllCampaigns();
     const formattedName = campaignSlug
@@ -42,6 +45,8 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
       campaignName = found.name;
       lastImport = found.lastImport;
       columnMapping = found.columnMapping;
+      copySheetUrl = found.copySheetUrl;
+      copyProgress = found.copyProgress;
     } else if (!isRecordId) {
       campaignName = formattedName;
     }
@@ -105,6 +110,16 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
           campaignName={campaignName}
           lastImport={lastImport}
           hasMapping={!!columnMapping}
+        />
+      )}
+
+      {/* Copy Workflow bar — only shown for division_admin */}
+      {userRole === "division_admin" && campaignId && (
+        <CopyWorkflowBar
+          campaignId={campaignId}
+          campaignName={campaignName}
+          copySheetUrl={copySheetUrl}
+          copyProgress={copyProgress}
         />
       )}
 
