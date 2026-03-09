@@ -39,8 +39,8 @@ export default function LandingHeader() {
         MENTE
       </Link>
 
-      {/* Auth controls */}
-      {isSignedIn ? (
+      {/* Auth controls — only show when signed in */}
+      {isSignedIn && (
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <Link
             href="/campaigns"
@@ -73,25 +73,6 @@ export default function LandingHeader() {
             </button>
           </SignOutButton>
         </div>
-      ) : (
-        <SignInButton mode="modal" forceRedirectUrl="/campaigns">
-          <button
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 300,
-              fontSize: "0.75rem",
-              letterSpacing: "0.15em",
-              textTransform: "uppercase",
-              color: "rgba(245, 245, 240, 0.9)",
-              background: "transparent",
-              border: "1px solid rgba(245, 245, 240, 0.4)",
-              padding: "0.4rem 1.2rem",
-              cursor: "pointer",
-            }}
-          >
-            Sign In
-          </button>
-        </SignInButton>
       )}
     </header>
   );
