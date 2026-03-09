@@ -25,8 +25,8 @@ export default function RootLayout({
 
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className="antialiased" style={brandStyles}>
+      <html lang="en" style={{ colorScheme: "light" }}>
+        <body className="antialiased bg-white" style={brandStyles}>
           {children}
         </body>
       </html>

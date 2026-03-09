@@ -8,11 +8,13 @@
   --color-accent: #0f3460;
   --color-background: #f8f9fa;
   --foreground-rgb: 15, 23, 42;
+  /* Force light color scheme — prevents browser dark mode UA stylesheet */
+  color-scheme: light;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background-color: var(--color-background);
+  background-color: var(--color-background, #f8f9fa);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
 }
