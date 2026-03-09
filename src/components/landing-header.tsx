@@ -1,11 +1,13 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { SignInButton } from "@clerk/nextjs";
+import { useAuth, SignInButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function LandingHeader() {
-  const { isLoaded, isSignedIn } = useAuth();
+  // isLoaded will be false if Clerk hasn't initialised (e.g. domain not whitelisted).
+  // We show the Sign In button regardless — it will work once Clerk loads.
+  // If signed in, we show "Go to app →" instead.
+  const { isSignedIn } = useAuth();
 
   return (
     <header
@@ -38,42 +40,40 @@ export default function LandingHeader() {
         MENTE
       </Link>
 
-      {/* Auth button — only render after Clerk has loaded to avoid flicker */}
-      {isLoaded && (
-        isSignedIn ? (
-          <Link
-            href="/campaigns"
+      {/* Show "Go to app" when signed in, otherwise always show Sign In */}
+      {isSignedIn ? (
+        <Link
+          href="/campaigns"
+          style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontWeight: 300,
+            fontSize: "0.75rem",
+            letterSpacing: "0.12em",
+            color: "rgba(245, 245, 240, 0.8)",
+            textDecoration: "none",
+          }}
+        >
+          Go to app →
+        </Link>
+      ) : (
+        <SignInButton mode="modal" forceRedirectUrl="/campaigns">
+          <button
             style={{
               fontFamily: "'DM Sans', sans-serif",
               fontWeight: 300,
               fontSize: "0.75rem",
-              letterSpacing: "0.12em",
-              color: "rgba(245, 245, 240, 0.8)",
-              textDecoration: "none",
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: "rgba(245, 245, 240, 0.9)",
+              background: "transparent",
+              border: "1px solid rgba(245, 245, 240, 0.4)",
+              padding: "0.4rem 1.2rem",
+              cursor: "pointer",
             }}
           >
-            Go to app →
-          </Link>
-        ) : (
-          <SignInButton mode="modal" forceRedirectUrl="/campaigns">
-            <button
-              style={{
-                fontFamily: "'DM Sans', sans-serif",
-                fontWeight: 300,
-                fontSize: "0.75rem",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                color: "rgba(245, 245, 240, 0.9)",
-                background: "transparent",
-                border: "1px solid rgba(245, 245, 240, 0.4)",
-                padding: "0.4rem 1.2rem",
-                cursor: "pointer",
-              }}
-            >
-              Sign In
-            </button>
-          </SignInButton>
-        )
+            Sign In
+          </button>
+        </SignInButton>
       )}
     </header>
   );
