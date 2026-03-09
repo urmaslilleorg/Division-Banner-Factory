@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth, SignInButton, SignOutButton } from "@clerk/nextjs";
+import { useAuth, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function LandingHeader() {
