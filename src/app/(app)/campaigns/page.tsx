@@ -15,7 +15,8 @@ export default async function CampaignsPage() {
     (sessionClaims?.metadata as { role?: string })?.role ??
     (sessionClaims?.publicMetadata as { role?: string })?.role ??
     "viewer";
-  if (role === "division_admin") redirect("/admin");
+  // All authenticated roles (including division_admin) see the campaign calendar.
+  // /admin is accessible via the Admin nav link.
 
   const clientConfig = getClientConfigFromHeaders();
 
