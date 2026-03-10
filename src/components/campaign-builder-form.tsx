@@ -7,11 +7,6 @@ import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
 import { Loader2, Copy, Check, ArrowLeft, Edit3, ChevronDown, ChevronRight } from "lucide-react";
 
-const CLIENT_OPTIONS = [
-  { value: "avene", label: "Avene" },
-  { value: "demo", label: "Demo" },
-];
-
 const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
   { value: "H2", label: "H2" },
@@ -52,9 +47,11 @@ interface SuccessResult {
 interface CampaignBuilderFormProps {
   formats: AirtableFormat[];
   variableRegistry?: VariableDefinition[];
+  /** Client name from subdomain context — auto-set, not user-selectable */
+  clientName: string;
 }
 
-export default function CampaignBuilderForm({ formats, variableRegistry }: CampaignBuilderFormProps) {
+export default function CampaignBuilderForm({ formats, variableRegistry, clientName }: CampaignBuilderFormProps) {
   const variableOptions = variableRegistry && variableRegistry.length > 0
     ? variableRegistry.map((v) => ({ value: v.id, label: v.label }))
     : FALLBACK_VARIABLE_OPTIONS;
@@ -63,7 +60,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
   // Form state
   const [campaignName, setCampaignName] = useState("");
   const [productName, setProductName] = useState("");
-  const [clientName, setClientName] = useState("avene");
+  // clientName comes from subdomain context (prop) — not editable by user
   const [launchMonth, setLaunchMonth] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -382,20 +379,6 @@ export default function CampaignBuilderForm({ formats, variableRegistry }: Campa
           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
         />
         <p className="text-xs text-gray-400">Used in banner file naming. No spaces — use CamelCase.</p>
-      </div>
-
-      {/* Client */}
-      <div className="space-y-1.5">
-        <label className="block text-sm font-medium text-gray-700">Client</label>
-        <select
-          value={clientName}
-          onChange={(e) => setClientName(e.target.value)}
-          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-        >
-          {CLIENT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
       </div>
 
       {/* Launch Month */}
