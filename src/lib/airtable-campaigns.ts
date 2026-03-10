@@ -108,13 +108,19 @@ function parseCampaign(record: AirtableRecord): Campaign {
 }
 
 /**
- * Fetch all campaigns (no filter).
+ * Fetch campaigns, optionally filtered by client name.
+ * Pass campaignFilter (e.g. "K-Rauta") to scope to one client.
+ * Pass undefined or empty string for all campaigns (division_admin view).
  */
-export async function fetchAllCampaigns(): Promise<Campaign[]> {
+export async function fetchAllCampaigns(campaignFilter?: string): Promise<Campaign[]> {
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
   do {
     const params = new URLSearchParams({ pageSize: "100" });
+    // Filter by Client_Name when a campaignFilter is provided
+    if (campaignFilter) {
+      params.set("filterByFormula", `{Client_Name}="${campaignFilter.replace(/"/g, "'")}"`);
+    }
     if (offset) params.set("offset", offset);
     const res = await airtableRequest<{ records: AirtableRecord[]; offset?: string }>(
       `${CAMPAIGNS_TABLE}?${params}`

@@ -20,8 +20,11 @@ export default async function CampaignsPage() {
 
   const clientConfig = getClientConfigFromHeaders();
 
+  // Use client-scoped filter when on a subdomain; undefined = all campaigns (division_admin)
+  const campaignFilter = clientConfig?.airtable?.campaignFilter || undefined;
+
   const [campaigns, bannerSummaries] = await Promise.all([
-    fetchAllCampaigns(),
+    fetchAllCampaigns(campaignFilter),
     fetchBannerSummaries(),
   ]);
 
