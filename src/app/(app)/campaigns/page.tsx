@@ -33,6 +33,12 @@ export default async function CampaignsPage() {
     }
   }
 
+  // Subdomain context — admin should not see client calendars; send them home
+  if (role === "division_admin") {
+    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN ?? "menteproduction.com";
+    redirect(`https://${appDomain}/admin`);
+  }
+
   // Subdomain context — show client-scoped campaign calendar
   const clientConfig = getClientConfigFromHeaders();
 
