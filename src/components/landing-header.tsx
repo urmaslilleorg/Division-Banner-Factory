@@ -18,27 +18,11 @@ export default function LandingHeader() {
         zIndex: 50,
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
+        justifyContent: "flex-end",
         padding: "1.5rem 2rem",
         background: "transparent",
       }}
     >
-      {/* MENTE wordmark */}
-      <Link
-        href="/"
-        style={{
-          fontFamily: "'Cormorant Garamond', serif",
-          fontWeight: 300,
-          fontSize: "1rem",
-          letterSpacing: "0.3em",
-          textTransform: "uppercase",
-          color: "#F5F5F0",
-          textDecoration: "none",
-        }}
-      >
-        MENTE
-      </Link>
-
       {/* Auth controls — only show when signed in */}
       {isSignedIn && (
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
