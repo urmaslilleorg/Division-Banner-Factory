@@ -340,7 +340,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
             <Edit3 className="mr-1 h-4 w-4" />
             Edit copy
           </Button>
-          <Button variant="outline" onClick={() => router.push("/")}>
+          <Button variant="outline" onClick={() => router.push("/campaigns")}>
             <ArrowLeft className="mr-1 h-4 w-4" />
             Back to calendar
           </Button>
