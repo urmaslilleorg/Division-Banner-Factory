@@ -82,6 +82,29 @@ export default function ClientCard({ client }: ClientCardProps) {
 
       {/* Actions */}
       <div className="mt-4 flex items-center gap-2 pt-3 border-t border-gray-100">
+        {/* Live button — opens client subdomain in new tab */}
+        {(() => {
+          const isLive = client.status === "Active" && !!client.subdomain;
+          const liveUrl = `https://${client.subdomain}.${appDomain}/campaigns`;
+          return isLive ? (
+            <a
+              href={liveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 rounded-md bg-emerald-600 px-3 py-1.5 text-center text-xs font-medium text-white hover:bg-emerald-700 transition-colors"
+            >
+              Live ↗
+            </a>
+          ) : (
+            <button
+              disabled
+              title="Set subdomain to go live"
+              className="flex-1 rounded-md bg-gray-100 px-3 py-1.5 text-center text-xs font-medium text-gray-400 cursor-not-allowed"
+            >
+              Live ↗
+            </button>
+          );
+        })()}
         <Link
           href={`/admin/${client.id}/overview`}
           className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
