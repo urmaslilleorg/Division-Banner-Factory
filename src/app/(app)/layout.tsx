@@ -52,25 +52,32 @@ export default async function AppLayout({
           </Link>
 
           <nav className="flex items-center gap-6 text-sm text-gray-600">
-            <a href="/campaigns" className="hover:text-gray-900 transition-colors">
-              Campaigns
-            </a>
-            <a
-              href="/banners"
-              className="relative flex items-center gap-1.5 hover:text-gray-900 transition-colors"
-            >
-              Banners
-              <NotificationBadge userRole={role} />
-            </a>
-            {role === "division_admin" && (
+            {/* Client subdomain: show Campaigns + Banners */}
+            {!isRootDomain && (
               <>
-                <a href="/settings" className="hover:text-gray-900 transition-colors">
-                  Settings
+                <a href="/campaigns" className="hover:text-gray-900 transition-colors">
+                  Campaigns
                 </a>
-                <a href="/admin" className="hover:text-gray-900 transition-colors font-medium">
-                  Admin
+                <a
+                  href="/banners"
+                  className="relative flex items-center gap-1.5 hover:text-gray-900 transition-colors"
+                >
+                  Banners
+                  <NotificationBadge userRole={role} />
                 </a>
               </>
+            )}
+            {/* Settings: visible on both domains for admin; on client subdomain for all roles */}
+            {(isRootDomain ? role === "division_admin" : true) && (
+              <a href="/settings" className="hover:text-gray-900 transition-colors">
+                Settings
+              </a>
+            )}
+            {/* Admin: root domain only, admin role only */}
+            {isRootDomain && role === "division_admin" && (
+              <a href="/admin" className="hover:text-gray-900 transition-colors font-medium">
+                Admin
+              </a>
             )}
             {/* Sign out — always visible for any authenticated user */}
             <SignOutButton redirectUrl="/">
