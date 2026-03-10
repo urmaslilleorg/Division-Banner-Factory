@@ -7,7 +7,11 @@ import CalendarGrid from "@/components/calendar-grid";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: { preview?: string };
+}) {
   const { userId, sessionClaims } = await auth();
   if (!userId) redirect("/");
 
@@ -34,7 +38,8 @@ export default async function CampaignsPage() {
   }
 
   // Subdomain context — admin should not see client calendars; send them home
-  if (role === "division_admin") {
+  // Exception: ?preview=true lets admin intentionally preview the client calendar
+  if (role === "division_admin" && searchParams.preview !== "true") {
     const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN ?? "menteproduction.com";
     redirect(`https://${appDomain}/admin`);
   }

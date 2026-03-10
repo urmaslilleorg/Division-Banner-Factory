@@ -85,7 +85,7 @@ export default function ClientCard({ client }: ClientCardProps) {
         {/* Live button — opens client subdomain in new tab */}
         {(() => {
           const isLive = client.status === "Active" && !!client.subdomain;
-          const liveUrl = `https://${client.subdomain}.${appDomain}/campaigns`;
+          const liveUrl = `https://${client.subdomain}.${appDomain}/campaigns?preview=true`;
           return isLive ? (
             <a
               href={liveUrl}
