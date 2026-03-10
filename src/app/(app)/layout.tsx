@@ -20,11 +20,13 @@ export default async function AppLayout({
   // Client config may be null on root domain (Division admin context)
   const clientConfig = getClientConfigFromHeaders();
 
-  // On root domain, clientConfig falls back to demo config from getClientConfigFromHeaders().
-  // We show "MENTE" as the brand name when no real client config is present.
-  const isRootDomain = !clientConfig || clientConfig.id === "demo";
+  // On root domain or /admin/* routes, treat as root domain context.
+  // Middleware sets id="admin" for /admin/* and id="demo" for root domain fallback.
+  // Both cases should show the MENTE wordmark and root-domain nav (Admin + Settings).
+  const isRootDomain = !clientConfig || clientConfig.id === "demo" || clientConfig.id === "admin";
   const displayName = isRootDomain ? "MENTE" : clientConfig.name;
-  const displayLogo = isRootDomain ? null : clientConfig.logo;
+  // Only render a logo <img> for real client subdomains with a known logo path
+  const displayLogo = isRootDomain ? null : (clientConfig.logo || null);
 
   // Logo/name links to /campaigns on client subdomains, /admin on root domain
   const homeHref = isRootDomain ? "/admin" : "/campaigns";
