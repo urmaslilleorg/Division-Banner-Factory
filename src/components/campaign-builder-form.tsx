@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AirtableFormat } from "@/lib/airtable-campaigns";
 import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, Check, ArrowLeft, Edit3, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 
 const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
@@ -38,10 +38,12 @@ interface FormatConfig {
   slides: SlideCopy[];
 }
 
-interface SuccessResult {
+interface CreateResponse {
   campaignId: string;
   bannerCount: number;
   figmaFrames: string[];
+  year: number | null;
+  month: number | null;
 }
 
 interface CampaignBuilderFormProps {
@@ -80,8 +82,8 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<SuccessResult | null>(null);
-  const [copied, setCopied] = useState(false);
+  // Flash message shown briefly while redirect is in progress
+  const [flash, setFlash] = useState<string | null>(null);
 
   // Group formats by channel
   const formatsByChannel = formats.reduce<Record<string, AirtableFormat[]>>(
@@ -287,67 +289,25 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
         throw new Error(data.error || "Failed to create campaign");
       }
 
-      const data = await res.json();
-      setResult(data);
+      const data = (await res.json()) as CreateResponse;
+
+      // Show flash confirmation, then redirect to the month view (or /campaigns fallback)
+      const bannerCount = data.bannerCount;
+      setFlash(`Campaign created — ${bannerCount} banner record${bannerCount !== 1 ? "s" : ""} generated`);
+
+      const destination =
+        data.year && data.month
+          ? `/${data.year}/${data.month}`
+          : "/campaigns";
+
+      // Small delay so the flash message is briefly visible before navigation
+      setTimeout(() => router.push(destination), 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  const handleCopyAll = () => {
-    if (!result) return;
-    navigator.clipboard.writeText(result.figmaFrames.join("\n"));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // ── Success screen ────────────────────────────────────────────────────────
-  if (result) {
-    return (
-      <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg font-medium text-emerald-700">
-            ✓ {result.bannerCount} banner records created
-          </h2>
-          <p className="text-sm text-gray-500">Campaign ID: {result.campaignId}</p>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-700">Figma Frames</p>
-            <Button variant="outline" size="sm" onClick={handleCopyAll}>
-              {copied ? (
-                <><Check className="mr-1 h-3 w-3" /> Copied</>
-              ) : (
-                <><Copy className="mr-1 h-3 w-3" /> Copy all</>
-              )}
-            </Button>
-          </div>
-          <div className="rounded-lg bg-gray-50 p-3 font-mono text-xs text-gray-600 space-y-1 max-h-64 overflow-y-auto">
-            {result.figmaFrames.map((frame, i) => (
-              <p key={i}>{frame}</p>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          <Button
-            variant="default"
-            onClick={() => router.push(`/dashboard/campaigns/${result.campaignId}/copy`)}
-          >
-            <Edit3 className="mr-1 h-4 w-4" />
-            Edit copy
-          </Button>
-          <Button variant="outline" onClick={() => router.push("/campaigns")}>
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Back to calendar
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   // ── Form ──────────────────────────────────────────────────────────────────
   return (
@@ -712,6 +672,13 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Flash confirmation (shown briefly before redirect) */}
+      {flash && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
+          ✓ {flash}
         </div>
       )}
 

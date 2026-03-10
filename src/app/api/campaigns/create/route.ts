@@ -381,11 +381,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Parse launchMonth (e.g. "April 2026") into year + month number for client redirect
+    let redirectYear: number | null = null;
+    let redirectMonth: number | null = null;
+    if (launchMonth) {
+      const parsed = new Date(Date.parse(launchMonth + " 1"));
+      if (!isNaN(parsed.getTime())) {
+        redirectYear = parsed.getFullYear();
+        redirectMonth = parsed.getMonth() + 1; // getMonth() is 0-indexed
+      }
+    }
+
     return NextResponse.json({
       campaignId,
       bannerCount: createdBannerIds.length,
       figmaFrames: Array.from(new Set(figmaFrames)),
       bannerIds: createdBannerIds,
+      year: redirectYear,
+      month: redirectMonth,
     });
   } catch (error) {
     console.error("Campaign create failed:", error);
