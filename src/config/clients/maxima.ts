@@ -4,7 +4,7 @@ const maximaConfig: ClientConfig = {
   id: "maxima",
   name: "Maxima",
   subdomain: "maxima",
-  logo: "/logos/maxima.svg",
+  logo: "/clients/maxima/logo.png",
   colors: {
     primary: "#1A1A2E",
     secondary: "#16213E",

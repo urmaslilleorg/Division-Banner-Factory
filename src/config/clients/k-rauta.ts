@@ -4,7 +4,7 @@ const krautaConfig: ClientConfig = {
   id: "k-rauta",
   name: "K-Rauta",
   subdomain: "k-rauta",
-  logo: "/logos/k-rauta.svg",
+  logo: "/clients/k-rauta/logo.png",
   colors: {
     primary: "#E3000F",
     secondary: "#1A1A1A",

@@ -4,7 +4,7 @@ const sydameapteekConfig: ClientConfig = {
   id: "sydameapteek",
   name: "Südameapteek",
   subdomain: "sydameapteek",
-  logo: "/logos/sydameapteek.svg",
+  logo: "/clients/sydameapteek/logo.png",
   colors: {
     primary: "#E30613",
     secondary: "#1A1A1A",
