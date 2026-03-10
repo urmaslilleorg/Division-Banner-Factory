@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
 import CalendarGrid from "@/components/calendar-grid";
@@ -15,12 +16,27 @@ export default async function CampaignsPage() {
     (sessionClaims?.metadata as { role?: string })?.role ??
     (sessionClaims?.publicMetadata as { role?: string })?.role ??
     "viewer";
-  // All authenticated roles (including division_admin) see the campaign calendar.
-  // /admin is accessible via the Admin nav link.
 
+  // Detect whether we are on a client subdomain or the root domain.
+  // Middleware sets x-client-id only when a real client config exists (subdomain).
+  // On root domain (menteproduction.com), x-client-id is NOT set.
+  const headersList = headers();
+  const clientId = headersList.get("x-client-id");
+  const isRootDomain = !clientId || clientId === "admin";
+
+  if (isRootDomain) {
+    // Root domain has no client context — redirect based on role
+    if (role === "division_admin") {
+      redirect("/admin");
+    } else {
+      redirect("/");
+    }
+  }
+
+  // Subdomain context — show client-scoped campaign calendar
   const clientConfig = getClientConfigFromHeaders();
 
-  // Use client-scoped filter when on a subdomain; undefined = all campaigns (division_admin)
+  // Use client-scoped filter from the client config
   const campaignFilter = clientConfig?.airtable?.campaignFilter || undefined;
 
   const [campaigns, bannerSummaries] = await Promise.all([
