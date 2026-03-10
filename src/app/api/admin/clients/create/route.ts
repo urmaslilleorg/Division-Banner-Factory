@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       selectedFormatIds,
       figmaAssetFile,
       logoUrl,
+      clientVariables,
     } = body;
 
     if (!clientName || !subdomain) {
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
       Figma_Asset_File: figmaAssetFile || "",
       Logo_URL: logoUrl || "",
       Created_At: new Date().toISOString(),
+      Client_Variables: clientVariables || "",
     };
 
     if (selectedFormatIds && selectedFormatIds.length > 0) {

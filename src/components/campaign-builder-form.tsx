@@ -6,6 +6,7 @@ import { AirtableFormat } from "@/lib/airtable-campaigns";
 import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import type { ClientVariable } from "@/lib/types";
 
 const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
@@ -51,12 +52,26 @@ interface CampaignBuilderFormProps {
   variableRegistry?: VariableDefinition[];
   /** Client name from subdomain context — auto-set, not user-selectable */
   clientName: string;
+  /** Per-client variable labels. When provided, overrides global registry labels. */
+  clientVariables?: ClientVariable[];
 }
 
-export default function CampaignBuilderForm({ formats, variableRegistry, clientName }: CampaignBuilderFormProps) {
-  const variableOptions = variableRegistry && variableRegistry.length > 0
+export default function CampaignBuilderForm({ formats, variableRegistry, clientName, clientVariables }: CampaignBuilderFormProps) {
+  // Build variable options: start from global registry or fallback, then override labels
+  // with per-client labels if clientVariables is set.
+  const baseOptions = variableRegistry && variableRegistry.length > 0
     ? variableRegistry.map((v) => ({ value: v.id, label: v.label }))
     : FALLBACK_VARIABLE_OPTIONS;
+
+  const variableOptions = clientVariables && clientVariables.length > 0
+    ? baseOptions
+        .filter((opt) => clientVariables.some((cv) => cv.slot === opt.value))
+        .map((opt) => {
+          const cv = clientVariables.find((cv) => cv.slot === opt.value);
+          return { value: opt.value, label: cv ? cv.label : opt.label };
+        })
+    : baseOptions;
+
   const router = useRouter();
 
   // Form state

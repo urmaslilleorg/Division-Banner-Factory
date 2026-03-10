@@ -3,6 +3,16 @@
  * Field names match Airtable exactly (case-sensitive).
  */
 
+/**
+ * Per-client variable configuration — maps a global slot to a custom display label.
+ */
+export interface ClientVariable {
+  /** Global slot name, e.g. "H1", "CTA", "Price_Tag" */
+  slot: string;
+  /** Custom display label for this client, e.g. "Toode", "Osta nüüd" */
+  label: string;
+}
+
 export type BannerType = "Standard" | "Carousel" | "Slide";
 
 export type BannerStatus =

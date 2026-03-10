@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { Banner } from "@/lib/types";
+import type { ClientVariable } from "@/lib/types";
 import { FieldConfig } from "@/lib/airtable-campaigns";
 
 interface CopyEditorTableProps {
@@ -9,6 +10,8 @@ interface CopyEditorTableProps {
   banners: Banner[];
   fieldConfig: FieldConfig;
   userRole: string;
+  /** Per-client variable labels — when provided, column headers show custom labels */
+  clientVariables?: ClientVariable[];
 }
 
 type SaveState = "idle" | "saving" | "success" | "error";
@@ -59,7 +62,16 @@ export default function CopyEditorTable({
   banners: initialBanners,
   fieldConfig,
   userRole,
+  clientVariables,
 }: CopyEditorTableProps) {
+  /** Resolve display label for a variable slot, using client-specific label if available */
+  const resolveLabel = (slot: string) => {
+    if (clientVariables && clientVariables.length > 0) {
+      const cv = clientVariables.find((v) => v.slot === slot);
+      if (cv) return cv.label;
+    }
+    return slot;
+  };
   const [banners, setBanners] = useState<Banner[]>(initialBanners);
   const [cellState, setCellState] = useState<CellState | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -103,11 +115,12 @@ export default function CopyEditorTable({
     for (const lang of languages) {
       const fieldKey = VARIABLE_TO_FIELD[variable]?.[lang];
       if (!fieldKey) continue;
+      const customLabel = resolveLabel(variable);
       columns.push({
         variable,
         language: lang,
         fieldKey,
-        label: languages.length > 1 ? `${variable}_${lang}` : variable,
+        label: languages.length > 1 ? `${customLabel} (${lang})` : customLabel,
       });
     }
   }

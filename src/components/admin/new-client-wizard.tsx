@@ -3,9 +3,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import FormatPicker from "@/components/format-picker";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
+import type { ClientVariable } from "@/lib/types";
 
 interface Props {
   formats: AirtableFormat[];
+  variableSlots?: string[]; // global slot names from Registry
   initialData?: Partial<WizardData>;
   editId?: string; // if set, we're editing an existing client
 }
@@ -24,9 +26,13 @@ interface WizardData {
   selectedFormatIds: string[];
   figmaAssetFile: string;
   logoUrl: string;
+  // Variables step
+  clientVariables: ClientVariable[];
 }
 
 const LANGUAGE_OPTIONS = ["ET", "EN", "RU", "LV", "LT"];
+
+const DEFAULT_VARIABLE_SLOTS = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration"];
 
 function slugify(name: string): string {
   return name
@@ -40,15 +46,21 @@ const STEPS = [
   "Basic info",
   "Brand colours",
   "Formats",
+  "Variables",
   "Asset library",
   "Review",
 ];
 
-export default function NewClientWizard({ formats, initialData, editId }: Props) {
+export default function NewClientWizard({ formats, variableSlots, initialData, editId }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const slots = variableSlots && variableSlots.length > 0 ? variableSlots : DEFAULT_VARIABLE_SLOTS;
+
+  // Build default clientVariables from slots (all enabled, label = slot name)
+  const defaultClientVariables: ClientVariable[] = slots.map((s) => ({ slot: s, label: s }));
 
   const [data, setData] = useState<WizardData>({
     clientName: initialData?.clientName || "",
@@ -64,6 +76,9 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
     selectedFormatIds: initialData?.selectedFormatIds || [],
     figmaAssetFile: initialData?.figmaAssetFile || "",
     logoUrl: initialData?.logoUrl || "",
+    clientVariables: initialData?.clientVariables && initialData.clientVariables.length > 0
+      ? initialData.clientVariables
+      : defaultClientVariables,
   });
 
   const set = (key: keyof WizardData, value: unknown) =>
@@ -87,7 +102,40 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
     }));
   };
 
+  // ── Variables step helpers ───────────────────────────────────────────────
 
+  /** Whether a slot is currently enabled (present in clientVariables) */
+  const isSlotEnabled = (slot: string) =>
+    data.clientVariables.some((v) => v.slot === slot);
+
+  /** Get the current label for a slot */
+  const getSlotLabel = (slot: string) =>
+    data.clientVariables.find((v) => v.slot === slot)?.label ?? slot;
+
+  const toggleSlot = (slot: string) => {
+    setData((prev) => {
+      const enabled = prev.clientVariables.some((v) => v.slot === slot);
+      if (enabled) {
+        return { ...prev, clientVariables: prev.clientVariables.filter((v) => v.slot !== slot) };
+      } else {
+        return {
+          ...prev,
+          clientVariables: [...prev.clientVariables, { slot, label: slot }],
+        };
+      }
+    });
+  };
+
+  const setSlotLabel = (slot: string, label: string) => {
+    setData((prev) => ({
+      ...prev,
+      clientVariables: prev.clientVariables.map((v) =>
+        v.slot === slot ? { ...v, label } : v
+      ),
+    }));
+  };
+
+  // ── Submit ───────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -100,7 +148,10 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          clientVariables: JSON.stringify(data.clientVariables),
+        }),
       });
       if (!res.ok) {
         const body = await res.json();
@@ -112,6 +163,8 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
       setSaving(false);
     }
   };
+
+  const lastStep = STEPS.length - 1;
 
   return (
     <div className="max-w-2xl">
@@ -168,7 +221,7 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
                 placeholder="avene"
                 className="w-40 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
-              <span className="text-sm text-gray-400">.divisionbanners.ee</span>
+              <span className="text-sm text-gray-400">.menteproduction.com</span>
             </div>
           </div>
           <div>
@@ -279,8 +332,49 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
         </div>
       )}
 
-      {/* Step 3 — Asset library */}
+      {/* Step 3 — Variables */}
       {step === 3 && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-base font-medium text-gray-900">Variables</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Define the copy variables for this client. Select which slots to use and give each a custom label.
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            {slots.map((slot) => {
+              const enabled = isSlotEnabled(slot);
+              return (
+                <div key={slot} className="flex items-center gap-4 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => toggleSlot(slot)}
+                    className="h-4 w-4 rounded border-gray-300 text-gray-900 cursor-pointer"
+                  />
+                  <span className="w-28 text-sm text-gray-400 font-mono">{slot}</span>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={enabled ? getSlotLabel(slot) : slot}
+                      disabled={!enabled}
+                      onChange={(e) => setSlotLabel(slot, e.target.value)}
+                      placeholder={slot}
+                      className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-400">
+            Only checked slots will be saved and shown in the Campaign Builder and Copy Editor.
+          </p>
+        </div>
+      )}
+
+      {/* Step 4 — Asset library */}
+      {step === 4 && (
         <div className="space-y-5">
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
             <p className="font-medium mb-1">Figma asset library setup</p>
@@ -320,18 +414,19 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
         </div>
       )}
 
-      {/* Step 4 — Review */}
-      {step === 4 && (
+      {/* Step 5 — Review */}
+      {step === 5 && (
         <div className="space-y-4">
           <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
             {[
               ["Client name", data.clientName],
-              ["Subdomain", `${data.subdomain}.divisionbanners.ee`],
+              ["Subdomain", `${data.subdomain}.menteproduction.com`],
               ["Status", data.status],
               ["Languages", data.languages.join(", ") || "—"],
               ["Campaign filter", data.campaignFilter || "—"],
               ["Primary colour", data.primaryColor],
               ["Formats selected", `${data.selectedFormatIds.length} formats`],
+              ["Variables", `${data.clientVariables.length} slot${data.clientVariables.length !== 1 ? "s" : ""} enabled`],
               ["Figma asset file", data.figmaAssetFile || "—"],
               ["Logo URL", data.logoUrl || "—"],
             ].map(([label, value]) => (
@@ -358,7 +453,7 @@ export default function NewClientWizard({ formats, initialData, editId }: Props)
         >
           {step === 0 ? "Cancel" : "Back"}
         </button>
-        {step < 4 ? (
+        {step < lastStep ? (
           <button
             type="button"
             onClick={() => setStep(step + 1)}

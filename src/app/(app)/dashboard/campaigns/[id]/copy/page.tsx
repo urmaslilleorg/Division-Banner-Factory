@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
 import { fetchBanners } from "@/lib/airtable";
+import { getClientConfigFromHeaders } from "@/lib/client-config";
+import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CopyEditorTable from "@/components/copy-editor-table";
 
 interface PageProps {
@@ -15,10 +17,19 @@ export default async function CopyEditorPage({ params }: PageProps) {
   // TODO: derive role from Clerk session claims
   const userRole = "division_admin";
 
-  const [campaign, banners] = await Promise.all([
+  // Fetch client record to get custom variable labels
+  const clientConfig = getClientConfigFromHeaders();
+  const clientSubdomain = clientConfig.subdomain || clientConfig.id;
+
+  const [campaign, banners, clientRecord] = await Promise.all([
     fetchCampaignById(params.id),
     fetchBanners("appIqinespXjbIERp", ""),
+    clientSubdomain && clientSubdomain !== "admin"
+      ? fetchClientBySubdomain(clientSubdomain)
+      : Promise.resolve(null),
   ]);
+
+  const clientVariables = clientRecord?.clientVariables ?? [];
 
   // Filter banners for this campaign
   const campaignBanners = banners.filter(
@@ -44,6 +55,7 @@ export default async function CopyEditorPage({ params }: PageProps) {
         banners={campaignBanners}
         fieldConfig={fieldConfig}
         userRole={userRole}
+        clientVariables={clientVariables}
       />
     </main>
   );

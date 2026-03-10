@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { fetchFormats } from "@/lib/airtable-campaigns";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
+import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignBuilderForm from "@/components/campaign-builder-form";
 import { VariableDefinition } from "@/components/variables-manager";
 
@@ -32,10 +33,17 @@ export default async function NewCampaignPage() {
   // Use campaignFilter as the authoritative client name (matches Airtable filter)
   const clientName = clientConfig.airtable.campaignFilter || clientConfig.name;
 
-  const [formats, variableRegistry] = await Promise.all([
+  const clientSubdomain = clientConfig.subdomain;
+
+  const [formats, variableRegistry, clientRecord] = await Promise.all([
     fetchFormats(),
     fetchVariableRegistry(),
+    clientSubdomain && clientSubdomain !== "admin"
+      ? fetchClientBySubdomain(clientSubdomain)
+      : Promise.resolve(null),
   ]);
+
+  const clientVariables = clientRecord?.clientVariables ?? [];
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
@@ -45,7 +53,7 @@ export default async function NewCampaignPage() {
           Set up a campaign and generate banner records automatically.
         </p>
       </div>
-      <CampaignBuilderForm formats={formats} variableRegistry={variableRegistry} clientName={clientName} />
+      <CampaignBuilderForm formats={formats} variableRegistry={variableRegistry} clientName={clientName} clientVariables={clientVariables} />
     </main>
   );
 }
