@@ -257,7 +257,6 @@ export async function PATCH(
       const baseFields = {
         Campaign_Name: campaignName,
         "Campaign Link": [campaignId],
-        Format_Name: formatName,
         Channel: channel,
         Device: device,
         Format: `${width}x${height}`,
