@@ -27,8 +27,9 @@ export default async function AppLayout({
   // Only render a logo <img> for real client subdomains with a known logo path
   const displayLogo = isRootDomain ? null : (clientConfig.logo || null);
 
-  // Logo/name links to /campaigns on client subdomains, /admin on root domain
-  const homeHref = isRootDomain ? "/admin" : "/campaigns";
+  // Logo/name links to /campaigns?preview=true on client subdomains, /admin on root domain
+  // ?preview=true bypasses the division_admin redirect guard in campaigns/page.tsx
+  const homeHref = isRootDomain ? "/admin" : "/campaigns?preview=true";
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
@@ -55,7 +56,7 @@ export default async function AppLayout({
           <nav className="flex items-center gap-6 text-sm text-gray-600">
             {/* Client subdomain: show Campaigns only */}
             {!isRootDomain && (
-              <a href="/campaigns" className="hover:text-gray-900 transition-colors">
+              <a href="/campaigns?preview=true" className="hover:text-gray-900 transition-colors">
                 Campaigns
               </a>
             )}
