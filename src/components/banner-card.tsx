@@ -16,15 +16,6 @@ const languageColors: Record<Language, string> = {
   LT: "bg-purple-100 text-purple-700",
 };
 
-const statusColors: Record<string, string> = {
-  Draft: "bg-gray-100 text-gray-600",
-  Ready: "bg-sky-100 text-sky-700",
-  Client_Review: "bg-indigo-100 text-indigo-700",
-  Approved: "bg-green-100 text-green-700",
-  Exported: "bg-teal-100 text-teal-700",
-  Archived: "bg-gray-100 text-gray-500",
-};
-
 const approvalColors: Record<ApprovalStatus, string> = {
   Pending: "bg-gray-100 text-gray-600",
   Approved: "bg-green-100 text-green-700",
@@ -46,6 +37,9 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
   // Constrain thumbnail to reasonable display size
   const isWide = aspectRatio > 2;
   const isTall = aspectRatio < 0.5;
+
+  // Approval status — default to Pending if not set
+  const approvalStatus: ApprovalStatus = banner.approvalStatus ?? "Pending";
 
   return (
     <div
@@ -99,7 +93,7 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
           <span className="text-xs text-gray-400">#{banner.bannerId}</span>
         </div>
 
-        {/* Badges row */}
+        {/* Badges row — Language + Approval_Status (single source of truth) */}
         <div className="flex flex-wrap gap-1.5">
           {/* Language badge */}
           {banner.language && (
@@ -112,25 +106,14 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
             </span>
           )}
 
-          {/* Status badge */}
+          {/* Approval_Status badge — always shown */}
           <span
             className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
-              statusColors[banner.status] || "bg-gray-100 text-gray-600"
+              approvalColors[approvalStatus]
             }`}
           >
-            {banner.status.replace("_", " ")}
+            {approvalLabels[approvalStatus]}
           </span>
-
-          {/* Approval badge (only if set) */}
-          {banner.approvalStatus && (
-            <span
-              className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                approvalColors[banner.approvalStatus]
-              }`}
-            >
-              {approvalLabels[banner.approvalStatus]}
-            </span>
-          )}
 
           {/* Channel badge (if set) */}
           {banner.channel && (

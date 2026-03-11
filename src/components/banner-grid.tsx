@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Banner, BannerStatus } from "@/lib/types";
+import { Banner } from "@/lib/types";
 import BannerCard from "./banner-card";
 import FilterBar, { FilterState } from "./filter-bar";
 import BannerDetailModal from "./banner-detail-modal";
@@ -68,16 +68,16 @@ export default function BannerGrid({
     setSelectedBanner(updated);
   }, []);
 
-  const handleStatusChange = useCallback(
-    (bannerId: string, newStatus: string) => {
-      setBanners((prev) =>
-        prev.map((b) =>
-          b.id === bannerId ? { ...b, status: newStatus as BannerStatus } : b
-        )
-      );
-    },
-    []
-  );
+  // Optimistic delete: remove card from grid immediately
+  const handleBannerDelete = useCallback((bannerId: string) => {
+    setBanners((prev) => prev.filter((b) => b.id !== bannerId));
+    // Close modal if the deleted banner was open
+    setSelectedBanner((prev) => (prev?.id === bannerId ? null : prev));
+    setModalOpen((open) => {
+      if (open && selectedBanner?.id === bannerId) return false;
+      return open;
+    });
+  }, [selectedBanner]);
 
   return (
     <div className="space-y-6">
@@ -109,10 +109,7 @@ export default function BannerGrid({
               {isDesigner && (
                 <DesignerControls
                   bannerId={banner.id}
-                  currentStatus={banner.status}
-                  onStatusChange={(newStatus) =>
-                    handleStatusChange(banner.id, newStatus)
-                  }
+                  onDelete={handleBannerDelete}
                 />
               )}
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Banner } from "@/lib/types";
+import { Banner, ApprovalStatus } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -11,10 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
-  Check,
-  X,
   Download,
   MessageSquare,
   Send,
@@ -23,6 +20,7 @@ import {
   ChevronRight,
   LayoutGrid,
   Play,
+  ChevronDown,
 } from "lucide-react";
 import { driveToDirectUrl } from "@/lib/drive";
 
@@ -221,6 +219,84 @@ function CarouselSlideshow({ slides, parentBanner }: CarouselSlideshowProps) {
   );
 }
 
+// ─── Approval Status Dropdown ─────────────────────────────────────────────────
+
+const APPROVAL_OPTIONS: { value: ApprovalStatus; label: string }[] = [
+  { value: "Pending", label: "Pending" },
+  { value: "Approved", label: "Approved" },
+  { value: "Revision_Requested", label: "Revision Requested" },
+];
+
+const approvalDropdownStyles: Record<ApprovalStatus, string> = {
+  Pending: "border-gray-300 text-gray-600 bg-white",
+  Approved: "border-green-400 text-green-700 bg-green-50",
+  Revision_Requested: "border-amber-400 text-amber-700 bg-amber-50",
+};
+
+interface ApprovalDropdownProps {
+  bannerId: string;
+  currentStatus: ApprovalStatus;
+  onStatusChange: (newStatus: ApprovalStatus) => void;
+}
+
+function ApprovalDropdown({ bannerId, currentStatus, onStatusChange }: ApprovalDropdownProps) {
+  const [status, setStatus] = useState<ApprovalStatus>(currentStatus);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Sync if parent banner changes (e.g. navigating between banners)
+  useEffect(() => {
+    setStatus(currentStatus);
+  }, [currentStatus]);
+
+  const handleChange = async (newStatus: ApprovalStatus) => {
+    setStatus(newStatus); // optimistic
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/banners/${bannerId}/approve`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalStatus: newStatus }),
+      });
+      if (res.ok) {
+        onStatusChange(newStatus);
+      } else {
+        // Revert on failure
+        setStatus(currentStatus);
+      }
+    } catch {
+      setStatus(currentStatus);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative flex items-center">
+      <select
+        value={status}
+        onChange={(e) => handleChange(e.target.value as ApprovalStatus)}
+        disabled={isSaving}
+        className={`appearance-none rounded-md border py-1.5 pl-3 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors cursor-pointer disabled:opacity-60 ${
+          approvalDropdownStyles[status]
+        } ${status === "Approved" ? "focus:ring-green-400" : status === "Revision_Requested" ? "focus:ring-amber-400" : "focus:ring-gray-400"}`}
+      >
+        {APPROVAL_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+        {isSaving ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Modal ──────────────────────────────────────────────────────────────
 
 export default function BannerDetailModal({
@@ -229,10 +305,6 @@ export default function BannerDetailModal({
   onOpenChange,
   onBannerUpdate,
 }: BannerDetailModalProps) {
-  const [isApproving, setIsApproving] = useState(false);
-  const [isRequesting, setIsRequesting] = useState(false);
-  const [showRevisionInput, setShowRevisionInput] = useState(false);
-  const [revisionComment, setRevisionComment] = useState("");
   const [newComment, setNewComment] = useState("");
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [slides, setSlides] = useState<Banner[]>([]);
@@ -247,6 +319,7 @@ export default function BannerDetailModal({
       .then((data) => setSlides(Array.isArray(data.banners) ? data.banners : []))
       .catch(() => setSlides([]))
       .finally(() => setLoadingSlides(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banner?.id, banner?.bannerType, open]);
 
   const handleDownload = useCallback(() => {
@@ -261,61 +334,8 @@ export default function BannerDetailModal({
     }
   }, [banner]);
 
-  if (!banner) return null;
-
-  const handleApprove = async () => {
-    setIsApproving(true);
-    try {
-      const res = await fetch(`/api/banners/${banner.id}/approve`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approved: true }),
-      });
-      if (res.ok) {
-        onBannerUpdate({
-          ...banner,
-          approvalStatus: "Approved",
-          clientApproved: true,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to approve banner:", error);
-    } finally {
-      setIsApproving(false);
-    }
-  };
-
-  const handleRequestRevision = async () => {
-    if (!revisionComment.trim()) return;
-    setIsRequesting(true);
-    try {
-      const res = await fetch(`/api/banners/${banner.id}/approve`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          approved: false,
-          comment: revisionComment.trim(),
-        }),
-      });
-      if (res.ok) {
-        onBannerUpdate({
-          ...banner,
-          approvalStatus: "Revision_Requested",
-          comment: revisionComment.trim(),
-        });
-        setRevisionComment("");
-        setShowRevisionInput(false);
-        onOpenChange(false);
-      }
-    } catch (error) {
-      console.error("Failed to request revision:", error);
-    } finally {
-      setIsRequesting(false);
-    }
-  };
-
   const handleAddComment = async () => {
-    if (!newComment.trim()) return;
+    if (!banner || !newComment.trim()) return;
     setIsSendingComment(true);
     try {
       const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -340,16 +360,7 @@ export default function BannerDetailModal({
     }
   };
 
-  const approvalBadgeVariant = (() => {
-    switch (banner.approvalStatus) {
-      case "Approved":
-        return "success" as const;
-      case "Revision_Requested":
-        return "warning" as const;
-      default:
-        return "secondary" as const;
-    }
-  })();
+  if (!banner) return null;
 
   const copyFields =
     banner.language === "EN"
@@ -377,9 +388,6 @@ export default function BannerDetailModal({
             <span className="font-light">
               Banner #{banner.bannerId} — {banner.format}
             </span>
-            <Badge variant={approvalBadgeVariant}>
-              {(banner.approvalStatus || "Pending").replace(/_/g, " ")}
-            </Badge>
             {banner.bannerType === "Carousel" && (
               <span className="inline-flex items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                 ▤ Carousel
@@ -490,77 +498,24 @@ export default function BannerDetailModal({
           )}
         </div>
 
-        {/* Approval action bar */}
-        <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
-          {banner.approvalStatus !== "Approved" && (
-            <>
-              <Button variant="success" size="sm" onClick={handleApprove} disabled={isApproving}>
-                {isApproving ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Check className="mr-1 h-3 w-3" />
-                )}
-                Approve
-              </Button>
-              <Button
-                variant="warning"
-                size="sm"
-                onClick={() => setShowRevisionInput(!showRevisionInput)}
-                disabled={isRequesting}
-              >
-                <X className="mr-1 h-3 w-3" />
-                Request revision
-              </Button>
-            </>
-          )}
-          {banner.approvalStatus === "Approved" && (
-            <Badge variant="success" className="text-sm py-1 px-3">
-              <Check className="mr-1 h-3 w-3" /> Approved
-            </Badge>
-          )}
+        {/* ── Approval action bar: single dropdown + Download ── */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+          <ApprovalDropdown
+            bannerId={banner.id}
+            currentStatus={(banner.approvalStatus as ApprovalStatus) ?? "Pending"}
+            onStatusChange={(newStatus) =>
+              onBannerUpdate({
+                ...banner,
+                approvalStatus: newStatus,
+                clientApproved: newStatus === "Approved",
+              })
+            }
+          />
           <Button variant="outline" size="sm" onClick={handleDownload}>
             <Download className="mr-1 h-3 w-3" />
             Download
           </Button>
         </div>
-
-        {/* Revision comment input */}
-        {showRevisionInput && (
-          <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <Textarea
-              placeholder="Describe the revision needed..."
-              value={revisionComment}
-              onChange={(e) => setRevisionComment(e.target.value)}
-              className="bg-white"
-              rows={3}
-            />
-            <div className="flex gap-2">
-              <Button
-                variant="warning"
-                size="sm"
-                onClick={handleRequestRevision}
-                disabled={isRequesting || !revisionComment.trim()}
-              >
-                {isRequesting ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Send className="mr-1 h-3 w-3" />
-                )}
-                Submit revision request
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowRevisionInput(false);
-                  setRevisionComment("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* Comment thread */}
         <div className="space-y-3 border-t border-gray-100 pt-4">
