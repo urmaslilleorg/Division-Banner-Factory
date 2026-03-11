@@ -211,7 +211,7 @@ export async function PATCH(
 
     const fmtParams = new URLSearchParams();
     fmtParams.set("filterByFormula", formatNameFormula);
-    ["Format_Name", "Width_px", "Height_px", "Channel", "Device", "Safe_Area",
+    ["Format_Name", "Width", "Height", "Channel", "Device", "Safe_Area",
      "Output_Format", "Figma_Frame_Base"].forEach((f) => fmtParams.append("fields[]", f));
 
     const fmtRes = await airtableFetch(`${FORMATS_TABLE}?${fmtParams.toString()}`);
@@ -239,8 +239,8 @@ export async function PATCH(
       if (!fmtRecord) continue; // format not found in Formats table
 
       const f = fmtRecord.fields;
-      const width = (f["Width_px"] as number) || 0;
-      const height = (f["Height_px"] as number) || 0;
+      const width = (f["Width"] as number) || 0;
+      const height = (f["Height"] as number) || 0;
       const channel = (f["Channel"] as string) || "";
       const device = (f["Device"] as string) || "";
       const safeArea = (f["Safe_Area"] as string) || "";
