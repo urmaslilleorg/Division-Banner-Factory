@@ -55,7 +55,7 @@ export default async function MonthDetailPage({ params }: PageProps) {
       <div className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
-            href="/"
+            href="/campaigns?preview=true"
             className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -68,7 +68,7 @@ export default async function MonthDetailPage({ params }: PageProps) {
           </div>
         </div>
         <Link
-          href="/dashboard/campaigns/new"
+          href="/campaigns/new?preview=true"
           className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -81,7 +81,7 @@ export default async function MonthDetailPage({ params }: PageProps) {
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center">
           <p className="text-sm text-gray-400">No campaigns for {launchMonthLabel}.</p>
           <Link
-            href="/dashboard/campaigns/new"
+            href="/campaigns/new?preview=true"
             className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-gray-900"
           >
             <Plus className="h-4 w-4" />
@@ -141,13 +141,13 @@ export default async function MonthDetailPage({ params }: PageProps) {
 
                 <div className="flex items-center gap-2">
                   <Link
-                    href={`/dashboard/campaigns/${campaign.id}/edit`}
+                    href={`/dashboard/campaigns/${campaign.id}/edit?preview=true`}
                     className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                   >
                     Edit
                   </Link>
                   <Link
-                    href={`/campaigns/${encodeURIComponent(campaign.name.toLowerCase().replace(/\s+/g, "-"))}`}
+                    href={`/campaigns/${encodeURIComponent(campaign.name.toLowerCase().replace(/\s+/g, "-"))}?preview=true`}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                   >
                     Open

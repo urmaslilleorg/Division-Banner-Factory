@@ -69,7 +69,7 @@ export default async function CampaignsPage({
         </div>
         {(role === "division_admin" || role === "division_designer") && (
           <Link
-            href="/campaigns/new"
+            href="/campaigns/new?preview=true"
             className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
           >
             <Plus className="h-4 w-4" />

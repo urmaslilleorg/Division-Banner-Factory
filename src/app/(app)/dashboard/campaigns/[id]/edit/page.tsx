@@ -34,7 +34,7 @@ export default async function CampaignEditPage({ params }: PageProps) {
   if (!userId) redirect("/sign-in");
 
   const campaign = await fetchCampaignById(params.id);
-  if (!campaign) redirect("/campaigns");
+  if (!campaign) redirect("/campaigns?preview=true");
 
   const clientConfig = getClientConfigFromHeaders();
   const clientSubdomain = clientConfig?.subdomain;

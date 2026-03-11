@@ -41,7 +41,7 @@ export default function CampaignImportBar({
       }
       const data = await res.json();
       setShowCopyModal(false);
-      router.push(`/campaigns/${encodeURIComponent(data.campaignName)}`);
+      router.push(`/campaigns/${encodeURIComponent(data.campaignName)}?preview=true`);
     } catch (err) {
       setCopyError(String(err));
     } finally {
@@ -74,16 +74,16 @@ export default function CampaignImportBar({
           {hasMapping && (
             <button
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-              onClick={() => router.push(`/campaigns/${campaignId}/import`)}
+              onClick={() => router.push(`/campaigns/${campaignId}/import?preview=true`)}
             >
               Re-sync ↻
             </button>
           )}
           <button
             className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
-            onClick={() => router.push(`/campaigns/${campaignId}/import`)}
-          >
-            {hasMapping ? "Import again" : "Import spreadsheet →"}
+              onClick={() => router.push(`/campaigns/${campaignId}/import?preview=true`)}
+            >
+              {hasMapping ? "Import again" : "Import spreadsheet →"}
           </button>
           <button
             className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors"

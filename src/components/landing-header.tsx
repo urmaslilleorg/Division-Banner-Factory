@@ -27,7 +27,7 @@ export default function LandingHeader() {
       {isSignedIn && (
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <Link
-            href="/campaigns"
+            href="/campaigns?preview=true"
             style={{
               fontFamily: "'DM Sans', sans-serif",
               fontWeight: 300,
