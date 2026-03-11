@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
-import CampaignEditForm from "@/components/campaign-edit-form";
+import CampaignBuilderForm, { CampaignInitialData } from "@/components/campaign-builder-form";
 import type { ClientVariable } from "@/lib/types";
 import type { VariableDefinition } from "@/components/variables-manager";
 
@@ -47,6 +47,7 @@ export default async function CampaignEditPage({ params }: PageProps) {
   ]);
 
   const clientVariables: ClientVariable[] = clientRecord?.clientVariables ?? [];
+  const clientName = clientRecord?.campaignFilter || clientConfig?.name || "";
 
   // Fetch only client-linked formats when on a client subdomain
   let formats: import("@/lib/airtable-campaigns").AirtableFormat[] = [];
@@ -58,6 +59,27 @@ export default async function CampaignEditPage({ params }: PageProps) {
     formats = await fetchFormats();
   }
 
+  // Parse Field_Config JSON from campaign record
+  let parsedFieldConfig: CampaignInitialData["fieldConfig"] = undefined;
+  try {
+    if (campaign.fieldConfig) {
+      parsedFieldConfig = typeof campaign.fieldConfig === "string"
+        ? JSON.parse(campaign.fieldConfig)
+        : campaign.fieldConfig;
+    }
+  } catch {
+    parsedFieldConfig = undefined;
+  }
+
+  const initialData: CampaignInitialData = {
+    campaignName: campaign.name,
+    productName: campaign.productName || "",
+    launchMonth: campaign.launchMonth || "",
+    startDate: campaign.startDate || "",
+    endDate: campaign.endDate || "",
+    fieldConfig: parsedFieldConfig,
+  };
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
@@ -66,11 +88,14 @@ export default async function CampaignEditPage({ params }: PageProps) {
           Update campaign metadata. Banner records are not affected.
         </p>
       </div>
-      <CampaignEditForm
-        campaign={campaign}
+      <CampaignBuilderForm
+        mode="edit"
+        campaignId={campaign.id}
+        initialData={initialData}
         formats={formats}
         variableRegistry={variableRegistry}
         clientVariables={clientVariables}
+        clientName={clientName}
       />
     </main>
   );

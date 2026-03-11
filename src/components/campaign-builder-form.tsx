@@ -32,9 +32,7 @@ type SlideCopy = Record<string, string>;
 interface FormatConfig {
   variables: string[];
   mode: FormatMode;
-  // mode=specific: one set of copy values for this format
   copy: Record<string, string>;
-  // mode=carousel: slide count + per-slide copy
   slideCount: number;
   slides: SlideCopy[];
 }
@@ -47,6 +45,30 @@ interface CreateResponse {
   month: number | null;
 }
 
+// ── initialData shape (for edit mode) ─────────────────────────────────────────
+export interface CampaignInitialData {
+  campaignName: string;
+  productName: string;
+  launchMonth: string;
+  startDate?: string;
+  endDate?: string;
+  // Parsed Field_Config object from Airtable
+  fieldConfig?: {
+    languages?: string[];
+    formats?: string[];
+    variables?: string[];
+    // Per-format configs keyed by format NAME (not ID)
+    formatConfigs?: Record<string, {
+      variables?: string[];
+      mode?: FormatMode;
+      copy?: Record<string, string>;
+      slideCount?: number;
+      slides?: SlideCopy[];
+    }>;
+    defaultCopy?: Record<string, string>;
+  };
+}
+
 interface CampaignBuilderFormProps {
   formats: AirtableFormat[];
   variableRegistry?: VariableDefinition[];
@@ -54,11 +76,61 @@ interface CampaignBuilderFormProps {
   clientName: string;
   /** Per-client variable labels. When provided, overrides global registry labels. */
   clientVariables?: ClientVariable[];
+  /** "create" (default) or "edit" */
+  mode?: "create" | "edit";
+  /** Airtable record ID — required when mode === "edit" */
+  campaignId?: string;
+  /** Pre-fill values — used when mode === "edit" */
+  initialData?: CampaignInitialData;
 }
 
-export default function CampaignBuilderForm({ formats, variableRegistry, clientName, clientVariables }: CampaignBuilderFormProps) {
+// ── Helper: build FormatConfig map from initialData.fieldConfig ───────────────
+function buildInitialFormatConfigs(
+  formats: AirtableFormat[],
+  fieldConfig: CampaignInitialData["fieldConfig"]
+): Record<string, FormatConfig> {
+  if (!fieldConfig?.formatConfigs) return {};
+  const result: Record<string, FormatConfig> = {};
+  for (const f of formats) {
+    const saved = fieldConfig.formatConfigs[f.formatName];
+    if (saved) {
+      result[f.id] = {
+        variables: saved.variables ?? ["H1", "CTA"],
+        mode: saved.mode ?? "default",
+        copy: saved.copy ?? {},
+        slideCount: saved.slideCount ?? 3,
+        slides: saved.slides ?? [],
+      };
+    }
+  }
+  return result;
+}
+
+// ── Helper: parse "April 2026" → { year, month } ─────────────────────────────
+function parseLaunchMonth(label: string): { year: number; month: number } | null {
+  if (!label) return null;
+  const months: Record<string, number> = {
+    January: 1, February: 2, March: 3, April: 4,
+    May: 5, June: 6, July: 7, August: 8,
+    September: 9, October: 10, November: 11, December: 12,
+  };
+  const [monthName, yearStr] = label.split(" ");
+  const month = months[monthName];
+  const year = parseInt(yearStr, 10);
+  if (!month || isNaN(year)) return null;
+  return { year, month };
+}
+
+export default function CampaignBuilderForm({
+  formats,
+  variableRegistry,
+  clientName,
+  clientVariables,
+  mode = "create",
+  campaignId,
+  initialData,
+}: CampaignBuilderFormProps) {
   // Build variable options: start from global registry or fallback, then override labels
-  // with per-client labels if clientVariables is set.
   const baseOptions = variableRegistry && variableRegistry.length > 0
     ? variableRegistry.map((v) => ({ value: v.id, label: v.label }))
     : FALLBACK_VARIABLE_OPTIONS;
@@ -74,30 +146,52 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
 
   const router = useRouter();
 
-  // Form state
-  const [campaignName, setCampaignName] = useState("");
-  const [productName, setProductName] = useState("");
-  // clientName comes from subdomain context (prop) — not editable by user
-  const [launchMonth, setLaunchMonth] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(["ET"]);
-  const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
+  // ── Form state — initialised from initialData in edit mode ──────────────────
+  const [campaignName, setCampaignName] = useState(initialData?.campaignName ?? "");
+  const [productName, setProductName] = useState(initialData?.productName ?? "");
+  const [launchMonth, setLaunchMonth] = useState(initialData?.launchMonth ?? "");
+  const [startDate, setStartDate] = useState(initialData?.startDate ?? "");
+  const [endDate, setEndDate] = useState(initialData?.endDate ?? "");
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(
+    initialData?.fieldConfig?.languages ?? ["ET"]
+  );
+
+  // Pre-select formats from fieldConfig.formats (array of format names → match by name)
+  const initialFormatIds = (() => {
+    const names = new Set(initialData?.fieldConfig?.formats ?? []);
+    return formats.filter((f) => names.has(f.formatName)).map((f) => f.id);
+  })();
+  const [selectedFormats, setSelectedFormats] = useState<string[]>(initialFormatIds);
+
   // Per-format config map: formatId → FormatConfig
-  const [formatConfigs, setFormatConfigs] = useState<Record<string, FormatConfig>>({});
-  // Which format panels are expanded
-  const [expandedFormats, setExpandedFormats] = useState<Record<string, boolean>>({});
-  // Which channel groups are expanded (collapsed by default)
-  const [expandedChannels, setExpandedChannels] = useState<Record<string, boolean>>({});
+  const [formatConfigs, setFormatConfigs] = useState<Record<string, FormatConfig>>(
+    buildInitialFormatConfigs(formats, initialData?.fieldConfig)
+  );
+
+  // Which format panels are expanded — pre-expand selected formats in edit mode
+  const [expandedFormats, setExpandedFormats] = useState<Record<string, boolean>>(
+    mode === "edit"
+      ? Object.fromEntries(initialFormatIds.map((id) => [id, false]))
+      : {}
+  );
+
+  // Which channel groups are expanded — pre-expand channels with selected formats in edit mode
+  const preExpandedChannels = mode === "edit"
+    ? new Set(formats.filter((f) => initialFormatIds.includes(f.id)).map((f) => f.channel || "Other"))
+    : new Set<string>();
+  const [expandedChannels, setExpandedChannels] = useState<Record<string, boolean>>(
+    Object.fromEntries(Array.from(preExpandedChannels).map((ch) => [ch, true]))
+  );
   const toggleChannelExpanded = (ch: string) =>
     setExpandedChannels((prev) => ({ ...prev, [ch]: !prev[ch] }));
 
   // Campaign-level default copy
-  const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>({});
+  const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>(
+    initialData?.fieldConfig?.defaultCopy ?? {}
+  );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Flash message shown briefly while redirect is in progress
   const [flash, setFlash] = useState<string | null>(null);
 
   // Group formats by channel
@@ -163,12 +257,10 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
         ? [...cfg.variables, variable]
         : cfg.variables.filter((v) => v !== variable);
 
-      // Keep copy keys in sync
       const copy = { ...cfg.copy };
       if (adding) copy[variable] = copy[variable] ?? "";
       else delete copy[variable];
 
-      // Keep slides keys in sync
       const slides = cfg.slides.map((s) => {
         const next = { ...s };
         if (adding) next[variable] = next[variable] ?? "";
@@ -184,11 +276,9 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
       let slides = cfg.slides;
-      // Initialise slides when switching to carousel
       if (mode === "carousel" && slides.length === 0) {
         slides = buildEmptySlides(cfg.slideCount, cfg.variables);
       }
-      // Clear slides when leaving carousel
       if (mode !== "carousel") slides = [];
       return { ...prev, [formatId]: { ...cfg, mode, slides } };
     });
@@ -233,6 +323,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
     new Set(selectedFormats.flatMap((id) => getFormatConfig(id).variables))
   );
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignName.trim()) { setError("Campaign name is required."); return; }
@@ -246,81 +337,150 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
 
     const selectedFormatData = formats.filter((f) => selectedFormats.includes(f.id));
 
-    // Build Field_Config.formats object
-    const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }> = {};
-    for (const f of selectedFormatData) {
-      const cfg = getFormatConfig(f.id);
-      fieldConfigFormats[f.formatName] = {
-        variables: cfg.variables,
-        mode: cfg.mode,
-        ...(cfg.mode === "carousel" ? { slideCount: cfg.slideCount } : {}),
-      };
-    }
-
-    try {
-      const res = await fetch("/api/campaigns/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          campaignName: campaignName.trim(),
-          productName: productName.trim(),
-          clientName,
-          launchMonth,
-          startDate,
-          endDate,
-          languages: selectedLanguages,
-          defaultCopy: Object.fromEntries(
-            Object.entries(defaultCopy).map(([k, v]) => [k, v.trim() || null])
-          ),
-          formats: selectedFormatData.map((f) => {
-            const cfg = getFormatConfig(f.id);
-            const base = {
-              id: f.id,
-              formatName: f.formatName,
-              widthPx: f.widthPx,
-              heightPx: f.heightPx,
-              channel: f.channel,
-              device: f.device,
-              safeArea: f.safeArea,
-              outputFormat: f.outputFormat,
-              figmaFrameBase: f.figmaFrameBase,
-              variables: cfg.variables,
-              mode: cfg.mode,
-            };
-            if (cfg.mode === "specific") {
-              return { ...base, copy: cfg.copy };
-            }
-            if (cfg.mode === "carousel") {
-              return { ...base, slideCount: cfg.slideCount, slides: cfg.slides };
-            }
-            return base; // default — no extra fields
-          }),
-          fieldConfigFormats,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create campaign");
+    if (mode === "edit") {
+      // ── EDIT: PATCH /api/campaigns/[id] ─────────────────────────────────────
+      if (!campaignId) {
+        setError("Campaign ID is missing — cannot save.");
+        setIsSubmitting(false);
+        return;
       }
 
-      const data = (await res.json()) as CreateResponse;
+      // Build updated Field_Config
+      const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }> = {};
+      for (const f of selectedFormatData) {
+        const cfg = getFormatConfig(f.id);
+        fieldConfigFormats[f.formatName] = {
+          variables: cfg.variables,
+          mode: cfg.mode,
+          ...(cfg.mode === "carousel" ? { slideCount: cfg.slideCount } : {}),
+        };
+      }
 
-      // Show flash confirmation, then redirect to the month view (or /campaigns fallback)
-      const bannerCount = data.bannerCount;
-      setFlash(`Campaign created — ${bannerCount} banner record${bannerCount !== 1 ? "s" : ""} generated`);
+      // Build per-format configs for Field_Config storage
+      const savedFormatConfigs: Record<string, object> = {};
+      for (const f of selectedFormatData) {
+        const cfg = getFormatConfig(f.id);
+        savedFormatConfigs[f.formatName] = {
+          variables: cfg.variables,
+          mode: cfg.mode,
+          copy: cfg.copy,
+          slideCount: cfg.slideCount,
+          slides: cfg.slides,
+        };
+      }
 
-      const destination =
-        data.year && data.month
-          ? `/${data.year}/${data.month}`
-          : "/campaigns";
+      const updatedFieldConfig = {
+        ...(initialData?.fieldConfig ?? {}),
+        languages: selectedLanguages,
+        formats: selectedFormatData.map((f) => f.formatName),
+        variables: variableOptions.map((v) => v.value),
+        formatConfigs: savedFormatConfigs,
+        defaultCopy,
+      };
 
-      // Small delay so the flash message is briefly visible before navigation
-      setTimeout(() => router.push(destination), 1200);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsSubmitting(false);
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            "Campaign Name": campaignName.trim(),
+            Product_Name: productName.trim(),
+            Launch_Month: launchMonth,
+            Field_Config: JSON.stringify(updatedFieldConfig),
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to update campaign");
+        }
+
+        setFlash("Campaign updated successfully");
+
+        const parsed = parseLaunchMonth(launchMonth);
+        const destination = parsed ? `/${parsed.year}/${parsed.month}` : "/campaigns";
+        setTimeout(() => router.push(destination), 1000);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setIsSubmitting(false);
+      }
+
+    } else {
+      // ── CREATE: POST /api/campaigns/create ──────────────────────────────────
+      const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }> = {};
+      for (const f of selectedFormatData) {
+        const cfg = getFormatConfig(f.id);
+        fieldConfigFormats[f.formatName] = {
+          variables: cfg.variables,
+          mode: cfg.mode,
+          ...(cfg.mode === "carousel" ? { slideCount: cfg.slideCount } : {}),
+        };
+      }
+
+      try {
+        const res = await fetch("/api/campaigns/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campaignName: campaignName.trim(),
+            productName: productName.trim(),
+            clientName,
+            launchMonth,
+            startDate,
+            endDate,
+            languages: selectedLanguages,
+            defaultCopy: Object.fromEntries(
+              Object.entries(defaultCopy).map(([k, v]) => [k, v.trim() || null])
+            ),
+            formats: selectedFormatData.map((f) => {
+              const cfg = getFormatConfig(f.id);
+              const base = {
+                id: f.id,
+                formatName: f.formatName,
+                widthPx: f.widthPx,
+                heightPx: f.heightPx,
+                channel: f.channel,
+                device: f.device,
+                safeArea: f.safeArea,
+                outputFormat: f.outputFormat,
+                figmaFrameBase: f.figmaFrameBase,
+                variables: cfg.variables,
+                mode: cfg.mode,
+              };
+              if (cfg.mode === "specific") {
+                return { ...base, copy: cfg.copy };
+              }
+              if (cfg.mode === "carousel") {
+                return { ...base, slideCount: cfg.slideCount, slides: cfg.slides };
+              }
+              return base;
+            }),
+            fieldConfigFormats,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to create campaign");
+        }
+
+        const data = (await res.json()) as CreateResponse;
+
+        const bannerCount = data.bannerCount;
+        setFlash(`Campaign created — ${bannerCount} banner record${bannerCount !== 1 ? "s" : ""} generated`);
+
+        const destination =
+          data.year && data.month
+            ? `/${data.year}/${data.month}`
+            : "/campaigns";
+
+        setTimeout(() => router.push(destination), 1200);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -425,6 +585,12 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
           </label>
           <span className="text-xs text-gray-400">{selectedFormats.length} selected</span>
         </div>
+
+        {mode === "edit" && (
+          <p className="text-xs text-gray-400">
+            Note: changing formats here updates the campaign record only. Existing banner records are not affected.
+          </p>
+        )}
 
         <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
           {Object.entries(formatsByChannel).map(([channel, channelFormats]) => {
@@ -531,7 +697,6 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
 
                           {/* Three-way mode selector */}
                           <div className="space-y-1.5">
-                            <p className="text-xs font-medium text-gray-500">Copy mode</p>
                             <div className="flex gap-1">
                               {(["default", "specific", "carousel"] as FormatMode[]).map((m) => (
                                 <button
@@ -554,14 +719,14 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
                             </div>
                           </div>
 
-                          {/* DEFAULT mode: no extra inputs — uses campaign Default Copy */}
+                          {/* DEFAULT mode */}
                           {cfg.mode === "default" && (
                             <p className="text-xs text-gray-400 italic">
                               Uses campaign-level Default Copy values below.
                             </p>
                           )}
 
-                          {/* SPECIFIC mode: one set of copy fields for this format */}
+                          {/* SPECIFIC mode */}
                           {cfg.mode === "specific" && (
                             <div className="space-y-2">
                               <p className="text-xs font-medium text-gray-500">Format-specific copy</p>
@@ -588,10 +753,9 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
                             </div>
                           )}
 
-                          {/* CAROUSEL mode: slide count stepper + per-slide copy */}
+                          {/* CAROUSEL mode */}
                           {cfg.mode === "carousel" && (
                             <div className="space-y-3">
-                              {/* Slide count stepper */}
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-medium text-gray-500">Slides:</span>
                                 <button
@@ -613,7 +777,6 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
                                 </button>
                               </div>
 
-                              {/* Per-slide copy fields */}
                               {cfg.slides.map((slide, slideIdx) => (
                                 <div
                                   key={slideIdx}
@@ -659,7 +822,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
         </div>
       </div>
 
-      {/* Default Copy — campaign-level, used by all Default-mode formats */}
+      {/* Default Copy */}
       {allActiveVariables.length > 0 && (
         <div className="space-y-3">
           <div className="space-y-1">
@@ -690,7 +853,7 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
         </div>
       )}
 
-      {/* Flash confirmation (shown briefly before redirect) */}
+      {/* Flash confirmation */}
       {flash && (
         <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
           ✓ {flash}
@@ -708,9 +871,11 @@ export default function CampaignBuilderForm({ formats, variableRegistry, clientN
       <div className="flex gap-3">
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? (
-            <><Loader2 className="mr-1 h-4 w-4 animate-spin" /> Creating…</>
+            <><Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              {mode === "edit" ? "Saving…" : "Creating…"}
+            </>
           ) : (
-            "Create campaign"
+            mode === "edit" ? "Save changes" : "Create campaign"
           )}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>
