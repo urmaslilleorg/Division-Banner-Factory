@@ -2,7 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
-import NotificationBadge from "@/components/notification-badge";
 
 export default async function AppLayout({
   children,
@@ -54,20 +53,11 @@ export default async function AppLayout({
           </Link>
 
           <nav className="flex items-center gap-6 text-sm text-gray-600">
-            {/* Client subdomain: show Campaigns + Banners */}
+            {/* Client subdomain: show Campaigns only */}
             {!isRootDomain && (
-              <>
-                <a href="/campaigns" className="hover:text-gray-900 transition-colors">
-                  Campaigns
-                </a>
-                <a
-                  href="/banners"
-                  className="relative flex items-center gap-1.5 hover:text-gray-900 transition-colors"
-                >
-                  Banners
-                  <NotificationBadge userRole={role} />
-                </a>
-              </>
+              <a href="/campaigns" className="hover:text-gray-900 transition-colors">
+                Campaigns
+              </a>
             )}
             {/* Settings: visible on both domains for admin; on client subdomain for all roles */}
             {(isRootDomain ? role === "division_admin" : true) && (
