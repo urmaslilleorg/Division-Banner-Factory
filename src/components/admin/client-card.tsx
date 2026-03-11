@@ -91,26 +91,20 @@ export default function ClientCard({ client }: ClientCardProps) {
               href={liveUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 rounded-md bg-emerald-600 px-3 py-1.5 text-center text-xs font-medium text-white hover:bg-emerald-700 transition-colors"
+              className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              Live ↗
+              Live
             </a>
           ) : (
             <button
               disabled
-              title="Set subdomain to go live"
-              className="flex-1 rounded-md bg-gray-100 px-3 py-1.5 text-center text-xs font-medium text-gray-400 cursor-not-allowed"
+              title={client.status === "Draft" ? "Client is in Draft status" : "Set subdomain to go live"}
+              className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-300 cursor-not-allowed"
             >
-              Live ↗
+              Live
             </button>
           );
         })()}
-        <Link
-          href={`/admin/${client.id}/overview`}
-          className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-        >
-          Open
-        </Link>
         <Link
           href={`/admin/${client.id}/edit`}
           className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
