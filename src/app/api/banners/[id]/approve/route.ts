@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { updateBannerApproval } from "@/lib/airtable";
 
+const BASE_ID = "appIqinespXjbIERp";
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -13,7 +15,7 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { approved, comment, baseId } = body;
+    const { approved, comment } = body;
 
     if (typeof approved !== "boolean") {
       return NextResponse.json(
@@ -22,14 +24,7 @@ export async function PATCH(
       );
     }
 
-    if (!baseId) {
-      return NextResponse.json(
-        { error: "baseId is required" },
-        { status: 400 }
-      );
-    }
-
-    await updateBannerApproval(baseId, params.id, approved, comment);
+    await updateBannerApproval(BASE_ID, params.id, approved, comment);
 
     return NextResponse.json({ success: true });
   } catch (error) {
