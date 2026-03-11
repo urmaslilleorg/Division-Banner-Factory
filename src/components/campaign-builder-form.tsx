@@ -106,21 +106,6 @@ function buildInitialFormatConfigs(
   return result;
 }
 
-// ── Helper: parse "April 2026" → { year, month } ─────────────────────────────
-function parseLaunchMonth(label: string): { year: number; month: number } | null {
-  if (!label) return null;
-  const months: Record<string, number> = {
-    January: 1, February: 2, March: 3, April: 4,
-    May: 5, June: 6, July: 7, August: 8,
-    September: 9, October: 10, November: 11, December: 12,
-  };
-  const [monthName, yearStr] = label.split(" ");
-  const month = months[monthName];
-  const year = parseInt(yearStr, 10);
-  if (!month || isNaN(year)) return null;
-  return { year, month };
-}
-
 export default function CampaignBuilderForm({
   formats,
   variableRegistry,
