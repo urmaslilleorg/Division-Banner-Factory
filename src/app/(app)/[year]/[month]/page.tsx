@@ -139,13 +139,21 @@ export default async function MonthDetailPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                <Link
-                  href={`/campaigns/${encodeURIComponent(campaign.name.toLowerCase().replace(/\s+/g, "-"))}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-                >
-                  Open
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/dashboard/campaigns/${campaign.id}/edit`}
+                    className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                  >
+                    Edit
+                  </Link>
+                  <Link
+                    href={`/campaigns/${encodeURIComponent(campaign.name.toLowerCase().replace(/\s+/g, "-"))}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                  >
+                    Open
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               </div>
             );
           })}
