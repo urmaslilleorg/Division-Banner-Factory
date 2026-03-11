@@ -1,11 +1,27 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchBanners } from "@/lib/airtable";
 import { fetchAllCampaigns } from "@/lib/airtable-campaigns";
 import BannerGrid from "@/components/banner-grid";
 import CampaignImportBar from "@/components/campaign-import-bar";
 import CopyWorkflowBar from "@/components/copy-workflow-bar";
+
+/** Parse "March 2026" → "/2026/3?preview=true" */
+function launchMonthToUrl(launchMonth: string | null): string {
+  if (!launchMonth) return "/campaigns?preview=true";
+  const months: Record<string, number> = {
+    January: 1, February: 2, March: 3, April: 4,
+    May: 5, June: 6, July: 7, August: 8,
+    September: 9, October: 10, November: 11, December: 12,
+  };
+  const [monthName, yearStr] = launchMonth.split(" ");
+  const month = months[monthName];
+  const year = parseInt(yearStr, 10);
+  if (!month || isNaN(year)) return "/campaigns?preview=true";
+  return `/${year}/${month}?preview=true`;
+}
 
 interface CampaignPageProps {
   params: { campaign: string };
@@ -23,6 +39,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
 
   let campaignId: string | null = null;
   let campaignName = campaignSlug;
+  let launchMonth: string | null = null;
   let lastImport: string | null = null;
   let columnMapping: string | null = null;
   let copySheetUrl: string | null = null;
@@ -43,6 +60,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
     if (found) {
       campaignId = found.id;
       campaignName = found.name;
+      launchMonth = found.launchMonth ?? null;
       lastImport = found.lastImport;
       columnMapping = found.columnMapping;
       copySheetUrl = found.copySheetUrl;
@@ -92,8 +110,19 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
     );
   }
 
+  const backUrl = launchMonthToUrl(launchMonth);
+  const backLabel = launchMonth ?? "Calendar";
+
   return (
     <div className="space-y-6">
+      {/* Back link */}
+      <Link
+        href={backUrl}
+        className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors"
+      >
+        ← Back to {backLabel}
+      </Link>
+
       <div className="space-y-1">
         <h1 className="text-3xl font-light tracking-tight text-gray-900">
           {campaignName}

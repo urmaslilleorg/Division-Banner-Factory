@@ -375,12 +375,16 @@ export default function CampaignBuilderForm({
           }),
         });
 
+        const data = await res.json() as { error?: string; bannersCreated?: number };
         if (!res.ok) {
-          const data = await res.json();
           throw new Error(data.error || "Failed to update campaign");
         }
 
-        setFlash("Campaign updated successfully");
+        const bannersCreated = data.bannersCreated ?? 0;
+        const flashMsg = bannersCreated > 0
+          ? `Campaign updated — ${bannersCreated} new banner record${bannersCreated !== 1 ? "s" : ""} created`
+          : "Campaign updated successfully";
+        setFlash(flashMsg);
 
         const destination = `/campaigns/${campaignId}?preview=true`;
         setTimeout(() => router.push(destination), 1000);
