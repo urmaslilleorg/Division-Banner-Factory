@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Check, X, Loader2, Trash2 } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Check, X, Loader2, Trash2, ChevronRight, ChevronDown } from "lucide-react";
 
 interface FormatRow {
   id: string;
@@ -38,6 +38,52 @@ export default function AdminFormatManager({ initialFormats }: Props) {
     outputFormat: "PNG",
     figmaFrameBase: "",
   });
+  // All sections collapsed by default; set of open channel names
+  const [openChannels, setOpenChannels] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+
+  const toggleChannel = (channel: string) => {
+    setOpenChannels((prev) => {
+      const next = new Set(Array.from(prev));
+      if (next.has(channel)) next.delete(channel);
+      else next.add(channel);
+      return next;
+    });
+  };
+
+  // Group and sort formats
+  const grouped = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? formats.filter(
+          (f) =>
+            f.formatName.toLowerCase().includes(q) ||
+            f.channel.toLowerCase().includes(q) ||
+            f.device.toLowerCase().includes(q)
+        )
+      : formats;
+
+    const map = new Map<string, FormatRow[]>();
+    for (const f of filtered) {
+      const ch = f.channel || "Other";
+      if (!map.has(ch)) map.set(ch, []);
+      map.get(ch)!.push(f);
+    }
+    // Sort formats within each channel alphabetically
+    Array.from(map.values()).forEach((rows) => {
+      rows.sort((a, b) => a.formatName.localeCompare(b.formatName));
+    });
+    // Sort channels alphabetically
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [formats, search]);
+
+  // When search is active, auto-expand channels that have matches
+  const effectiveOpen = useMemo(() => {
+    if (!search.trim()) return openChannels;
+    const expanded = new Set(Array.from(openChannels));
+    for (const [ch] of grouped) expanded.add(ch);
+    return expanded;
+  }, [openChannels, grouped, search]);
 
   const startEdit = (f: FormatRow) => {
     setEditingId(f.id);
@@ -109,21 +155,23 @@ export default function AdminFormatManager({ initialFormats }: Props) {
       });
       if (res.ok) {
         const created = await res.json();
-        setFormats((prev) => [
-          ...prev,
-          {
-            id: created.id,
-            formatName: newValues.formatName || "",
-            channel: newValues.channel || "",
-            device: newValues.device || "",
-            width: Number(newValues.width) || 0,
-            height: Number(newValues.height) || 0,
-            safeArea: newValues.safeArea || "",
-            outputFormat: newValues.outputFormat || "PNG",
-            figmaFrameBase: newValues.figmaFrameBase || "",
-            usedBy: [],
-          },
-        ]);
+        const newRow: FormatRow = {
+          id: created.id,
+          formatName: newValues.formatName || "",
+          channel: newValues.channel || "",
+          device: newValues.device || "",
+          width: Number(newValues.width) || 0,
+          height: Number(newValues.height) || 0,
+          safeArea: newValues.safeArea || "",
+          outputFormat: newValues.outputFormat || "PNG",
+          figmaFrameBase: newValues.figmaFrameBase || "",
+          usedBy: [],
+        };
+        setFormats((prev) => [...prev, newRow]);
+        // Auto-expand the channel the new format belongs to
+        if (newValues.channel) {
+          setOpenChannels((prev) => new Set(Array.from(prev).concat(newValues.channel!)));
+        }
         setAddingNew(false);
         setNewValues({
           formatName: "",
@@ -145,43 +193,245 @@ export default function AdminFormatManager({ initialFormats }: Props) {
   const inputCls =
     "w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400";
 
+  const tableHeader = (
+    <thead>
+      <tr className="border-b border-gray-200 bg-gray-50">
+        {[
+          "Format name",
+          "Channel",
+          "Dimensions",
+          "Device",
+          "Safe area",
+          "Output",
+          "Figma frame base",
+          "Used by",
+          "",
+        ].map((h) => (
+          <th
+            key={h}
+            className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
+          >
+            {h}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
+  const renderRow = (f: FormatRow) => (
+    <tr
+      key={f.id}
+      className="cursor-pointer hover:bg-gray-50 transition-colors"
+      onClick={() => !editingId && startEdit(f)}
+    >
+      {editingId === f.id ? (
+        <>
+          <td className={cellCls}>
+            <input
+              className={inputCls}
+              value={editValues.formatName}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, formatName: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
+          <td className={cellCls}>
+            <input
+              className={inputCls}
+              value={editValues.channel}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, channel: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
+          <td className={cellCls}>
+            <div className="flex gap-1">
+              <input
+                className={inputCls}
+                type="number"
+                value={editValues.width}
+                onChange={(e) =>
+                  setEditValues((p) => ({ ...p, width: Number(e.target.value) }))
+                }
+                onClick={(e) => e.stopPropagation()}
+              />
+              <input
+                className={inputCls}
+                type="number"
+                value={editValues.height}
+                onChange={(e) =>
+                  setEditValues((p) => ({ ...p, height: Number(e.target.value) }))
+                }
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </td>
+          <td className={cellCls}>
+            <input
+              className={inputCls}
+              value={editValues.device}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, device: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
+          <td className={cellCls}>
+            <input
+              className={inputCls}
+              value={editValues.safeArea}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, safeArea: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
+          <td className={cellCls}>
+            <select
+              className={inputCls}
+              value={editValues.outputFormat}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, outputFormat: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option>PNG</option>
+              <option>JPG</option>
+            </select>
+          </td>
+          <td className={cellCls}>
+            <input
+              className={inputCls}
+              value={editValues.figmaFrameBase}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, figmaFrameBase: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
+          <td className={cellCls + " text-xs text-gray-400"}>
+            {f.usedBy.length > 0 ? f.usedBy.join(", ") : "—"}
+          </td>
+          <td className={cellCls} onClick={(e) => e.stopPropagation()}>
+            <div className="flex gap-1">
+              <button
+                onClick={() => saveEdit(f.id)}
+                disabled={savingId === f.id}
+                className="rounded bg-gray-900 px-2 py-1 text-xs text-white hover:bg-gray-700 disabled:opacity-50"
+              >
+                {savingId === f.id ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Check className="h-3 w-3" />
+                )}
+              </button>
+              <button
+                onClick={() => setEditingId(null)}
+                className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </td>
+        </>
+      ) : (
+        <>
+          <td className={cellCls + " font-medium"}>{f.formatName}</td>
+          <td className={cellCls}>{f.channel}</td>
+          <td className={cellCls + " tabular-nums"}>
+            {f.width}×{f.height}
+          </td>
+          <td className={cellCls}>{f.device}</td>
+          <td className={cellCls + " text-gray-400"}>
+            {f.safeArea || "—"}
+          </td>
+          <td className={cellCls}>
+            <span
+              className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                f.outputFormat === "JPG"
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-blue-50 text-blue-700"
+              }`}
+            >
+              {f.outputFormat}
+            </span>
+          </td>
+          <td
+            className={
+              cellCls + " font-mono text-xs text-gray-400 max-w-xs truncate"
+            }
+          >
+            {f.figmaFrameBase || "—"}
+          </td>
+          <td className={cellCls + " text-xs"}>
+            {f.usedBy.length > 0 ? (
+              <span className="text-gray-600">{f.usedBy.join(", ")}</span>
+            ) : (
+              <span className="text-gray-300">—</span>
+            )}
+          </td>
+          <td className={cellCls} onClick={(e) => e.stopPropagation()}>
+            {confirmDeleteId === f.id ? (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => deleteFormat(f.id)}
+                  disabled={deletingId === f.id}
+                  className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deletingId === f.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    "Delete"
+                  )}
+                </button>
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDeleteId(f.id)}
+                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </td>
+        </>
+      )}
+    </tr>
+  );
+
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      {/* Top bar: search + add */}
+      <div className="flex items-center gap-3">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search formats…"
+          className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+        />
         <button
           onClick={() => setAddingNew(true)}
-          className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 transition-colors whitespace-nowrap"
         >
           + Add format
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50">
-              {[
-                "Format name",
-                "Channel",
-                "Dimensions",
-                "Device",
-                "Safe area",
-                "Output",
-                "Figma frame base",
-                "Used by",
-                "",
-              ].map((h) => (
-                <th
-                  key={h}
-                  className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {addingNew && (
+      {/* New format row — shown at the top as a standalone table */}
+      {addingNew && (
+        <div className="overflow-x-auto rounded-lg border border-blue-200 bg-blue-50">
+          <table className="w-full border-collapse text-left">
+            {tableHeader}
+            <tbody>
               <tr className="bg-blue-50">
                 <td className={cellCls}>
                   <input
@@ -191,6 +441,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                       setNewValues((p) => ({ ...p, formatName: e.target.value }))
                     }
                     placeholder="FB_Square"
+                    autoFocus
                   />
                 </td>
                 <td className={cellCls}>
@@ -284,199 +535,56 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                   </div>
                 </td>
               </tr>
-            )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-            {formats.map((f) => (
-              <tr
-                key={f.id}
-                className="cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => !editingId && startEdit(f)}
+      {/* Channel accordion sections */}
+      <div className="space-y-2">
+        {grouped.map(([channel, rows]) => {
+          const isOpen = effectiveOpen.has(channel);
+          return (
+            <div key={channel} className="rounded-lg border border-gray-200 overflow-hidden">
+              {/* Channel header */}
+              <button
+                type="button"
+                onClick={() => toggleChannel(channel)}
+                className="flex w-full items-center gap-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
               >
-                {editingId === f.id ? (
-                  <>
-                    <td className={cellCls}>
-                      <input
-                        className={inputCls}
-                        value={editValues.formatName}
-                        onChange={(e) =>
-                          setEditValues((p) => ({ ...p, formatName: e.target.value }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
-                    <td className={cellCls}>
-                      <input
-                        className={inputCls}
-                        value={editValues.channel}
-                        onChange={(e) =>
-                          setEditValues((p) => ({ ...p, channel: e.target.value }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
-                    <td className={cellCls}>
-                      <div className="flex gap-1">
-                        <input
-                          className={inputCls}
-                          type="number"
-                          value={editValues.width}
-                          onChange={(e) =>
-                            setEditValues((p) => ({ ...p, width: Number(e.target.value) }))
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <input
-                          className={inputCls}
-                          type="number"
-                          value={editValues.height}
-                          onChange={(e) =>
-                            setEditValues((p) => ({ ...p, height: Number(e.target.value) }))
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </div>
-                    </td>
-                    <td className={cellCls}>
-                      <input
-                        className={inputCls}
-                        value={editValues.device}
-                        onChange={(e) =>
-                          setEditValues((p) => ({ ...p, device: e.target.value }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
-                    <td className={cellCls}>
-                      <input
-                        className={inputCls}
-                        value={editValues.safeArea}
-                        onChange={(e) =>
-                          setEditValues((p) => ({ ...p, safeArea: e.target.value }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
-                    <td className={cellCls}>
-                      <select
-                        className={inputCls}
-                        value={editValues.outputFormat}
-                        onChange={(e) =>
-                          setEditValues((p) => ({ ...p, outputFormat: e.target.value }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <option>PNG</option>
-                        <option>JPG</option>
-                      </select>
-                    </td>
-                    <td className={cellCls}>
-                      <input
-                        className={inputCls}
-                        value={editValues.figmaFrameBase}
-                        onChange={(e) =>
-                          setEditValues((p) => ({ ...p, figmaFrameBase: e.target.value }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
-                    <td className={cellCls + " text-xs text-gray-400"}>
-                      {f.usedBy.length > 0 ? f.usedBy.join(", ") : "—"}
-                    </td>
-                    <td className={cellCls} onClick={(e) => e.stopPropagation()}>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => saveEdit(f.id)}
-                          disabled={savingId === f.id}
-                          className="rounded bg-gray-900 px-2 py-1 text-xs text-white hover:bg-gray-700 disabled:opacity-50"
-                        >
-                          {savingId === f.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Check className="h-3 w-3" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </td>
-                  </>
+                {isOpen ? (
+                  <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
                 ) : (
-                  <>
-                    <td className={cellCls + " font-medium"}>{f.formatName}</td>
-                    <td className={cellCls}>{f.channel}</td>
-                    <td className={cellCls + " tabular-nums"}>
-                      {f.width}×{f.height}
-                    </td>
-                    <td className={cellCls}>{f.device}</td>
-                    <td className={cellCls + " text-gray-400"}>
-                      {f.safeArea || "—"}
-                    </td>
-                    <td className={cellCls}>
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                          f.outputFormat === "JPG"
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                      >
-                        {f.outputFormat}
-                      </span>
-                    </td>
-                    <td
-                      className={
-                        cellCls + " font-mono text-xs text-gray-400 max-w-xs truncate"
-                      }
-                    >
-                      {f.figmaFrameBase || "—"}
-                    </td>
-                    <td className={cellCls + " text-xs"}>
-                      {f.usedBy.length > 0 ? (
-                        <span className="text-gray-600">{f.usedBy.join(", ")}</span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className={cellCls} onClick={(e) => e.stopPropagation()}>
-                      {confirmDeleteId === f.id ? (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => deleteFormat(f.id)}
-                            disabled={deletingId === f.id}
-                            className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
-                          >
-                            {deletingId === f.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              "Delete"
-                            )}
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDeleteId(f.id)}
-                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  </>
+                  <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
                 )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                <span className="flex-1 text-sm font-semibold text-gray-700">
+                  {channel}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {rows.length} {rows.length === 1 ? "format" : "formats"}
+                </span>
+              </button>
+
+              {/* Formats table — shown when expanded */}
+              {isOpen && (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left">
+                    {tableHeader}
+                    <tbody className="divide-y divide-gray-100">
+                      {rows.map((f) => renderRow(f))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      {/* Summary */}
+      <p className="text-xs text-gray-400 text-right">
+        {formats.length} formats across {grouped.length} channels
+      </p>
     </div>
   );
 }
