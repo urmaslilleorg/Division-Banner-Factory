@@ -8,8 +8,13 @@ const BANNERS_TABLE = "tblE3Np8VIaKJsqoW";
 
 /**
  * GET /api/banners?parentId=recXXX
- * Returns all Slide records whose Parent_Banner contains the given record ID.
- * Used by the BannerDetailModal Slides tab.
+ *   Returns all Slide records whose Parent_Banner contains the given record ID.
+ *   Used by the BannerDetailModal Slides tab.
+ *
+ * GET /api/banners?campaignId=recXXX[&approvalStatus=Approved]
+ *   Returns all banners linked to the given campaign record ID.
+ *   Optionally filter by Approval_Status.
+ *   Used by the DownloadZipButton.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -20,43 +25,64 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const parentId = searchParams.get("parentId");
+    const campaignId = searchParams.get("campaignId");
+    const approvalStatus = searchParams.get("approvalStatus");
 
-    if (!parentId) {
-      return NextResponse.json({ error: "parentId is required" }, { status: 400 });
-    }
+    let formula: string;
 
-    // Filter by Banner_Type=Slide AND Parent_Banner contains the parentId
-    const formula = `AND({Banner_Type}="Slide",FIND("${parentId}",ARRAYJOIN({Parent_Banner})))`;
-
-    const params = new URLSearchParams();
-    params.set("filterByFormula", formula);
-    params.set("sort[0][field]", "Slide_Index");
-    params.set("sort[0][direction]", "asc");
-
-    const res = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-        },
-        cache: "no-store",
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.text();
+    if (parentId) {
+      // Carousel slides lookup
+      formula = `AND({Banner_Type}="Slide",FIND("${parentId}",ARRAYJOIN({Parent_Banner})))`;
+    } else if (campaignId) {
+      // Campaign banners lookup — match by Campaign Link record ID
+      const base = `FIND("${campaignId}",ARRAYJOIN({Campaign Link}))`;
+      formula = approvalStatus
+        ? `AND(${base},{Approval_Status}="${approvalStatus}")`
+        : base;
+    } else {
       return NextResponse.json(
-        { error: `Airtable error: ${err}` },
-        { status: res.status }
+        { error: "parentId or campaignId is required" },
+        { status: 400 }
       );
     }
 
-    const data = (await res.json()) as {
-      records: { id: string; fields: Record<string, unknown> }[];
-    };
+    // Paginate to get all matching records
+    const allRecords: { id: string; fields: Record<string, unknown> }[] = [];
+    let offset: string | undefined;
+    do {
+      const params = new URLSearchParams();
+      params.set("filterByFormula", formula);
+      if (parentId) {
+        params.set("sort[0][field]", "Slide_Index");
+        params.set("sort[0][direction]", "asc");
+      }
+      if (offset) params.set("offset", offset);
 
-    const banners = data.records.map(parseBannerRecord);
+      const res = await fetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${params.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+          cache: "no-store",
+        }
+      );
 
+      if (!res.ok) {
+        const err = await res.text();
+        return NextResponse.json(
+          { error: `Airtable error: ${err}` },
+          { status: res.status }
+        );
+      }
+
+      const data = (await res.json()) as {
+        records: { id: string; fields: Record<string, unknown> }[];
+        offset?: string;
+      };
+      allRecords.push(...data.records);
+      offset = data.offset;
+    } while (offset);
+
+    const banners = allRecords.map(parseBannerRecord);
     return NextResponse.json({ banners });
   } catch (error) {
     console.error("GET /api/banners failed:", error);

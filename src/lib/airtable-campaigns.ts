@@ -75,6 +75,7 @@ export interface AirtableFormat {
 export interface BannerSummary {
   id: string;
   campaignName: string;
+  campaignId: string | null; // Airtable record ID from "Campaign Link" field
   approvalStatus: string | null;
   status: string;
 }
@@ -151,6 +152,7 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
   do {
     const params = new URLSearchParams({ pageSize: "100" });
     params.append("fields[]", "Campaign_Name");
+    params.append("fields[]", "Campaign Link");
     params.append("fields[]", "Approval_Status");
     params.append("fields[]", "Status");
     if (offset) params.set("offset", offset);
@@ -160,12 +162,16 @@ export async function fetchBannerSummaries(): Promise<BannerSummary[]> {
     records.push(...res.records);
     offset = res.offset;
   } while (offset);
-  return records.map((r) => ({
-    id: r.id,
-    campaignName: (r.fields["Campaign_Name"] as string) || "",
-    approvalStatus: (r.fields["Approval_Status"] as string) || null,
-    status: (r.fields["Status"] as string) || "Draft",
-  }));
+  return records.map((r) => {
+    const campaignLinkArr = r.fields["Campaign Link"] as string[] | undefined;
+    return {
+      id: r.id,
+      campaignName: (r.fields["Campaign_Name"] as string) || "",
+      campaignId: (campaignLinkArr && campaignLinkArr[0]) || null,
+      approvalStatus: (r.fields["Approval_Status"] as string) || null,
+      status: (r.fields["Status"] as string) || "Draft",
+    };
+  });
 }
 
 /**

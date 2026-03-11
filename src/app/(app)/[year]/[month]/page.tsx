@@ -4,6 +4,7 @@ import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaign
 import Link from "next/link";
 import { ChevronLeft, Plus, ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { DownloadZipButton } from "@/components/download-zip-button";
 
 interface PageProps {
   params: { year: string; month: string };
@@ -46,13 +47,24 @@ export default async function MonthDetailPage({ params }: PageProps) {
     (c) => c.launchMonth === launchMonthLabel
   );
 
-  // Build banner lookup by campaign name
-  const bannersByCampaign = new Map<string, typeof bannerSummaries>();
+  // Build banner lookup by campaign record ID (reliable) with name fallback
+  const bannersByCampaignId = new Map<string, typeof bannerSummaries>();
+  const bannersByCampaignName = new Map<string, typeof bannerSummaries>();
   for (const b of bannerSummaries) {
-    if (!bannersByCampaign.has(b.campaignName)) {
-      bannersByCampaign.set(b.campaignName, []);
+    // Index by campaign record ID
+    if (b.campaignId) {
+      if (!bannersByCampaignId.has(b.campaignId)) {
+        bannersByCampaignId.set(b.campaignId, []);
+      }
+      bannersByCampaignId.get(b.campaignId)!.push(b);
     }
-    bannersByCampaign.get(b.campaignName)!.push(b);
+    // Also index by campaign name as fallback
+    if (b.campaignName) {
+      if (!bannersByCampaignName.has(b.campaignName)) {
+        bannersByCampaignName.set(b.campaignName, []);
+      }
+      bannersByCampaignName.get(b.campaignName)!.push(b);
+    }
   }
 
   return (
@@ -97,7 +109,11 @@ export default async function MonthDetailPage({ params }: PageProps) {
       ) : (
         <div className="space-y-4">
           {monthCampaigns.map((campaign) => {
-            const banners = bannersByCampaign.get(campaign.name) || [];
+            // Prefer ID-based lookup (reliable); fall back to name-based lookup
+            const banners =
+              bannersByCampaignId.get(campaign.id) ||
+              bannersByCampaignName.get(campaign.name) ||
+              [];
             const total = banners.length;
             const approved = banners.filter((b) => b.approvalStatus === "Approved").length;
             const revision = banners.filter((b) => b.approvalStatus === "Revision_Requested").length;
@@ -105,6 +121,7 @@ export default async function MonthDetailPage({ params }: PageProps) {
               (b) => !b.approvalStatus || b.approvalStatus === "Pending"
             ).length;
             const progress = total > 0 ? Math.round((approved / total) * 100) : 0;
+            const allApproved = total > 0 && approved === total;
 
             return (
               <div
@@ -146,6 +163,12 @@ export default async function MonthDetailPage({ params }: PageProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {allApproved && (
+                    <DownloadZipButton
+                      campaignId={campaign.id}
+                      campaignName={campaign.name}
+                    />
+                  )}
                   <Link
                     href={`/dashboard/campaigns/${campaign.id}/edit?preview=true`}
                     className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
