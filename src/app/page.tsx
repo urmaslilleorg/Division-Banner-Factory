@@ -1,7 +1,22 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import LandingHeader from "@/components/landing-header";
 import { SignInButton } from "@clerk/nextjs";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const headersList = headers();
+  const clientId = headersList.get("x-client-id");
+  const isClientSubdomain = !!clientId && clientId !== "admin";
+
+  // On client subdomains, signed-in users should go to their campaign calendar
+  if (isClientSubdomain) {
+    const { userId } = await auth();
+    if (userId) {
+      redirect("/campaigns?preview=true");
+    }
+  }
+
   return (
     <>
       <style>{`
