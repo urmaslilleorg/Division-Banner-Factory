@@ -397,8 +397,7 @@ export default function CampaignBuilderForm({
 
         setFlash("Campaign updated successfully");
 
-        const parsed = parseLaunchMonth(launchMonth);
-        const destination = parsed ? `/${parsed.year}/${parsed.month}` : "/campaigns";
+        const destination = `/campaigns/${campaignId}?preview=true`;
         setTimeout(() => router.push(destination), 1000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
@@ -472,8 +471,8 @@ export default function CampaignBuilderForm({
 
         const destination =
           data.year && data.month
-            ? `/${data.year}/${data.month}`
-            : "/campaigns";
+            ? `/${data.year}/${data.month}?preview=true`
+            : "/campaigns?preview=true";
 
         setTimeout(() => router.push(destination), 1200);
       } catch (err) {
