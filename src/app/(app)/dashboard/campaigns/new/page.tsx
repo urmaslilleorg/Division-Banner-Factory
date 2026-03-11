@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { fetchFormats } from "@/lib/airtable-campaigns";
+import { fetchFormats, fetchFormatsByIds } from "@/lib/airtable-campaigns";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignBuilderForm from "@/components/campaign-builder-form";
@@ -35,8 +35,7 @@ export default async function NewCampaignPage() {
 
   const clientSubdomain = clientConfig.subdomain;
 
-  const [formats, variableRegistry, clientRecord] = await Promise.all([
-    fetchFormats(),
+  const [variableRegistry, clientRecord] = await Promise.all([
     fetchVariableRegistry(),
     clientSubdomain && clientSubdomain !== "admin"
       ? fetchClientBySubdomain(clientSubdomain)
@@ -44,6 +43,12 @@ export default async function NewCampaignPage() {
   ]);
 
   const clientVariables = clientRecord?.clientVariables ?? [];
+
+  // Fetch only client-linked formats when on a client subdomain
+  const formatIds = clientRecord?.formatIds ?? [];
+  const formats = formatIds.length > 0
+    ? await fetchFormatsByIds(formatIds)
+    : await fetchFormats();
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">

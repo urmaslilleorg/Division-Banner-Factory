@@ -198,6 +198,47 @@ export async function fetchFormats(): Promise<AirtableFormat[]> {
 }
 
 /**
+ * Fetch a subset of formats by their record IDs.
+ * Used to show only client-linked formats in the Campaign Builder.
+ * Falls back to fetchFormats() when ids is empty.
+ */
+export async function fetchFormatsByIds(ids: string[]): Promise<AirtableFormat[]> {
+  if (!ids || ids.length === 0) return fetchFormats();
+
+  // Airtable filterByFormula with OR(RECORD_ID()="id1", ...)
+  const orClauses = ids.map((id) => `RECORD_ID()="${id}"`).join(",");
+  const formula = ids.length === 1 ? `RECORD_ID()="${ids[0]}"` : `OR(${orClauses})`;
+  const params = new URLSearchParams({
+    filterByFormula: formula,
+    pageSize: "100",
+  });
+
+  const records: AirtableRecord[] = [];
+  let offset: string | undefined;
+  do {
+    if (offset) params.set("offset", offset);
+    const res = await airtableRequest<{ records: AirtableRecord[]; offset?: string }>(
+      `${FORMATS_TABLE}?${params}`
+    );
+    records.push(...res.records);
+    offset = res.offset;
+  } while (offset);
+
+  return records.map((r) => ({
+    id: r.id,
+    formatName: (r.fields["Format_Name"] as string) || "",
+    widthPx: (r.fields["Width"] as number) || 0,
+    heightPx: (r.fields["Height"] as number) || 0,
+    channel: (r.fields["Channel"] as string) || "Web",
+    device: (r.fields["Device"] as string) || "Desktop",
+    figmaFrameBase: (r.fields["Figma_Frame_Base"] as string) || "",
+    safeArea: (r.fields["Safe_Area"] as string) || "",
+    outputFormat: (r.fields["Output_Format"] as string) || "PNG",
+    active: (r.fields["Active"] as boolean) || false,
+  }));
+}
+
+/**
  * Create a Campaign record and return its ID.
  */
 export async function createCampaignRecord(fields: Record<string, unknown>): Promise<string> {
