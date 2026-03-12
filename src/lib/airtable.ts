@@ -55,13 +55,14 @@ async function airtableRequest<T>(
 export async function fetchBanners(
   baseId: string,
   campaignFilter: string,
-  languageFilter?: string[]
+  languageFilter?: string[],
+  includeSlides = false
 ): Promise<Banner[]> {
   const tableId = "tblE3Np8VIaKJsqoW";
 
   // Build filter formula
-  // Always exclude Slide records — they are child records of Carousel banners
-  const conditions: string[] = [
+  // By default exclude Slide records — they are child records of Carousel banners
+  const conditions: string[] = includeSlides ? [] : [
     `{Banner_Type}!="Slide"`,
   ];
 
@@ -80,10 +81,12 @@ export async function fetchBanners(
     }
   }
 
-  // Always at least 1 condition (Banner_Type!=Slide), so always wrap in AND
-  const formula = conditions.length === 1
-    ? conditions[0]
-    : `AND(${conditions.join(",")})`;
+  // Build formula: 0 conditions = no filter, 1 = bare condition, 2+ = AND()
+  const formula = conditions.length === 0
+    ? ""
+    : conditions.length === 1
+      ? conditions[0]
+      : `AND(${conditions.join(",")})`;
 
   const allRecords: AirtableRecord[] = [];
   let offset: string | undefined;

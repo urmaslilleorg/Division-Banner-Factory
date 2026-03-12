@@ -8,12 +8,15 @@ interface DesignerControlsProps {
   bannerId: string;
   onUploadSuccess?: () => void;
   onDelete?: (bannerId: string) => void;
+  /** Hide the Upload button (e.g. for Carousel cards — upload per-slide in modal) */
+  hideUpload?: boolean;
 }
 
 export default function DesignerControls({
   bannerId,
   onUploadSuccess,
   onDelete,
+  hideUpload = false,
 }: DesignerControlsProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
@@ -80,35 +83,37 @@ export default function DesignerControls({
 
   return (
     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 mt-2">
-      {/* Upload new version */}
-      <div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg"
-          onChange={handleFileUpload}
-          className="hidden"
-          id={`upload-${bannerId}`}
-        />
-        <label htmlFor={`upload-${bannerId}`}>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={isUploading}
-            className="text-xs cursor-pointer"
-            asChild
-          >
-            <span>
-              {isUploading ? (
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              ) : (
-                <Upload className="mr-1 h-3 w-3" />
-              )}
-              Upload new version
-            </span>
-          </Button>
-        </label>
-      </div>
+      {/* Upload new version — hidden for Carousel cards */}
+      {!hideUpload && (
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            onChange={handleFileUpload}
+            className="hidden"
+            id={`upload-${bannerId}`}
+          />
+          <label htmlFor={`upload-${bannerId}`}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isUploading}
+              className="text-xs cursor-pointer"
+              asChild
+            >
+              <span>
+                {isUploading ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Upload className="mr-1 h-3 w-3" />
+                )}
+                Upload new version
+              </span>
+            </Button>
+          </label>
+        </div>
+      )}
 
       {/* Delete button */}
       {!showDeleteConfirm ? (

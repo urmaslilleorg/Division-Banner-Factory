@@ -84,14 +84,16 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
       fetchBanners(
         clientConfig.airtable.baseId,
         campaignName,
-        clientConfig.languages
+        clientConfig.languages,
+        true // include Slide records for carousel grouping
       ).then(async (result) => {
         // If no results with formatted name, try the raw slug
         if (result.length === 0 && campaignName !== campaignSlug) {
           return fetchBanners(
             clientConfig.airtable.baseId,
             campaignSlug,
-            clientConfig.languages
+            clientConfig.languages,
+            true
           );
         }
         return result;

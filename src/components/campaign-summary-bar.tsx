@@ -23,14 +23,19 @@ export default function CampaignSummaryBar({
   const [isDownloading, setIsDownloading] = useState(false);
 
   const stats = useMemo(() => {
-    const total = banners.length;
-    const approved = banners.filter(
+    // Deliverables = Standard banners + Carousel slides (not carousel parents)
+    // Carousel parent is a container — slides are the actual deliverables
+    const deliverables = banners.filter(
+      (b) => b.bannerType === "Standard" || b.bannerType === "Slide"
+    );
+    const total = deliverables.length;
+    const approved = deliverables.filter(
       (b) => b.approvalStatus === "Approved"
     ).length;
-    const pending = banners.filter(
+    const pending = deliverables.filter(
       (b) => !b.approvalStatus || b.approvalStatus === "Pending"
     ).length;
-    const revision = banners.filter(
+    const revision = deliverables.filter(
       (b) => b.approvalStatus === "Revision_Requested"
     ).length;
     const progress = total > 0 ? Math.round((approved / total) * 100) : 0;
