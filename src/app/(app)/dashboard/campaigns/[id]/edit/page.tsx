@@ -93,6 +93,8 @@ export default async function CampaignEditPage({ params }: PageProps) {
     launchMonth: campaign.launchMonth || "",
     startDate: campaign.startDate || "",
     endDate: campaign.endDate || "",
+    columnMapping: campaign.columnMapping ?? null,
+    lastImport: campaign.lastImport ?? null,
     fieldConfig: parsedFieldConfig,
   };
 

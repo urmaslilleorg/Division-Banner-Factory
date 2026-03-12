@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AirtableFormat } from "@/lib/airtable-campaigns";
 import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ClientVariable } from "@/lib/types";
+import ImportSection, { type ImportSectionState } from "@/components/import-section";
 
 const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
@@ -61,6 +62,10 @@ export interface CampaignInitialData {
   launchMonth: string;
   startDate?: string;
   endDate?: string;
+  /** JSON string of saved Column_Mapping from Airtable */
+  columnMapping?: string | null;
+  /** ISO timestamp of last import */
+  lastImport?: string | null;
   // Parsed Field_Config object from Airtable
   fieldConfig?: {
     languages?: string[];
@@ -206,6 +211,18 @@ export default function CampaignBuilderForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+
+  // ── Import state ──────────────────────────────────────────────────────────
+  const [importState, setImportState] = useState<ImportSectionState>({
+    file: null,
+    columnMapping: {},
+    syncKeyColumn: null,
+    preview: null,
+    readyToImport: false,
+  });
+  const handleImportChange = useCallback((state: ImportSectionState) => {
+    setImportState(state);
+  }, []);
 
   // Group formats by channel
   const formatsByChannel = formats.reduce<Record<string, AirtableFormat[]>>(
@@ -437,9 +454,31 @@ export default function CampaignBuilderForm({
         }
 
         const bannersCreated = data.bannersCreated ?? 0;
+        let importSummary = "";
+
+        // Run import if ready
+        if (importState.readyToImport && importState.file && importState.syncKeyColumn) {
+          try {
+            const fd = new FormData();
+            fd.append("file", importState.file);
+            fd.append("columnMapping", JSON.stringify(importState.columnMapping));
+            fd.append("syncKey", importState.syncKeyColumn);
+            const importRes = await fetch(`/api/campaigns/${campaignId}/import/execute`, {
+              method: "POST",
+              body: fd,
+            });
+            if (importRes.ok) {
+              const importData = await importRes.json() as { created?: number; updated?: number; archived?: number };
+              importSummary = ` · Import: ${importData.updated ?? 0} updated, ${importData.created ?? 0} created`;
+            }
+          } catch {
+            // non-fatal: import failed but campaign was saved
+          }
+        }
+
         const flashMsg = bannersCreated > 0
-          ? `Campaign updated — ${bannersCreated} new banner record${bannersCreated !== 1 ? "s" : ""} created`
-          : "Campaign updated successfully";
+          ? `Campaign updated — ${bannersCreated} new banner record${bannersCreated !== 1 ? "s" : ""} created${importSummary}`
+          : `Campaign updated successfully${importSummary}`;
         setFlash(flashMsg);
 
         const destination = `/campaigns/${campaignId}?preview=true`;
@@ -523,7 +562,29 @@ export default function CampaignBuilderForm({
         const data = (await res.json()) as CreateResponse;
 
         const bannerCount = data.bannerCount;
-        setFlash(`Campaign created — ${bannerCount} banner record${bannerCount !== 1 ? "s" : ""} generated`);
+        let importSummary = "";
+
+        // Run import if ready (requires a campaign ID from the create response)
+        if (importState.readyToImport && importState.file && importState.syncKeyColumn && data.campaignId) {
+          try {
+            const fd = new FormData();
+            fd.append("file", importState.file);
+            fd.append("columnMapping", JSON.stringify(importState.columnMapping));
+            fd.append("syncKey", importState.syncKeyColumn);
+            const importRes = await fetch(`/api/campaigns/${data.campaignId}/import/execute`, {
+              method: "POST",
+              body: fd,
+            });
+            if (importRes.ok) {
+              const importData = await importRes.json() as { created?: number; updated?: number; archived?: number };
+              importSummary = ` · Import: ${importData.updated ?? 0} updated, ${importData.created ?? 0} created`;
+            }
+          } catch {
+            // non-fatal
+          }
+        }
+
+        setFlash(`Campaign created — ${bannerCount} banner record${bannerCount !== 1 ? "s" : ""} generated${importSummary}`);
 
         const destination =
           data.year && data.month
@@ -936,6 +997,13 @@ export default function CampaignBuilderForm({
           </div>
         </div>
       )}
+
+      {/* Import Section */}
+      <ImportSection
+        savedMapping={initialData?.columnMapping ?? null}
+        lastImport={initialData?.lastImport ?? null}
+        onChange={handleImportChange}
+      />
 
       {/* Flash confirmation */}
       {flash && (
