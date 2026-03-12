@@ -1,0 +1,96 @@
+"use client";
+
+import { useState } from "react";
+import { Banner } from "@/lib/types";
+import { FieldConfig } from "@/lib/airtable-campaigns";
+import type { ClientVariable } from "@/lib/types";
+import CopyEditorTable from "@/components/copy-editor-table";
+import BannerGrid from "@/components/banner-grid";
+
+type Tab = "copy" | "preview";
+
+interface CampaignDetailTabsProps {
+  campaignId: string;
+  banners: Banner[];
+  fieldConfig: FieldConfig;
+  clientVariables: ClientVariable[];
+  userRole: string;
+  defaultTab?: Tab;
+}
+
+export default function CampaignDetailTabs({
+  campaignId,
+  banners,
+  fieldConfig,
+  clientVariables,
+  userRole,
+  defaultTab = "copy",
+}: CampaignDetailTabsProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
+
+  return (
+    <div>
+      {/* Tab bar */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+          <button
+            onClick={() => setActiveTab("copy")}
+            className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "copy"
+                ? "border-gray-900 text-gray-900"
+                : "border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300"
+            }`}
+          >
+            Copy &amp; Assets
+          </button>
+          <button
+            onClick={() => setActiveTab("preview")}
+            className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "preview"
+                ? "border-gray-900 text-gray-900"
+                : "border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300"
+            }`}
+          >
+            Preview
+          </button>
+        </nav>
+      </div>
+
+      {/* Copy & Assets tab */}
+      {activeTab === "copy" && (
+        <div>
+          {fieldConfig.variables.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 py-12 text-center">
+              <p className="text-sm text-gray-400">
+                No copy variables configured for this campaign.
+              </p>
+              <p className="mt-1 text-xs text-gray-300">
+                Edit the campaign to add variables in the Campaign Builder.
+              </p>
+            </div>
+          ) : banners.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 py-12 text-center">
+              <p className="text-sm text-gray-400">No banners found for this campaign.</p>
+            </div>
+          ) : (
+            <CopyEditorTable
+              campaignId={campaignId}
+              banners={banners}
+              fieldConfig={fieldConfig}
+              userRole={userRole}
+              clientVariables={clientVariables}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Preview tab */}
+      {activeTab === "preview" && (
+        <BannerGrid
+          banners={banners}
+          userRole={userRole}
+        />
+      )}
+    </div>
+  );
+}

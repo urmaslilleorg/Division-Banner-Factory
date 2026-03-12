@@ -53,10 +53,28 @@ export interface Campaign {
   copyProgress: number;
 }
 
+export interface SlideVariableConfig {
+  index: number;
+  variables: string[];
+  copy?: Record<string, string>;
+}
+
+export interface FormatFieldConfig {
+  formatName?: string;
+  variables?: string[];
+  mode?: "default" | "specific" | "carousel";
+  copy?: Record<string, string>;
+  slideCount?: number;
+  slides?: SlideVariableConfig[];
+}
+
 export interface FieldConfig {
   variables: string[];
   languages: string[];
   formats: string[];
+  /** Per-format variable config, keyed by formatName */
+  formatConfigs?: Record<string, FormatFieldConfig>;
+  defaultCopy?: Record<string, string>;
 }
 
 export interface AirtableFormat {

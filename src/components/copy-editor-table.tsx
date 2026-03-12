@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { Banner } from "@/lib/types";
 import type { ClientVariable } from "@/lib/types";
-import { FieldConfig } from "@/lib/airtable-campaigns";
+import { FieldConfig, FormatFieldConfig, SlideVariableConfig } from "@/lib/airtable-campaigns";
 
 interface CopyEditorTableProps {
   campaignId: string;
@@ -125,9 +125,47 @@ export default function CopyEditorTable({
     }
   }
 
+  /**
+   * Get the active variables for a specific slide of a carousel banner.
+   * Falls back to format-level variables if no per-slide config exists.
+   */
+  const getSlideVariables = (banner: Banner, slideIndex: number): string[] => {
+    if (!fieldConfig.formatConfigs) return variables;
+    // Find the format config for this banner's format
+    const formatName = banner.format || `${banner.width}x${banner.height}`;
+    const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[formatName];
+    if (!formatCfg?.slides) return formatCfg?.variables ?? variables;
+    // slideIndex is 1-based from banner.slideIndex
+    const slideCfg: SlideVariableConfig | undefined = formatCfg.slides.find((s) => s.index === slideIndex);
+    if (!slideCfg) return formatCfg.variables ?? variables;
+    return slideCfg.variables;
+  };
+
+  /**
+   * Build columns for a specific slide based on its variable config.
+   */
+  const getSlideColumns = (slideVariables: string[]) => {
+    const cols: { variable: string; language: string; fieldKey: keyof Banner; label: string }[] = [];
+    for (const variable of slideVariables) {
+      for (const lang of languages) {
+        const fieldKey = VARIABLE_TO_FIELD[variable]?.[lang];
+        if (!fieldKey) continue;
+        const customLabel = resolveLabel(variable);
+        cols.push({
+          variable,
+          language: lang,
+          fieldKey,
+          label: languages.length > 1 ? `${customLabel} (${lang})` : customLabel,
+        });
+      }
+    }
+    return cols;
+  };
+
   const handleBlur = useCallback(
-    async (bannerId: string, fieldKey: keyof Banner, airtableField: string, value: string) => {
-      const banner = banners.find((b) => b.id === bannerId);
+    async (bannerId: string, fieldKey: keyof Banner, airtableField: string, value: string, currentBanners?: Banner[]) => {
+      const bannerList = currentBanners ?? banners;
+      const banner = bannerList.find((b) => b.id === bannerId);
       if (!banner) return;
       const originalValue = (banner[fieldKey] as string) || "";
       if (value === originalValue) return;
@@ -162,6 +200,50 @@ export default function CopyEditorTable({
       }
     },
     [banners]
+  );
+
+  // Slide cell blur handler — updates slidesByParent state
+  const handleSlideBlur = useCallback(
+    async (parentId: string, slideId: string, fieldKey: keyof Banner, airtableField: string, value: string) => {
+      const slides = slidesByParent[parentId] ?? [];
+      const slide = slides.find((s) => s.id === slideId);
+      if (!slide) return;
+      const originalValue = (slide[fieldKey] as string) || "";
+      if (value === originalValue) return;
+
+      // Optimistic update
+      setSlidesByParent((prev) => ({
+        ...prev,
+        [parentId]: (prev[parentId] ?? []).map((s) =>
+          s.id === slideId ? { ...s, [fieldKey]: value } : s
+        ),
+      }));
+
+      setCellState({ bannerId: slideId, field: String(fieldKey), state: "saving" });
+
+      try {
+        const res = await fetch(`/api/banners/${slideId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [airtableField]: value }),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        setCellState({ bannerId: slideId, field: String(fieldKey), state: "success" });
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCellState(null), 1500);
+      } catch {
+        setSlidesByParent((prev) => ({
+          ...prev,
+          [parentId]: (prev[parentId] ?? []).map((s) =>
+            s.id === slideId ? { ...s, [fieldKey]: originalValue } : s
+          ),
+        }));
+        setCellState({ bannerId: slideId, field: String(fieldKey), state: "error" });
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCellState(null), 2000);
+      }
+    },
+    [slidesByParent]
   );
 
   const toggleSelect = (id: string) => {
@@ -287,7 +369,7 @@ export default function CopyEditorTable({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="min-w-full divide-y divide-gray-100 text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -463,45 +545,108 @@ export default function CopyEditorTable({
                   </td>
                 </tr>
                 {/* Slide child rows — shown when carousel is expanded */}
-                {isCarousel && isExpanded && slides.map((slide) => (
-                  <tr key={slide.id} className="bg-purple-50/30 border-l-2 border-purple-200">
-                    {!isReadOnly && <td className="px-3 py-2" />}
-                    <td className="px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8">
-                      ↳ Slide {slide.slideIndex} · {slide.figmaFrame.split("_").pop()}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700">
-                        {slide.language}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
-                        {slide.status}
-                      </span>
-                    </td>
-                    {columns.map((col) => {
-                      const value = (slide[col.fieldKey] as string) || "";
-                      return (
-                        <td key={`${slide.id}-${col.variable}-${col.language}`} className="px-2 py-1.5">
-                          <input
-                            type="text"
-                            defaultValue={value}
-                            onBlur={(e) =>
-                              handleBlur(
-                                slide.id,
-                                col.fieldKey,
-                                FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-2" />
-                  </tr>
-                ))}
+                {isCarousel && isExpanded && slides.map((slide) => {
+                  const slideIdx = (slide.slideIndex ?? 1);
+                  const slideVars = getSlideVariables(banner, slideIdx);
+                  const slideCols = getSlideColumns(slideVars);
+                  const isImageOnly = slideVars.length === 0;
+
+                  return (
+                    <tr key={slide.id} className="bg-purple-50/30 border-l-2 border-purple-200">
+                      {!isReadOnly && <td className="px-3 py-2" />}
+                      <td className="px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8">
+                        <div className="flex items-center gap-1.5">
+                          <span>↳ Slide {slideIdx}</span>
+                          {isImageOnly && (
+                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-500">
+                              image only
+                            </span>
+                          )}
+                        </div>
+                        {slide.figmaFrame && (
+                          <span className="block text-[9px] text-purple-400 mt-0.5">
+                            {slide.figmaFrame.split("_").pop()}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700">
+                          {slide.language}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                          {slide.status}
+                        </span>
+                      </td>
+                      {/* Render columns aligned to parent header, filling inactive slots with dim cells */}
+                      {columns.map((col) => {
+                        const isActive = slideCols.some(
+                          (sc) => sc.variable === col.variable && sc.language === col.language
+                        );
+                        if (!isActive) {
+                          return (
+                            <td
+                              key={`${slide.id}-${col.variable}-${col.language}-empty`}
+                              className="px-2 py-1.5 bg-gray-50/60"
+                            >
+                              <span className="block text-[10px] text-gray-300 italic">—</span>
+                            </td>
+                          );
+                        }
+                        const value = (slide[col.fieldKey] as string) || "";
+                        const isSaving =
+                          cellState?.bannerId === slide.id &&
+                          cellState.field === String(col.fieldKey) &&
+                          cellState.state === "saving";
+                        const isSuccess =
+                          cellState?.bannerId === slide.id &&
+                          cellState.field === String(col.fieldKey) &&
+                          cellState.state === "success";
+                        const isError =
+                          cellState?.bannerId === slide.id &&
+                          cellState.field === String(col.fieldKey) &&
+                          cellState.state === "error";
+
+                        return (
+                          <td
+                            key={`${slide.id}-${col.variable}-${col.language}`}
+                            className={`px-2 py-1.5 transition-colors ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
+                          >
+                            {isReadOnly ? (
+                              <span className="block min-h-[28px] text-sm text-gray-700">{value}</span>
+                            ) : (
+                              <input
+                                type="text"
+                                defaultValue={value}
+                                disabled={isSaving}
+                                onBlur={(e) =>
+                                  handleSlideBlur(
+                                    banner.id,
+                                    slide.id,
+                                    col.fieldKey,
+                                    FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
+                                    e.target.value
+                                  )
+                                }
+                                className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400 ${
+                                  isSaving
+                                    ? "border-gray-200 bg-gray-50 text-gray-400"
+                                    : isSuccess
+                                    ? "border-emerald-300 bg-emerald-50"
+                                    : isError
+                                    ? "border-red-300 bg-red-50"
+                                    : "border-gray-200 bg-white"
+                                }`}
+                              />
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-2" />
+                    </tr>
+                  );
+                })}
                 </>
               );
             })}

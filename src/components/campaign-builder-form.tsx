@@ -28,13 +28,22 @@ type FormatMode = "default" | "specific" | "carousel";
 // Per-slide copy: Record<varId, value>
 type SlideCopy = Record<string, string>;
 
+// ── New per-slide config (Task 6 schema) ──────────────────────────────────────
+// Each slide has its own variables array + copy object.
+// If variables is empty → image-only slide.
+interface SlideConfig {
+  index: number;        // 1-based
+  variables: string[];  // which variables are active for this slide
+  copy: SlideCopy;      // copy values for active variables
+}
+
 // Per-format config
 interface FormatConfig {
-  variables: string[];
+  variables: string[];   // format-level variable union / default
   mode: FormatMode;
-  copy: Record<string, string>;
+  copy: Record<string, string>;   // used by "specific" mode
   slideCount: number;
-  slides: SlideCopy[];
+  slides: SlideConfig[]; // NEW: per-slide configs
 }
 
 interface CreateResponse {
@@ -63,7 +72,8 @@ export interface CampaignInitialData {
       mode?: FormatMode;
       copy?: Record<string, string>;
       slideCount?: number;
-      slides?: SlideCopy[];
+      // New schema: slides with per-slide variables
+      slides?: Array<SlideConfig | SlideCopy>;
     }>;
     defaultCopy?: Record<string, string>;
   };
@@ -84,6 +94,21 @@ interface CampaignBuilderFormProps {
   initialData?: CampaignInitialData;
 }
 
+// ── Helper: normalise a saved slide to SlideConfig ───────────────────────────
+function normaliseSlide(raw: SlideConfig | SlideCopy, index: number, formatVars: string[]): SlideConfig {
+  // New schema: has "index" and "variables" keys
+  if ("index" in raw && "variables" in raw) {
+    return raw as SlideConfig;
+  }
+  // Old schema: plain SlideCopy — inherit format-level variables
+  const copy = raw as SlideCopy;
+  return {
+    index: index + 1,
+    variables: formatVars,
+    copy,
+  };
+}
+
 // ── Helper: build FormatConfig map from initialData.fieldConfig ───────────────
 function buildInitialFormatConfigs(
   formats: AirtableFormat[],
@@ -94,12 +119,15 @@ function buildInitialFormatConfigs(
   for (const f of formats) {
     const saved = fieldConfig.formatConfigs[f.formatName];
     if (saved) {
+      const vars = saved.variables ?? ["H1", "CTA"];
+      const rawSlides = saved.slides ?? [];
+      const slides: SlideConfig[] = rawSlides.map((s, i) => normaliseSlide(s, i, vars));
       result[f.id] = {
-        variables: saved.variables ?? ["H1", "CTA"],
+        variables: vars,
         mode: saved.mode ?? "default",
         copy: saved.copy ?? {},
-        slideCount: saved.slideCount ?? 3,
-        slides: saved.slides ?? [],
+        slideCount: saved.slideCount ?? (slides.length || 3),
+        slides,
       };
     }
   }
@@ -201,11 +229,13 @@ export default function CampaignBuilderForm({
     };
   };
 
-  // Build an empty slides array of length n for a given variable set
-  const buildEmptySlides = (n: number, variables: string[]): SlideCopy[] =>
-    Array.from({ length: n }, () =>
-      Object.fromEntries(variables.map((v) => [v, ""]))
-    );
+  // Build empty SlideConfig array of length n, inheriting format-level variables
+  const buildEmptySlides = (n: number, variables: string[]): SlideConfig[] =>
+    Array.from({ length: n }, (_, i) => ({
+      index: i + 1,
+      variables: [...variables],
+      copy: Object.fromEntries(variables.map((v) => [v, ""])),
+    }));
 
   const toggleLanguage = (lang: string) => {
     setSelectedLanguages((prev) =>
@@ -234,6 +264,7 @@ export default function CampaignBuilderForm({
     setExpandedFormats((e) => ({ ...e, [id]: !e[id] }));
   };
 
+  // Toggle a format-level variable (affects default set + all slides that inherit it)
   const toggleFormatVariable = (formatId: string, variable: string) => {
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
@@ -246,26 +277,30 @@ export default function CampaignBuilderForm({
       if (adding) copy[variable] = copy[variable] ?? "";
       else delete copy[variable];
 
+      // Update slides: if adding, add to slides that don't have it; if removing, remove from all
       const slides = cfg.slides.map((s) => {
-        const next = { ...s };
-        if (adding) next[variable] = next[variable] ?? "";
-        else delete next[variable];
-        return next;
+        const slideVars = adding
+          ? s.variables.includes(variable) ? s.variables : [...s.variables, variable]
+          : s.variables.filter((v) => v !== variable);
+        const slideCopy = { ...s.copy };
+        if (adding && !slideCopy[variable]) slideCopy[variable] = "";
+        if (!adding) delete slideCopy[variable];
+        return { ...s, variables: slideVars, copy: slideCopy };
       });
 
       return { ...prev, [formatId]: { ...cfg, variables: vars, copy, slides } };
     });
   };
 
-  const setFormatMode = (formatId: string, mode: FormatMode) => {
+  const setFormatMode = (formatId: string, newMode: FormatMode) => {
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
       let slides = cfg.slides;
-      if (mode === "carousel" && slides.length === 0) {
+      if (newMode === "carousel" && slides.length === 0) {
         slides = buildEmptySlides(cfg.slideCount, cfg.variables);
       }
-      if (mode !== "carousel") slides = [];
-      return { ...prev, [formatId]: { ...cfg, mode, slides } };
+      if (newMode !== "carousel") slides = [];
+      return { ...prev, [formatId]: { ...cfg, mode: newMode, slides } };
     });
   };
 
@@ -277,10 +312,14 @@ export default function CampaignBuilderForm({
       if (newCount > slides.length) {
         const toAdd = newCount - slides.length;
         for (let i = 0; i < toAdd; i++) {
-          slides.push(Object.fromEntries(cfg.variables.map((v) => [v, ""])));
+          slides.push({
+            index: slides.length + 1,
+            variables: [...cfg.variables],
+            copy: Object.fromEntries(cfg.variables.map((v) => [v, ""])),
+          });
         }
       } else {
-        slides = slides.slice(0, newCount);
+        slides = slides.slice(0, newCount).map((s, i) => ({ ...s, index: i + 1 }));
       }
       return { ...prev, [formatId]: { ...cfg, slideCount: newCount, slides } };
     });
@@ -293,11 +332,30 @@ export default function CampaignBuilderForm({
     });
   };
 
-  const setSlideCopyField = (formatId: string, slideIndex: number, varId: string, value: string) => {
+  // Toggle a variable for a specific slide
+  const toggleSlideVariable = (formatId: string, slideIdx: number, variable: string) => {
+    setFormatConfigs((prev) => {
+      const cfg = getFormatConfig(formatId);
+      const slides = cfg.slides.map((s, i) => {
+        if (i !== slideIdx) return s;
+        const adding = !s.variables.includes(variable);
+        const slideVars = adding
+          ? [...s.variables, variable]
+          : s.variables.filter((v) => v !== variable);
+        const slideCopy = { ...s.copy };
+        if (adding && !slideCopy[variable]) slideCopy[variable] = "";
+        if (!adding) delete slideCopy[variable];
+        return { ...s, variables: slideVars, copy: slideCopy };
+      });
+      return { ...prev, [formatId]: { ...cfg, slides } };
+    });
+  };
+
+  const setSlideCopyField = (formatId: string, slideIdx: number, varId: string, value: string) => {
     setFormatConfigs((prev) => {
       const cfg = getFormatConfig(formatId);
       const slides = cfg.slides.map((s, i) =>
-        i === slideIndex ? { ...s, [varId]: value } : s
+        i === slideIdx ? { ...s, copy: { ...s.copy, [varId]: value } } : s
       );
       return { ...prev, [formatId]: { ...cfg, slides } };
     });
@@ -330,18 +388,7 @@ export default function CampaignBuilderForm({
         return;
       }
 
-      // Build updated Field_Config
-      const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }> = {};
-      for (const f of selectedFormatData) {
-        const cfg = getFormatConfig(f.id);
-        fieldConfigFormats[f.formatName] = {
-          variables: cfg.variables,
-          mode: cfg.mode,
-          ...(cfg.mode === "carousel" ? { slideCount: cfg.slideCount } : {}),
-        };
-      }
-
-      // Build per-format configs for Field_Config storage
+      // Build per-format configs for Field_Config storage (new schema)
       const savedFormatConfigs: Record<string, object> = {};
       for (const f of selectedFormatData) {
         const cfg = getFormatConfig(f.id);
@@ -350,7 +397,16 @@ export default function CampaignBuilderForm({
           mode: cfg.mode,
           copy: cfg.copy,
           slideCount: cfg.slideCount,
-          slides: cfg.slides,
+          // New schema: slides with per-slide variables
+          slides: cfg.mode === "carousel"
+            ? cfg.slides.map((s) => ({
+                index: s.index,
+                variables: s.variables,
+                copy: Object.fromEntries(
+                  s.variables.map((v) => [v, s.copy[v] ?? ""])
+                ),
+              }))
+            : [],
         };
       }
 
@@ -440,7 +496,18 @@ export default function CampaignBuilderForm({
                 return { ...base, copy: cfg.copy };
               }
               if (cfg.mode === "carousel") {
-                return { ...base, slideCount: cfg.slideCount, slides: cfg.slides };
+                // Pass new per-slide schema to create API
+                return {
+                  ...base,
+                  slideCount: cfg.slideCount,
+                  slides: cfg.slides.map((s) => ({
+                    index: s.index,
+                    variables: s.variables,
+                    copy: Object.fromEntries(
+                      s.variables.map((v) => [v, s.copy[v] ?? ""])
+                    ),
+                  })),
+                };
               }
               return base;
             }),
@@ -662,7 +729,7 @@ export default function CampaignBuilderForm({
                       {isChecked && isExpanded && (
                         <div className="border-t border-gray-200 px-3 pb-3 pt-2 space-y-3">
 
-                          {/* Variables */}
+                          {/* Format-level Variables */}
                           <div className="space-y-1.5">
                             <p className="text-xs font-medium text-gray-500">Variables</p>
                             <div className="flex flex-wrap gap-1.5">
@@ -741,9 +808,10 @@ export default function CampaignBuilderForm({
                             </div>
                           )}
 
-                          {/* CAROUSEL mode */}
+                          {/* CAROUSEL mode — per-slide variable selection */}
                           {cfg.mode === "carousel" && (
                             <div className="space-y-3">
+                              {/* Slide count control */}
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-medium text-gray-500">Slides:</span>
                                 <button
@@ -765,34 +833,62 @@ export default function CampaignBuilderForm({
                                 </button>
                               </div>
 
+                              {/* Per-slide config */}
                               {cfg.slides.map((slide, slideIdx) => (
                                 <div
                                   key={slideIdx}
                                   className="rounded-md border border-gray-200 bg-white px-3 py-2 space-y-2"
                                 >
                                   <p className="text-xs font-semibold text-gray-500">
-                                    Slide {slideIdx + 1}
+                                    Slide {slide.index}
+                                    {slide.variables.length === 0 && (
+                                      <span className="ml-2 font-normal text-gray-400 italic">(image only)</span>
+                                    )}
                                   </p>
-                                  {cfg.variables.map((varId) => {
-                                    const varLabel =
-                                      variableOptions.find((v) => v.value === varId)?.label ?? varId;
-                                    return (
-                                      <div key={varId} className="flex items-center gap-2">
-                                        <label className="w-10 shrink-0 text-xs font-medium text-gray-500">
-                                          {varLabel}
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={slide[varId] ?? ""}
-                                          onChange={(e) =>
-                                            setSlideCopyField(f.id, slideIdx, varId, e.target.value)
-                                          }
-                                          placeholder={`${varLabel} for slide ${slideIdx + 1}`}
-                                          className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
-                                        />
-                                      </div>
-                                    );
-                                  })}
+
+                                  {/* Per-slide variable toggles */}
+                                  <div className="flex flex-wrap gap-1">
+                                    {variableOptions.map((v) => (
+                                      <button
+                                        key={v.value}
+                                        type="button"
+                                        onClick={() => toggleSlideVariable(f.id, slideIdx, v.value)}
+                                        className={`rounded border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                                          slide.variables.includes(v.value)
+                                            ? "border-purple-600 bg-purple-600 text-white"
+                                            : "border-gray-200 bg-white text-gray-400 hover:bg-gray-50"
+                                        }`}
+                                      >
+                                        {v.label}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {/* Copy inputs for selected variables */}
+                                  {slide.variables.length > 0 && (
+                                    <div className="space-y-1.5 pt-1">
+                                      {slide.variables.map((varId) => {
+                                        const varLabel =
+                                          variableOptions.find((v) => v.value === varId)?.label ?? varId;
+                                        return (
+                                          <div key={varId} className="flex items-center gap-2">
+                                            <label className="w-16 shrink-0 text-[10px] font-medium text-gray-500">
+                                              {varLabel}
+                                            </label>
+                                            <input
+                                              type="text"
+                                              value={slide.copy[varId] ?? ""}
+                                              onChange={(e) =>
+                                                setSlideCopyField(f.id, slideIdx, varId, e.target.value)
+                                              }
+                                              placeholder={`${varLabel} slide ${slide.index}`}
+                                              className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                            />
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>

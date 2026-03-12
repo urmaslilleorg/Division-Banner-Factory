@@ -4,9 +4,8 @@ import Link from "next/link";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchBanners } from "@/lib/airtable";
 import { fetchAllCampaigns } from "@/lib/airtable-campaigns";
-import BannerGrid from "@/components/banner-grid";
-import CampaignImportBar from "@/components/campaign-import-bar";
-import CopyWorkflowBar from "@/components/copy-workflow-bar";
+import { fetchClientBySubdomain } from "@/lib/airtable-clients";
+import CampaignDetailTabs from "@/components/campaign-detail-tabs";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
 function launchMonthToUrl(launchMonth: string | null): string {
@@ -25,9 +24,10 @@ function launchMonthToUrl(launchMonth: string | null): string {
 
 interface CampaignPageProps {
   params: { campaign: string };
+  searchParams?: { tab?: string };
 }
 
-export default async function CampaignPage({ params }: CampaignPageProps) {
+export default async function CampaignPage({ params, searchParams }: CampaignPageProps) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
@@ -40,10 +40,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
   let campaignId: string | null = null;
   let campaignName = campaignSlug;
   let launchMonth: string | null = null;
-  let lastImport: string | null = null;
-  let columnMapping: string | null = null;
-  let copySheetUrl: string | null = null;
-  let copyProgress = 0;
+  let fieldConfig = null;
 
   // Try to find campaign record to get ID and metadata
   try {
@@ -61,10 +58,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
       campaignId = found.id;
       campaignName = found.name;
       launchMonth = found.launchMonth ?? null;
-      lastImport = found.lastImport;
-      columnMapping = found.columnMapping;
-      copySheetUrl = found.copySheetUrl;
-      copyProgress = found.copyProgress;
+      fieldConfig = found.fieldConfig;
     } else if (!isRecordId) {
       campaignName = formattedName;
     }
@@ -80,22 +74,34 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
   // TODO: derive role from Clerk session claims
   const userRole = "division_admin";
 
+  // Fetch banners and client variables in parallel
+  const clientSubdomain = clientConfig.subdomain || clientConfig.id;
   let banners;
-  try {
-    banners = await fetchBanners(
-      clientConfig.airtable.baseId,
-      campaignName,
-      clientConfig.languages
-    );
+  let clientVariables: import("@/lib/types").ClientVariable[] = [];
 
-    // If no results with formatted name, try the raw slug
-    if (banners.length === 0 && campaignName !== campaignSlug) {
-      banners = await fetchBanners(
+  try {
+    const [fetchedBanners, clientRecord] = await Promise.all([
+      fetchBanners(
         clientConfig.airtable.baseId,
-        campaignSlug,
+        campaignName,
         clientConfig.languages
-      );
-    }
+      ).then(async (result) => {
+        // If no results with formatted name, try the raw slug
+        if (result.length === 0 && campaignName !== campaignSlug) {
+          return fetchBanners(
+            clientConfig.airtable.baseId,
+            campaignSlug,
+            clientConfig.languages
+          );
+        }
+        return result;
+      }),
+      clientSubdomain && clientSubdomain !== "admin" && clientSubdomain !== "demo"
+        ? fetchClientBySubdomain(clientSubdomain)
+        : Promise.resolve(null),
+    ]);
+    banners = fetchedBanners;
+    clientVariables = clientRecord?.clientVariables ?? [];
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return (
@@ -112,6 +118,17 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
 
   const backUrl = launchMonthToUrl(launchMonth);
   const backLabel = launchMonth ?? "Calendar";
+
+  // Determine default tab from URL param
+  const tabParam = searchParams?.tab;
+  const defaultTab = tabParam === "preview" ? "preview" : "copy";
+
+  // Resolve fieldConfig with sensible defaults
+  const resolvedFieldConfig = fieldConfig ?? {
+    variables: ["H1", "H2", "CTA"],
+    languages: clientConfig.languages ?? ["ET"],
+    formats: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -132,27 +149,16 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
         </p>
       </div>
 
-      {/* Import bar — only shown for division_admin */}
-      {userRole === "division_admin" && campaignId && (
-        <CampaignImportBar
-          campaignId={campaignId}
-          campaignName={campaignName}
-          lastImport={lastImport}
-          hasMapping={!!columnMapping}
-        />
-      )}
-
-      {/* Copy Workflow bar — only shown for division_admin */}
-      {userRole === "division_admin" && campaignId && (
-        <CopyWorkflowBar
-          campaignId={campaignId}
-          campaignName={campaignName}
-          copySheetUrl={copySheetUrl}
-          copyProgress={copyProgress}
-        />
-      )}
-
-      <BannerGrid banners={banners} userRole={userRole} />
+      {/* Two-tab layout: Copy & Assets | Preview */}
+      <CampaignDetailTabs
+        campaignId={campaignId ?? campaignName}
+        campaignName={campaignName}
+        banners={banners}
+        fieldConfig={resolvedFieldConfig}
+        clientVariables={clientVariables}
+        userRole={userRole}
+        defaultTab={defaultTab}
+      />
     </div>
   );
 }
