@@ -152,7 +152,6 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
       {/* Two-tab layout: Copy & Assets | Preview */}
       <CampaignDetailTabs
         campaignId={campaignId ?? campaignName}
-        campaignName={campaignName}
         banners={banners}
         fieldConfig={resolvedFieldConfig}
         clientVariables={clientVariables}

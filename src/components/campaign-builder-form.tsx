@@ -962,9 +962,19 @@ export default function CampaignBuilderForm({
             mode === "edit" ? "Save changes" : "Create campaign"
           )}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
+        {mode === "edit" && campaignId ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push(`/campaigns/${campaignId}?preview=true`)}
+          >
+            Back to Campaign
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        )}
       </div>
     </form>
   );
