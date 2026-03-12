@@ -1,6 +1,23 @@
 /**
  * GET   /api/campaigns/[id]  — fetch single campaign
  * PATCH /api/campaigns/[id]  — update campaign fields + create missing banner records
+ *
+ * Implementation rules (never violate):
+ * 1. NEVER auto-delete banner records on edit. Only CREATE new ones.
+ * 2. NEVER wipe copy field values when variables change.
+ * 3. CASCADE delete slides when parent Carousel is deleted (handled in DELETE /api/banners/[id]).
+ * 4. Do NOT allow individual slide deletion from Preview tab.
+ * 5. Match existing banners by: Format_Name + Language (standard) or
+ *    Format_Name + Language + Banner_Type=Carousel (carousel parent).
+ * 6. Match slides by Parent_Banner record ID + Slide_Index.
+ * 7. New banners: Status=Brief_received, Approval_Status=Pending.
+ * 8. Batch creates in groups of 10 with typecast:true.
+ * 9. Scenario 4/5: When carousel exists, update Slide_Count on parent and
+ *    create only the NEW slides (Slide_Index > existing max).
+ * 10. Scenario 6: Standard→Carousel: existing standard banner is NOT mutated.
+ *     New carousel parent + slides are created alongside it.
+ * 11. Scenario 7: Carousel→Standard: existing carousel parent + slides are NOT
+ *     deleted. New standard banner is created alongside them.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -28,15 +45,21 @@ async function airtableFetch(path: string): Promise<Response> {
   });
 }
 
-async function airtablePost(tablePath: string, body: unknown): Promise<{ records: AirtableRecord[] }> {
-  const res = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${tablePath}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+async function airtablePost(
+  tablePath: string,
+  body: unknown
+): Promise<{ records: AirtableRecord[] }> {
+  const res = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${tablePath}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Airtable POST error ${res.status}: ${err}`);
@@ -44,15 +67,44 @@ async function airtablePost(tablePath: string, body: unknown): Promise<{ records
   return res.json();
 }
 
-/** Fetch all banner records linked to a campaign (by Campaign Link record ID) */
+async function airtablePatch(
+  recordPath: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  const res = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${recordPath}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ fields }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Airtable PATCH error ${res.status}: ${err}`);
+  }
+}
+
+/**
+ * Fetch all banner records linked to a campaign.
+ * Returns Format_Name, Language, Banner_Type, Slide_Index, Parent_Banner, Figma_Frame, Slide_Count.
+ */
 async function fetchExistingBanners(campaignId: string): Promise<AirtableRecord[]> {
   const formula = `FIND("${campaignId}", ARRAYJOIN({Campaign Link}))`;
   const params = new URLSearchParams();
   params.set("filterByFormula", formula);
-  params.append("fields[]", "Format_Name");
-  params.append("fields[]", "Language");
-  params.append("fields[]", "Figma_Frame");
-  params.append("fields[]", "Banner_Type");
+  [
+    "Format_Name",
+    "Language",
+    "Figma_Frame",
+    "Banner_Type",
+    "Slide_Index",
+    "Parent_Banner",
+    "Slide_Count",
+  ].forEach((f) => params.append("fields[]", f));
 
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
@@ -61,7 +113,10 @@ async function fetchExistingBanners(campaignId: string): Promise<AirtableRecord[
     if (offset) params.set("offset", offset);
     const res = await airtableFetch(`${BANNERS_TABLE}?${params.toString()}`);
     if (!res.ok) break;
-    const data = (await res.json()) as { records: AirtableRecord[]; offset?: string };
+    const data = (await res.json()) as {
+      records: AirtableRecord[];
+      offset?: string;
+    };
     records.push(...data.records);
     offset = data.offset;
   } while (offset);
@@ -71,16 +126,25 @@ async function fetchExistingBanners(campaignId: string): Promise<AirtableRecord[
 
 function normaliseForFigma(str: string): string {
   return str
-    .replace(/ä/g, "a").replace(/Ä/g, "A")
-    .replace(/ö/g, "o").replace(/Ö/g, "O")
-    .replace(/ü/g, "u").replace(/Ü/g, "U")
-    .replace(/õ/g, "o").replace(/Õ/g, "O")
+    .replace(/ä/g, "a")
+    .replace(/Ä/g, "A")
+    .replace(/ö/g, "o")
+    .replace(/Ö/g, "O")
+    .replace(/ü/g, "u")
+    .replace(/Ü/g, "U")
+    .replace(/õ/g, "o")
+    .replace(/Õ/g, "O")
     .replace(/\s+/g, "_");
 }
 
 function generateBannerName(
-  channel: string, formatName: string, width: number, height: number,
-  productName: string, language: string, slideIndex?: number
+  channel: string,
+  formatName: string,
+  width: number,
+  height: number,
+  productName: string,
+  language: string,
+  slideIndex?: number
 ): string {
   const channelNorm = channel.replace(/[\/\s]+/g, "");
   const productNorm = normaliseForFigma(productName);
@@ -89,18 +153,28 @@ function generateBannerName(
   return name;
 }
 
-function generateFigmaFrame(channel: string, formatName: string, width: number, height: number): string {
+function generateFigmaFrame(
+  channel: string,
+  formatName: string,
+  width: number,
+  height: number
+): string {
   const channelNorm = normaliseForFigma(channel.replace(/[/+]/g, ""));
   const formatNorm = normaliseForFigma(formatName);
   return `_MASTER_${channelNorm}_${formatNorm}_${width}x${height}`;
 }
 
-/** Create banner records in batches of 10 */
-async function createBanners(records: { fields: Record<string, unknown> }[]): Promise<number> {
+/** Create banner records in batches of 10 with typecast:true */
+async function createBanners(
+  records: { fields: Record<string, unknown> }[]
+): Promise<number> {
   let count = 0;
   for (let i = 0; i < records.length; i += 10) {
     const batch = records.slice(i, i + 10);
-    const res = await airtablePost(BANNERS_TABLE, { records: batch, typecast: true });
+    const res = await airtablePost(BANNERS_TABLE, {
+      records: batch,
+      typecast: true,
+    });
     count += res.records.length;
   }
   return count;
@@ -148,22 +222,24 @@ export async function PATCH(
     }
     const patchData = await patchRes.json();
 
-    // ── 2. Create missing banner records ──────────────────────────────────────
-    // Only proceed if Field_Config is included in the PATCH body
+    // ── 2. Only proceed if Field_Config is included ───────────────────────────
     const fieldConfigRaw = body["Field_Config"];
     if (!fieldConfigRaw) {
-      // No Field_Config → simple metadata update, no banner creation needed
+      // Scenario 10: metadata-only update — no banner creation needed
       return NextResponse.json({ ...patchData, bannersCreated: 0, totalBanners: 0 });
     }
 
     let fieldConfig: {
       languages?: string[];
       formats?: string[];
-      formatConfigs?: Record<string, {
-        variables?: string[];
-        mode?: string;
-        slideCount?: number;
-      }>;
+      formatConfigs?: Record<
+        string,
+        {
+          variables?: string[];
+          mode?: string;
+          slideCount?: number;
+        }
+      >;
     };
     try {
       fieldConfig = JSON.parse(fieldConfigRaw as string);
@@ -179,31 +255,46 @@ export async function PATCH(
       return NextResponse.json({ ...patchData, bannersCreated: 0, totalBanners: 0 });
     }
 
-    // ── 3. Fetch existing banners to determine what already exists ────────────
+    // ── 3. Fetch existing banners ─────────────────────────────────────────────
     const existingBanners = await fetchExistingBanners(campaignId);
 
-    // Build a set of existing keys: "FormatName|Language" (for standard) or "Figma_Frame" (for carousel parent)
-    const existingKeys = new Set<string>();
+    /**
+     * existingStandardKeys: Set<"FormatName|Language"> — for Standard banners
+     * existingCarouselMap:  Map<"FormatName|Language", { id, slideCount }> — for Carousel parents
+     * existingSlideMap:     Map<"parentId|slideIndex", recordId> — for Slide records
+     */
+    const existingStandardKeys = new Set<string>();
+    const existingCarouselMap = new Map<
+      string,
+      { id: string; slideCount: number }
+    >();
+    const existingSlideMap = new Map<string, string>(); // "parentId|slideIndex" → recordId
+
     for (const b of existingBanners) {
       const formatName = b.fields["Format_Name"] as string | undefined;
       const language = b.fields["Language"] as string | undefined;
-      const figmaFrame = b.fields["Figma_Frame"] as string | undefined;
       const bannerType = b.fields["Banner_Type"] as string | undefined;
+      const slideIndex = b.fields["Slide_Index"] as number | undefined;
+      const parentBanner = b.fields["Parent_Banner"] as string[] | undefined;
+      const slideCount = (b.fields["Slide_Count"] as number) || 0;
 
-      if (formatName && language) {
-        existingKeys.add(`${formatName}|${language}`);
-      }
-      if (figmaFrame) {
-        existingKeys.add(figmaFrame);
-      }
-      // For carousel parents, also key by formatName|language|Carousel
-      if (bannerType === "Carousel" && formatName && language) {
-        existingKeys.add(`${formatName}|${language}|Carousel`);
+      if (!formatName || !language) continue;
+
+      if (bannerType === "Standard") {
+        existingStandardKeys.add(`${formatName}|${language}`);
+      } else if (bannerType === "Carousel") {
+        existingCarouselMap.set(`${formatName}|${language}`, {
+          id: b.id,
+          slideCount,
+        });
+      } else if (bannerType === "Slide") {
+        if (parentBanner && parentBanner.length > 0 && slideIndex) {
+          existingSlideMap.set(`${parentBanner[0]}|${slideIndex}`, b.id);
+        }
       }
     }
 
-    // ── 4. Fetch format records from Formats table by name ────────────────────
-    // We need to look up format records by their Format_Name to get IDs + dimensions
+    // ── 4. Fetch format records from Formats table ────────────────────────────
     const formatNameFormula =
       formatNames.length === 1
         ? `{Format_Name}="${formatNames[0]}"`
@@ -211,12 +302,20 @@ export async function PATCH(
 
     const fmtParams = new URLSearchParams();
     fmtParams.set("filterByFormula", formatNameFormula);
-    ["Format_Name", "Width", "Height", "Channel", "Device", "Safe_Area",
-     "Output_Format", "Figma_Frame_Base"].forEach((f) => fmtParams.append("fields[]", f));
+    [
+      "Format_Name",
+      "Width",
+      "Height",
+      "Channel",
+      "Device",
+      "Safe_Area",
+      "Output_Format",
+      "Figma_Frame_Base",
+    ].forEach((f) => fmtParams.append("fields[]", f));
 
     const fmtRes = await airtableFetch(`${FORMATS_TABLE}?${fmtParams.toString()}`);
     const fmtData = fmtRes.ok
-      ? (await fmtRes.json()) as { records: AirtableRecord[] }
+      ? ((await fmtRes.json()) as { records: AirtableRecord[] })
       : { records: [] };
 
     const formatRecordsByName: Record<string, AirtableRecord> = {};
@@ -228,15 +327,16 @@ export async function PATCH(
     // ── 5. Fetch campaign record to get Campaign_Name and Product_Name ─────────
     const campaignRecord = await fetchCampaignById(campaignId);
     const campaignName = campaignRecord?.name ?? "";
-    const productName = (campaignRecord as { productName?: string })?.productName ?? "";
+    const productName =
+      (campaignRecord as { productName?: string })?.productName ?? "";
 
-    // ── 6. Build and create missing banner records ────────────────────────────
+    // ── 6. Process each format ────────────────────────────────────────────────
     let bannersCreated = 0;
-    const newBannerRecords: { fields: Record<string, unknown> }[] = [];
+    const newStandardRecords: { fields: Record<string, unknown> }[] = [];
 
     for (const formatName of formatNames) {
       const fmtRecord = formatRecordsByName[formatName];
-      if (!fmtRecord) continue; // format not found in Formats table
+      if (!fmtRecord) continue;
 
       const f = fmtRecord.fields;
       const width = (f["Width"] as number) || 0;
@@ -244,15 +344,16 @@ export async function PATCH(
       const channel = (f["Channel"] as string) || "";
       const device = (f["Device"] as string) || "";
       const safeArea = (f["Safe_Area"] as string) || "";
-      const outputFormat = (f["Output_Format"] as string) ||
+      const outputFormat =
+        (f["Output_Format"] as string) ||
         (channel.toLowerCase().includes("dooh") ? "JPG" : "PNG");
-      const figmaFrameBase = (f["Figma_Frame_Base"] as string) ||
+      const figmaFrameBase =
+        (f["Figma_Frame_Base"] as string) ||
         generateFigmaFrame(channel, formatName, width, height);
 
       const cfg = formatConfigs[formatName] ?? {};
       const mode = (cfg.mode as string) ?? "default";
-      // variables intentionally not used in banner creation (copy is added via Copy Editor)
-      const slideCount = (cfg.slideCount as number) ?? 3;
+      const targetSlideCount = (cfg.slideCount as number) ?? 3;
 
       const baseFields = {
         Campaign_Name: campaignName,
@@ -268,64 +369,142 @@ export async function PATCH(
       };
 
       for (const language of languages) {
+        const carouselKey = `${formatName}|${language}`;
         const standardKey = `${formatName}|${language}`;
 
         if (mode === "carousel") {
-          const carouselKey = `${formatName}|${language}|Carousel`;
-          if (existingKeys.has(carouselKey)) continue; // already exists
+          // ── Carousel mode ──────────────────────────────────────────────────
+          const existingCarousel = existingCarouselMap.get(carouselKey);
 
-          // Create parent carousel record
-          const parentRes = await airtablePost(BANNERS_TABLE, {
-            records: [{
-              fields: {
-                ...baseFields,
-                Language: language,
-                Banner_Type: "Carousel",
-                Banner_Name: generateBannerName(channel, formatName, width, height, productName, language),
-              },
-            }],
-            typecast: true,
-          });
-          const parentId = parentRes.records[0].id;
-          bannersCreated += 1;
-
-          // Create slide records
-          const slideRecords: { fields: Record<string, unknown> }[] = [];
-          for (let s = 0; s < slideCount; s++) {
-            slideRecords.push({
-              fields: {
-                ...baseFields,
-                Language: language,
-                Figma_Frame: `${figmaFrameBase}_Slide_${s + 1}`,
-                Banner_Type: "Slide",
-                Banner_Name: generateBannerName(channel, formatName, width, height, productName, language, s + 1),
-                Parent_Banner: [parentId],
-                Slide_Index: s + 1,
-              },
+          if (!existingCarousel) {
+            // Scenario 3 / Scenario 6 (Standard→Carousel):
+            // No carousel parent exists yet — create parent + all slides.
+            // Note: existing Standard banner (if any) is left untouched (rule 1).
+            const parentRes = await airtablePost(BANNERS_TABLE, {
+              records: [
+                {
+                  fields: {
+                    ...baseFields,
+                    Language: language,
+                    Banner_Type: "Carousel",
+                    Slide_Count: targetSlideCount,
+                    Banner_Name: generateBannerName(
+                      channel,
+                      formatName,
+                      width,
+                      height,
+                      productName,
+                      language
+                    ),
+                  },
+                },
+              ],
+              typecast: true,
             });
+            const parentId = parentRes.records[0].id;
+            bannersCreated += 1;
+
+            // Create all slides
+            const slideRecords: { fields: Record<string, unknown> }[] = [];
+            for (let s = 0; s < targetSlideCount; s++) {
+              slideRecords.push({
+                fields: {
+                  ...baseFields,
+                  Language: language,
+                  Figma_Frame: `${figmaFrameBase}_Slide_${s + 1}`,
+                  Banner_Type: "Slide",
+                  Banner_Name: generateBannerName(
+                    channel,
+                    formatName,
+                    width,
+                    height,
+                    productName,
+                    language,
+                    s + 1
+                  ),
+                  Parent_Banner: [parentId],
+                  Slide_Index: s + 1,
+                },
+              });
+            }
+            bannersCreated += await createBanners(slideRecords);
+          } else {
+            // Carousel parent already exists.
+            const parentId = existingCarousel.id;
+            const existingSlideCount = existingCarousel.slideCount;
+
+            // Scenario 4: Slide count increased → update Slide_Count on parent + create new slides
+            // Scenario 5: Slide count decreased → update Slide_Count on parent only (no deletion — rule 1)
+            // Scenario 9: No change → update Slide_Count (idempotent)
+            if (targetSlideCount !== existingSlideCount) {
+              await airtablePatch(
+                `${BANNERS_TABLE}/${parentId}`,
+                { Slide_Count: targetSlideCount }
+              );
+            }
+
+            if (targetSlideCount > existingSlideCount) {
+              // Create only the NEW slides (indices existingSlideCount+1 … targetSlideCount)
+              const newSlideRecords: { fields: Record<string, unknown> }[] = [];
+              for (let s = existingSlideCount + 1; s <= targetSlideCount; s++) {
+                // Only create if this slide doesn't already exist
+                if (!existingSlideMap.has(`${parentId}|${s}`)) {
+                  newSlideRecords.push({
+                    fields: {
+                      ...baseFields,
+                      Language: language,
+                      Figma_Frame: `${figmaFrameBase}_Slide_${s}`,
+                      Banner_Type: "Slide",
+                      Banner_Name: generateBannerName(
+                        channel,
+                        formatName,
+                        width,
+                        height,
+                        productName,
+                        language,
+                        s
+                      ),
+                      Parent_Banner: [parentId],
+                      Slide_Index: s,
+                    },
+                  });
+                }
+              }
+              if (newSlideRecords.length > 0) {
+                bannersCreated += await createBanners(newSlideRecords);
+              }
+            }
+            // Scenario 5: slides 4-5 are NOT deleted (rule 1). Slide_Count updated above.
           }
-          const slideCount2 = await createBanners(slideRecords);
-          bannersCreated += slideCount2;
-
         } else {
-          // Standard / specific mode
-          if (existingKeys.has(standardKey)) continue; // already exists
+          // ── Standard mode ──────────────────────────────────────────────────
+          // Scenario 7 (Carousel→Standard): existingCarouselMap may have an entry
+          // for this format, but we still create a new Standard banner if one
+          // doesn't already exist. The old carousel is left untouched (rule 1).
+          if (existingStandardKeys.has(standardKey)) continue; // already exists
 
-          newBannerRecords.push({
+          newStandardRecords.push({
             fields: {
               ...baseFields,
               Language: language,
               Banner_Type: "Standard",
-              Banner_Name: generateBannerName(channel, formatName, width, height, productName, language),
+              Banner_Name: generateBannerName(
+                channel,
+                formatName,
+                width,
+                height,
+                productName,
+                language
+              ),
             },
           });
         }
       }
     }
 
-    // Batch-create all standard/specific banners
-    if (newBannerRecords.length > 0) {
-      bannersCreated += await createBanners(newBannerRecords);
+    // Batch-create all standard banners
+    if (newStandardRecords.length > 0) {
+      bannersCreated += await createBanners(newStandardRecords);
     }
 
     const totalBanners = existingBanners.length + bannersCreated;
@@ -336,7 +515,6 @@ export async function PATCH(
       bannersCreated,
       totalBanners,
     });
-
   } catch (err) {
     console.error("PATCH /api/campaigns/[id] error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

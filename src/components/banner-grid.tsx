@@ -106,7 +106,7 @@ export default function BannerGrid({
           {filteredBanners.map((banner) => (
             <div key={banner.id} className="flex flex-col">
               <BannerCard banner={banner} onClick={handleBannerClick} />
-              {isDesigner && (
+              {isDesigner && banner.bannerType !== "Slide" && (
                 <DesignerControls
                   bannerId={banner.id}
                   onDelete={handleBannerDelete}

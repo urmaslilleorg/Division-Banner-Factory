@@ -28,13 +28,22 @@ export default function CampaignDetailTabs({
 }: CampaignDetailTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
 
+  // Scenario 15: trigger blur on the active input before switching tabs so
+  // the onBlur auto-save in CopyEditorTable fires before content unmounts.
+  function switchTab(tab: Tab) {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setActiveTab(tab);
+  }
+
   return (
     <div>
       {/* Tab bar */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex gap-6" aria-label="Tabs">
           <button
-            onClick={() => setActiveTab("copy")}
+            onClick={() => switchTab("copy")}
             className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "copy"
                 ? "border-gray-900 text-gray-900"
@@ -44,7 +53,7 @@ export default function CampaignDetailTabs({
             Copy &amp; Assets
           </button>
           <button
-            onClick={() => setActiveTab("preview")}
+            onClick={() => switchTab("preview")}
             className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "preview"
                 ? "border-gray-900 text-gray-900"

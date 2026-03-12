@@ -106,6 +106,9 @@ export default function CopyEditorTable({
   const [bulkValues, setBulkValues] = useState<Record<string, string>>({});
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
+  // Scenario 16: overwrite warning
+  const [bulkOverwriteCount, setBulkOverwriteCount] = useState(0);
+  const [showBulkOverwriteWarning, setShowBulkOverwriteWarning] = useState(false);
 
   const { variables, languages } = fieldConfig;
 
@@ -262,8 +265,7 @@ export default function CopyEditorTable({
     }
   };
 
-  const handleBulkApply = async () => {
-    if (selectedIds.size === 0) return;
+  const executeBulkApply = async () => {
     const fieldsToUpdate: Record<string, string> = {};
     for (const [colKey, value] of Object.entries(bulkValues)) {
       if (value.trim()) {
@@ -272,7 +274,7 @@ export default function CopyEditorTable({
       }
     }
     if (Object.keys(fieldsToUpdate).length === 0) return;
-
+    setShowBulkOverwriteWarning(false);
     setIsBulkSaving(true);
     setBulkResult(null);
 
@@ -323,8 +325,53 @@ export default function CopyEditorTable({
     setBulkValues({});
   };
 
+  const handleBulkApply = () => {
+    if (selectedIds.size === 0) return;
+    // Scenario 16: count banners with existing non-empty values that would be overwritten
+    const ids = Array.from(selectedIds);
+    let overwriteCount = 0;
+    for (const bannerId of ids) {
+      const banner = banners.find((b) => b.id === bannerId);
+      if (!banner) continue;
+      for (const [colKey, value] of Object.entries(bulkValues)) {
+        if (!value.trim()) continue;
+        const existing = (banner as unknown as Record<string, unknown>)[colKey];
+        if (existing && String(existing).trim() !== "") {
+          overwriteCount++;
+          break; // count each banner at most once
+        }
+      }
+    }
+    if (overwriteCount > 0) {
+      setBulkOverwriteCount(overwriteCount);
+      setShowBulkOverwriteWarning(true);
+      return;
+    }
+    void executeBulkApply();
+  };
+
   return (
     <div className="space-y-3">
+      {/* Scenario 16: Overwrite warning */}
+      {showBulkOverwriteWarning && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-3">
+          <p className="text-sm font-medium text-amber-800 flex-1">
+            ⚠ This will overwrite existing copy in {bulkOverwriteCount} row{bulkOverwriteCount > 1 ? "s" : ""}. Are you sure?
+          </p>
+          <button
+            onClick={() => void executeBulkApply()}
+            className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800"
+          >
+            Yes, overwrite
+          </button>
+          <button
+            onClick={() => setShowBulkOverwriteWarning(false)}
+            className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {/* Bulk action bar — shown when rows are selected */}
       {!isReadOnly && selectedIds.size > 0 && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-end gap-3">
