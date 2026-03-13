@@ -219,11 +219,6 @@ export default function CampaignBuilderForm({
   const toggleChannelExpanded = (ch: string) =>
     setExpandedChannels((prev) => ({ ...prev, [ch]: !prev[ch] }));
 
-  // Campaign-level default copy
-  const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>(
-    initialData?.fieldConfig?.defaultCopy ?? {}
-  );
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -257,7 +252,6 @@ export default function CampaignBuilderForm({
         formats: selectedFormatData.map((f) => f.formatName),
         variables: variableOptions.map((v) => v.value),
         formatConfigs: savedFormatConfigs,
-        defaultCopy,
       };
       const res = await fetch(`/api/clients/${clientId}/templates`, {
         method: "POST",
@@ -453,13 +447,6 @@ export default function CampaignBuilderForm({
     });
   };
 
-  const setSpecificCopyField = (formatId: string, varId: string, value: string) => {
-    setFormatConfigs((prev) => {
-      const cfg = getFormatConfig(formatId);
-      return { ...prev, [formatId]: { ...cfg, copy: { ...cfg.copy, [varId]: value } } };
-    });
-  };
-
   // Toggle a variable for a specific slide
   const toggleSlideVariable = (formatId: string, slideIdx: number, variable: string) => {
     setFormatConfigs((prev) => {
@@ -478,21 +465,6 @@ export default function CampaignBuilderForm({
       return { ...prev, [formatId]: { ...cfg, slides } };
     });
   };
-
-  const setSlideCopyField = (formatId: string, slideIdx: number, varId: string, value: string) => {
-    setFormatConfigs((prev) => {
-      const cfg = getFormatConfig(formatId);
-      const slides = cfg.slides.map((s, i) =>
-        i === slideIdx ? { ...s, copy: { ...s.copy, [varId]: value } } : s
-      );
-      return { ...prev, [formatId]: { ...cfg, slides } };
-    });
-  };
-
-  // Union of all active variables across selected formats (for Default Copy section)
-  const allActiveVariables = Array.from(
-    new Set(selectedFormats.flatMap((id) => getFormatConfig(id).variables))
-  );
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
@@ -516,23 +488,20 @@ export default function CampaignBuilderForm({
         return;
       }
 
-      // Build per-format configs for Field_Config storage (new schema)
+      // Build per-format configs for Field_Config storage (new schema).
+      // Copy content is intentionally excluded — it lives in the Copy & Assets tab.
       const savedFormatConfigs: Record<string, object> = {};
       for (const f of selectedFormatData) {
         const cfg = getFormatConfig(f.id);
         savedFormatConfigs[f.formatName] = {
           variables: cfg.variables,
           mode: cfg.mode,
-          copy: cfg.copy,
           slideCount: cfg.slideCount,
-          // New schema: slides with per-slide variables
+          // Carousel: store per-slide variable structure only (no copy values)
           slides: cfg.mode === "carousel"
             ? cfg.slides.map((s) => ({
                 index: s.index,
                 variables: s.variables,
-                copy: Object.fromEntries(
-                  s.variables.map((v) => [v, s.copy[v] ?? ""])
-                ),
               }))
             : [],
         };
@@ -544,7 +513,6 @@ export default function CampaignBuilderForm({
         formats: selectedFormatData.map((f) => f.formatName),
         variables: variableOptions.map((v) => v.value),
         formatConfigs: savedFormatConfigs,
-        defaultCopy,
       };
 
       try {
@@ -624,9 +592,7 @@ export default function CampaignBuilderForm({
             startDate,
             endDate,
             languages: selectedLanguages,
-            defaultCopy: Object.fromEntries(
-              Object.entries(defaultCopy).map(([k, v]) => [k, v.trim() || null])
-            ),
+            // Copy fields intentionally omitted — entered later in Copy & Assets tab
             formats: selectedFormatData.map((f) => {
               const cfg = getFormatConfig(f.id);
               const base = {
@@ -642,20 +608,14 @@ export default function CampaignBuilderForm({
                 variables: cfg.variables,
                 mode: cfg.mode,
               };
-              if (cfg.mode === "specific") {
-                return { ...base, copy: cfg.copy };
-              }
               if (cfg.mode === "carousel") {
-                // Pass new per-slide schema to create API
+                // Pass per-slide variable structure only (no copy values)
                 return {
                   ...base,
                   slideCount: cfg.slideCount,
                   slides: cfg.slides.map((s) => ({
                     index: s.index,
                     variables: s.variables,
-                    copy: Object.fromEntries(
-                      s.variables.map((v) => [v, s.copy[v] ?? ""])
-                    ),
                   })),
                 };
               }
@@ -949,35 +909,15 @@ export default function CampaignBuilderForm({
                           {/* DEFAULT mode */}
                           {cfg.mode === "default" && (
                             <p className="text-xs text-gray-400 italic">
-                              Uses campaign-level Default Copy values below.
+                              Copy is entered per-banner in the Copy &amp; Assets tab after creation.
                             </p>
                           )}
 
-                          {/* SPECIFIC mode */}
+                          {/* SPECIFIC mode — copy entered in Copy & Assets tab */}
                           {cfg.mode === "specific" && (
-                            <div className="space-y-2">
-                              <p className="text-xs font-medium text-gray-500">Format-specific copy</p>
-                              {cfg.variables.map((varId) => {
-                                const varLabel =
-                                  variableOptions.find((v) => v.value === varId)?.label ?? varId;
-                                return (
-                                  <div key={varId} className="flex items-center gap-2">
-                                    <label className="w-10 shrink-0 text-xs font-medium text-gray-500">
-                                      {varLabel}
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={cfg.copy[varId] ?? ""}
-                                      onChange={(e) =>
-                                        setSpecificCopyField(f.id, varId, e.target.value)
-                                      }
-                                      placeholder={`${varLabel} for ${f.formatName}`}
-                                      className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            <p className="text-xs text-gray-400 italic">
+                              Format-specific copy is entered in the Copy &amp; Assets tab after creation.
+                            </p>
                           )}
 
                           {/* CAROUSEL mode — per-slide variable selection */}
@@ -1036,31 +976,7 @@ export default function CampaignBuilderForm({
                                     ))}
                                   </div>
 
-                                  {/* Copy inputs for selected variables */}
-                                  {slide.variables.length > 0 && (
-                                    <div className="space-y-1.5 pt-1">
-                                      {slide.variables.map((varId) => {
-                                        const varLabel =
-                                          variableOptions.find((v) => v.value === varId)?.label ?? varId;
-                                        return (
-                                          <div key={varId} className="flex items-center gap-2">
-                                            <label className="w-16 shrink-0 text-[10px] font-medium text-gray-500">
-                                              {varLabel}
-                                            </label>
-                                            <input
-                                              type="text"
-                                              value={slide.copy[varId] ?? ""}
-                                              onChange={(e) =>
-                                                setSlideCopyField(f.id, slideIdx, varId, e.target.value)
-                                              }
-                                              placeholder={`${varLabel} slide ${slide.index}`}
-                                              className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                                            />
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
+
                                 </div>
                               ))}
                             </div>
@@ -1078,36 +994,7 @@ export default function CampaignBuilderForm({
         </div>
       </div>
 
-      {/* Default Copy */}
-      {allActiveVariables.length > 0 && (
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Default Copy (optional)</label>
-            <p className="text-xs text-gray-400">
-              Used by formats in Default mode. Edit per-banner in Copy Editor after creation.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {allActiveVariables.map((varId) => {
-              const varLabel = variableOptions.find((v) => v.value === varId)?.label ?? varId;
-              return (
-                <div key={varId} className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-600">{varLabel}</label>
-                  <input
-                    type="text"
-                    value={defaultCopy[varId] ?? ""}
-                    onChange={(e) =>
-                      setDefaultCopy((prev) => ({ ...prev, [varId]: e.target.value }))
-                    }
-                    placeholder={`Default ${varLabel}`}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+
 
       {/* Template selector — shown when templates exist */}
       {templates.length > 0 && (
