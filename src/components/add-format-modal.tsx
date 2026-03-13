@@ -52,8 +52,8 @@ function buildEmptySlides(count: number, vars: string[]): SlideConfig[] {
 interface AddFormatModalProps {
   campaignId: string;
   fieldConfig: FieldConfig;
-  /** Format names already present in this campaign — shown as disabled */
-  existingFormatNames: string[];
+  /** Current banner records — used to derive which formats are already in the campaign */
+  banners: Banner[];
   /** Client-linked format record IDs — used to filter the picker */
   clientFormatIds: string[];
   onClose: () => void;
@@ -63,11 +63,20 @@ interface AddFormatModalProps {
 export default function AddFormatModal({
   campaignId,
   fieldConfig,
-  existingFormatNames,
+  banners,
   clientFormatIds,
   onClose,
   onSuccess,
 }: AddFormatModalProps) {
+  // Derive "already added" from actual banner records, not Field_Config.
+  // A format is considered present only if at least one non-Slide banner record exists.
+  const existingFormatNames: string[] = Array.from(
+    new Set(
+      banners
+        .filter((b) => b.bannerType !== "Slide" && b.formatName)
+        .map((b) => b.formatName as string)
+    )
+  );
   const [formats, setFormats] = useState<AirtableFormat[]>([]);
   const [loadingFormats, setLoadingFormats] = useState(true);
   const [selectedFormatIds, setSelectedFormatIds] = useState<string[]>([]);

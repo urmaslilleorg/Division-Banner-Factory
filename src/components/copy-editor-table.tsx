@@ -389,11 +389,6 @@ export default function CopyEditorTable({
   const checkboxLeft = 0;
   const formatLeft = isReadOnly ? 0 : 40;
 
-  // Derive existing format names from current fieldConfig
-  const existingFormatNames: string[] = Array.isArray(fieldConfig.formats)
-    ? fieldConfig.formats
-    : Object.keys(fieldConfig.formats ?? {});
-
   // Handle successful format addition
   const handleAddFormatSuccess = useCallback(
     (newBanners: Banner[], updatedFieldConfig: FieldConfig) => {
@@ -442,7 +437,7 @@ export default function CopyEditorTable({
         <AddFormatModal
           campaignId={campaignId}
           fieldConfig={fieldConfig}
-          existingFormatNames={existingFormatNames}
+          banners={banners}
           clientFormatIds={clientFormatIds}
           onClose={() => setShowAddFormat(false)}
           onSuccess={handleAddFormatSuccess}
