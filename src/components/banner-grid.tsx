@@ -204,10 +204,9 @@ export default function BannerGrid({
   const isDesigner =
     userRole === "division_designer" || userRole === "division_admin";
 
-  // Separate slides from displayable banners
+  // Separate slides from displayable banners; Preview tab shows only banners with images
   const { displayBanners, slidesByParentId } = useMemo(() => {
     const slides = banners.filter((b) => b.bannerType === "Slide");
-    const display = banners.filter((b) => b.bannerType !== "Slide");
 
     const byParent: Record<string, Banner[]> = {};
     for (const slide of slides) {
@@ -221,6 +220,15 @@ export default function BannerGrid({
     for (const key of Object.keys(byParent)) {
       byParent[key].sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
     }
+
+    // Only show banners that have an image (Standard) or have at least one slide with an image (Carousel)
+    const display = banners.filter((b) => {
+      if (b.bannerType === "Slide") return false;
+      if (b.bannerType === "Carousel") {
+        return (byParent[b.id] ?? []).some((s) => !!s.imageUrl);
+      }
+      return !!b.imageUrl;
+    });
 
     return { displayBanners: display, slidesByParentId: byParent };
   }, [banners]);
@@ -324,10 +332,15 @@ export default function BannerGrid({
       />
 
       {filteredBanners.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-12 text-center text-sm text-gray-400">
-          {displayBanners.length === 0
-            ? "No banners found for this campaign."
-            : "No banners match the current filters."}
+        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-12 text-center">
+          {displayBanners.length === 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-500">No banners ready for preview yet.</p>
+              <p className="text-xs text-gray-400">Upload banner images from Figma to see them here.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No banners match the current filters.</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -342,14 +355,7 @@ export default function BannerGrid({
               ) : (
                 <BannerCard banner={banner} onClick={handleBannerClick} />
               )}
-              {/* Designer controls: no Upload on Carousel (upload per-slide in modal) */}
-              {isDesigner && banner.bannerType !== "Slide" && (
-                <DesignerControls
-                  bannerId={banner.id}
-                  onDelete={handleBannerDelete}
-                  hideUpload={banner.bannerType === "Carousel"}
-                />
-              )}
+              {/* Preview tab is read-only — Delete and Upload moved to Copy & Assets */}
             </div>
           ))}
         </div>

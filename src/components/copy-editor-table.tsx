@@ -79,7 +79,6 @@ export default function CopyEditorTable({
   const { parentBanners, initialSlidesByParent } = useMemo(() => {
     const parents: Banner[] = [];
     const slideMap: Record<string, Banner[]> = {};
-
     for (const b of initialBanners) {
       if (b.bannerType === "Slide") {
         const parentId = b.parentBannerIds?.[0];
@@ -87,17 +86,14 @@ export default function CopyEditorTable({
           if (!slideMap[parentId]) slideMap[parentId] = [];
           slideMap[parentId].push(b);
         }
-        // Slides not added to parents — they render under their parent
       } else {
         parents.push(b);
       }
     }
-
     // Sort slides by Slide_Index within each parent
     for (const parentId of Object.keys(slideMap)) {
       slideMap[parentId].sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
     }
-
     return { parentBanners: parents, initialSlidesByParent: slideMap };
   }, [initialBanners]);
 
@@ -105,12 +101,17 @@ export default function CopyEditorTable({
   const [cellState, setCellState] = useState<CellState | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReadOnly = userRole === "client_reviewer";
+  const canDelete = ["division_admin", "division_designer"].includes(userRole);
 
   // Carousel expand/collapse state — collapsed by default (empty Set)
   const [expandedCarousels, setExpandedCarousels] = useState<Set<string>>(new Set());
-  // Slides pre-loaded from the banners prop; can be extended by API fetch if needed
+  // Slides pre-loaded from the banners prop; extended by API fetch if needed
   const [slidesByParent, setSlidesByParent] = useState<Record<string, Banner[]>>(initialSlidesByParent);
   const [loadingSlides, setLoadingSlides] = useState<Set<string>>(new Set());
+
+  // Delete confirmation state
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const toggleCarousel = async (parentId: string) => {
     if (expandedCarousels.has(parentId)) {
@@ -118,11 +119,9 @@ export default function CopyEditorTable({
       return;
     }
     setExpandedCarousels((prev) => new Set(Array.from(prev).concat(parentId)));
-
     // If slides were already loaded from the prop, no API call needed
     if (slidesByParent[parentId] && slidesByParent[parentId].length > 0) return;
-
-    // Fallback: fetch slides from API (e.g. when page loaded without includeSlides)
+    // Fallback: fetch slides from API
     setLoadingSlides((prev) => new Set(Array.from(prev).concat(parentId)));
     try {
       const res = await fetch(`/api/banners?parentId=${parentId}`);
@@ -132,6 +131,30 @@ export default function CopyEditorTable({
       setSlidesByParent((prev) => ({ ...prev, [parentId]: [] }));
     } finally {
       setLoadingSlides((prev) => { const n = new Set(prev); n.delete(parentId); return n; });
+    }
+  };
+
+  const handleDelete = async (bannerId: string) => {
+    setDeleteError(null);
+    setDeletingId(bannerId);
+    try {
+      const res = await fetch(`/api/banners/${bannerId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed (${res.status})`);
+      }
+      // Remove from table optimistically
+      setBanners((prev) => prev.filter((b) => b.id !== bannerId));
+      setSlidesByParent((prev) => {
+        const next = { ...prev };
+        delete next[bannerId];
+        return next;
+      });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+      setTimeout(() => setDeleteError(null), 4000);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -163,7 +186,6 @@ export default function CopyEditorTable({
 
   /**
    * Get the active variables for a specific slide of a carousel banner.
-   * Falls back to format-level variables if no per-slide config exists.
    */
   const getSlideVariables = (banner: Banner, slideIndex: number): string[] => {
     if (!fieldConfig.formatConfigs) return variables;
@@ -175,9 +197,6 @@ export default function CopyEditorTable({
     return slideCfg.variables;
   };
 
-  /**
-   * Build columns for a specific slide based on its variable config.
-   */
   const getSlideColumns = (slideVariables: string[]) => {
     const cols: { variable: string; language: string; fieldKey: keyof Banner; label: string }[] = [];
     for (const variable of slideVariables) {
@@ -203,15 +222,8 @@ export default function CopyEditorTable({
       if (!banner) return;
       const originalValue = (banner[fieldKey] as string) || "";
       if (value === originalValue) return;
-
-      setBanners((prev) =>
-        prev.map((b) =>
-          b.id === bannerId ? { ...b, [fieldKey]: value } : b
-        )
-      );
-
+      setBanners((prev) => prev.map((b) => b.id === bannerId ? { ...b, [fieldKey]: value } : b));
       setCellState({ bannerId, field: String(fieldKey), state: "saving" });
-
       try {
         const res = await fetch(`/api/banners/${bannerId}`, {
           method: "PATCH",
@@ -223,11 +235,7 @@ export default function CopyEditorTable({
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => setCellState(null), 1500);
       } catch {
-        setBanners((prev) =>
-          prev.map((b) =>
-            b.id === bannerId ? { ...b, [fieldKey]: originalValue } : b
-          )
-        );
+        setBanners((prev) => prev.map((b) => b.id === bannerId ? { ...b, [fieldKey]: originalValue } : b));
         setCellState({ bannerId, field: String(fieldKey), state: "error" });
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => setCellState(null), 2000);
@@ -236,7 +244,6 @@ export default function CopyEditorTable({
     [banners]
   );
 
-  // Slide cell blur handler — updates slidesByParent state
   const handleSlideBlur = useCallback(
     async (parentId: string, slideId: string, fieldKey: keyof Banner, airtableField: string, value: string) => {
       const slides = slidesByParent[parentId] ?? [];
@@ -244,17 +251,11 @@ export default function CopyEditorTable({
       if (!slide) return;
       const originalValue = (slide[fieldKey] as string) || "";
       if (value === originalValue) return;
-
-      // Optimistic update
       setSlidesByParent((prev) => ({
         ...prev,
-        [parentId]: (prev[parentId] ?? []).map((s) =>
-          s.id === slideId ? { ...s, [fieldKey]: value } : s
-        ),
+        [parentId]: (prev[parentId] ?? []).map((s) => s.id === slideId ? { ...s, [fieldKey]: value } : s),
       }));
-
       setCellState({ bannerId: slideId, field: String(fieldKey), state: "saving" });
-
       try {
         const res = await fetch(`/api/banners/${slideId}`, {
           method: "PATCH",
@@ -268,9 +269,7 @@ export default function CopyEditorTable({
       } catch {
         setSlidesByParent((prev) => ({
           ...prev,
-          [parentId]: (prev[parentId] ?? []).map((s) =>
-            s.id === slideId ? { ...s, [fieldKey]: originalValue } : s
-          ),
+          [parentId]: (prev[parentId] ?? []).map((s) => s.id === slideId ? { ...s, [fieldKey]: originalValue } : s),
         }));
         setCellState({ bannerId: slideId, field: String(fieldKey), state: "error" });
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -308,7 +307,6 @@ export default function CopyEditorTable({
     setShowBulkOverwriteWarning(false);
     setIsBulkSaving(true);
     setBulkResult(null);
-
     let savedCount = 0;
     for (const bannerId of Array.from(selectedIds)) {
       try {
@@ -324,19 +322,14 @@ export default function CopyEditorTable({
               if (b.id !== bannerId) return b;
               const updated = { ...b };
               for (const [colKey, value] of Object.entries(bulkValues)) {
-                if (value.trim()) {
-                  (updated as Record<string, unknown>)[colKey] = value.trim();
-                }
+                if (value.trim()) (updated as Record<string, unknown>)[colKey] = value.trim();
               }
               return updated;
             })
           );
         }
-      } catch {
-        // continue
-      }
+      } catch { /* continue */ }
     }
-
     setIsBulkSaving(false);
     setBulkResult(`Saved ${savedCount} of ${selectedIds.size} banners`);
     setBulkValues({});
@@ -345,7 +338,6 @@ export default function CopyEditorTable({
   };
 
   const handleBulkApply = () => {
-    // Check for overwrite warning
     let overwriteCount = 0;
     for (const bannerId of Array.from(selectedIds)) {
       const banner = banners.find((b) => b.id === bannerId);
@@ -370,6 +362,13 @@ export default function CopyEditorTable({
 
   return (
     <div className="space-y-4">
+      {/* Delete error toast */}
+      {deleteError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {deleteError}
+        </div>
+      )}
+
       {/* Bulk edit toolbar */}
       {!isReadOnly && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-end gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
@@ -395,18 +394,8 @@ export default function CopyEditorTable({
           {showBulkOverwriteWarning && (
             <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
               <span>Will overwrite {bulkOverwriteCount} existing value{bulkOverwriteCount !== 1 ? "s" : ""}.</span>
-              <button
-                onClick={executeBulkApply}
-                className="font-medium underline hover:no-underline"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={() => setShowBulkOverwriteWarning(false)}
-                className="font-medium underline hover:no-underline"
-              >
-                Cancel
-              </button>
+              <button onClick={executeBulkApply} className="font-medium underline hover:no-underline">Confirm</button>
+              <button onClick={() => setShowBulkOverwriteWarning(false)} className="font-medium underline hover:no-underline">Cancel</button>
             </div>
           )}
           <button
@@ -468,6 +457,9 @@ export default function CopyEditorTable({
               <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
                 Ready
               </th>
+              {canDelete && (
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 w-10" />
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
@@ -478,13 +470,14 @@ export default function CopyEditorTable({
               const isExpanded = expandedCarousels.has(banner.id);
               const slides = slidesByParent[banner.id] || [];
               const isLoadingSlides = loadingSlides.has(banner.id);
+              const isDeleting = deletingId === banner.id;
               const rowBg = isSelected ? "bg-blue-50" : "bg-white";
 
               return (
                 <>
                 <tr
                   key={banner.id}
-                  className={`hover:bg-gray-50 ${isSelected ? "bg-blue-50" : "bg-white"}`}
+                  className={`hover:bg-gray-50 ${isSelected ? "bg-blue-50" : "bg-white"} ${isDeleting ? "opacity-50" : ""}`}
                 >
                   {!isReadOnly && (
                     <td
@@ -564,20 +557,15 @@ export default function CopyEditorTable({
                       cellState?.bannerId === banner.id &&
                       cellState.field === String(col.fieldKey) &&
                       cellState.state === "error";
-
                     return (
                       <td
                         key={`${banner.id}-${col.variable}-${col.language}`}
                         className={`px-2 py-1.5 transition-colors ${
-                          col.variable === "H1" && isEmpty && !isReadOnly
-                            ? "bg-amber-50"
-                            : ""
+                          col.variable === "H1" && isEmpty && !isReadOnly ? "bg-amber-50" : ""
                         } ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
                       >
                         {isReadOnly ? (
-                          <span className="block min-h-[28px] text-sm text-gray-700">
-                            {value}
-                          </span>
+                          <span className="block min-h-[28px] text-sm text-gray-700">{value}</span>
                         ) : (
                           <input
                             type="text"
@@ -620,6 +608,33 @@ export default function CopyEditorTable({
                       </span>
                     )}
                   </td>
+                  {/* Delete button — admin/designer only */}
+                  {canDelete && (
+                    <td className="px-2 py-2 text-right">
+                      <button
+                        onClick={() => {
+                          const label = isCarousel
+                            ? `Delete this Carousel banner and all ${slides.length} slide${slides.length !== 1 ? "s" : ""}?`
+                            : "Delete this banner?";
+                          if (window.confirm(label)) handleDelete(banner.id);
+                        }}
+                        disabled={isDeleting}
+                        title="Delete banner"
+                        className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                      >
+                        {isDeleting ? (
+                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                          </svg>
+                        ) : (
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                        )}
+                      </button>
+                    </td>
+                  )}
                 </tr>
 
                 {/* Slide child rows — shown when carousel is expanded */}
@@ -692,7 +707,6 @@ export default function CopyEditorTable({
                           cellState?.bannerId === slide.id &&
                           cellState.field === String(col.fieldKey) &&
                           cellState.state === "error";
-
                         return (
                           <td
                             key={`${slide.id}-${col.variable}-${col.language}`}
@@ -729,6 +743,8 @@ export default function CopyEditorTable({
                         );
                       })}
                       <td className="px-3 py-2" />
+                      {/* Empty cell for delete column alignment */}
+                      {canDelete && <td className="px-2 py-2" />}
                     </tr>
                   );
                 })}

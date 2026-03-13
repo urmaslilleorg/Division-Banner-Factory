@@ -317,6 +317,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         userRole={userRole}
         defaultTab={defaultTab}
         copySheetUrl={copySheetUrl}
+        campaignPublicUrl={`https://${clientSubdomain}.menteproduction.com/campaigns/${encodeURIComponent(campaignName.toLowerCase().replace(/\s+/g, "-"))}`}
       />
     </div>
   );
