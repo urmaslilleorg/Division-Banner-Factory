@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { Banner } from "@/lib/types";
 import type { ClientVariable } from "@/lib/types";
 import { FieldConfig, FormatFieldConfig, SlideVariableConfig } from "@/lib/airtable-campaigns";
@@ -72,14 +72,44 @@ export default function CopyEditorTable({
     }
     return slot;
   };
-  const [banners, setBanners] = useState<Banner[]>(initialBanners);
+
+  // ── Split banners into parent rows and pre-grouped slides ──────────────────
+  // Slide records are already included in the banners prop (fetchBanners with
+  // includeSlides=true). We separate them so they are NOT rendered as flat rows.
+  const { parentBanners, initialSlidesByParent } = useMemo(() => {
+    const parents: Banner[] = [];
+    const slideMap: Record<string, Banner[]> = {};
+
+    for (const b of initialBanners) {
+      if (b.bannerType === "Slide") {
+        const parentId = b.parentBannerIds?.[0];
+        if (parentId) {
+          if (!slideMap[parentId]) slideMap[parentId] = [];
+          slideMap[parentId].push(b);
+        }
+        // Slides not added to parents — they render under their parent
+      } else {
+        parents.push(b);
+      }
+    }
+
+    // Sort slides by Slide_Index within each parent
+    for (const parentId of Object.keys(slideMap)) {
+      slideMap[parentId].sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
+    }
+
+    return { parentBanners: parents, initialSlidesByParent: slideMap };
+  }, [initialBanners]);
+
+  const [banners, setBanners] = useState<Banner[]>(parentBanners);
   const [cellState, setCellState] = useState<CellState | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReadOnly = userRole === "client_reviewer";
 
-  // Carousel expand/collapse state
+  // Carousel expand/collapse state — collapsed by default (empty Set)
   const [expandedCarousels, setExpandedCarousels] = useState<Set<string>>(new Set());
-  const [slidesByParent, setSlidesByParent] = useState<Record<string, Banner[]>>({});
+  // Slides pre-loaded from the banners prop; can be extended by API fetch if needed
+  const [slidesByParent, setSlidesByParent] = useState<Record<string, Banner[]>>(initialSlidesByParent);
   const [loadingSlides, setLoadingSlides] = useState<Set<string>>(new Set());
 
   const toggleCarousel = async (parentId: string) => {
@@ -88,7 +118,11 @@ export default function CopyEditorTable({
       return;
     }
     setExpandedCarousels((prev) => new Set(Array.from(prev).concat(parentId)));
-    if (slidesByParent[parentId]) return; // already loaded
+
+    // If slides were already loaded from the prop, no API call needed
+    if (slidesByParent[parentId] && slidesByParent[parentId].length > 0) return;
+
+    // Fallback: fetch slides from API (e.g. when page loaded without includeSlides)
     setLoadingSlides((prev) => new Set(Array.from(prev).concat(parentId)));
     try {
       const res = await fetch(`/api/banners?parentId=${parentId}`);
@@ -106,7 +140,6 @@ export default function CopyEditorTable({
   const [bulkValues, setBulkValues] = useState<Record<string, string>>({});
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
-  // Scenario 16: overwrite warning
   const [bulkOverwriteCount, setBulkOverwriteCount] = useState(0);
   const [showBulkOverwriteWarning, setShowBulkOverwriteWarning] = useState(false);
 
@@ -134,11 +167,9 @@ export default function CopyEditorTable({
    */
   const getSlideVariables = (banner: Banner, slideIndex: number): string[] => {
     if (!fieldConfig.formatConfigs) return variables;
-    // Find the format config for this banner's format
     const formatName = banner.format || `${banner.width}x${banner.height}`;
     const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[formatName];
     if (!formatCfg?.slides) return formatCfg?.variables ?? variables;
-    // slideIndex is 1-based from banner.slideIndex
     const slideCfg: SlideVariableConfig | undefined = formatCfg.slides.find((s) => s.index === slideIndex);
     if (!slideCfg) return formatCfg.variables ?? variables;
     return slideCfg.variables;
@@ -278,125 +309,106 @@ export default function CopyEditorTable({
     setIsBulkSaving(true);
     setBulkResult(null);
 
-    const ids = Array.from(selectedIds);
-    let successCount = 0;
-    let errorCount = 0;
-
-    // Process in chunks of 10
-    for (let i = 0; i < ids.length; i += 10) {
-      const chunk = ids.slice(i, i + 10);
-      await Promise.all(
-        chunk.map(async (bannerId) => {
-          try {
-            const res = await fetch(`/api/banners/${bannerId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(fieldsToUpdate),
-            });
-            if (!res.ok) throw new Error();
-            successCount++;
-            // Update local state
-            const fieldKeyUpdates: Partial<Banner> = {};
-            for (const [colKey, value] of Object.entries(bulkValues)) {
-              if (value.trim()) {
-                (fieldKeyUpdates as Record<string, string>)[colKey] = value.trim();
+    let savedCount = 0;
+    for (const bannerId of Array.from(selectedIds)) {
+      try {
+        const res = await fetch(`/api/banners/${bannerId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fieldsToUpdate),
+        });
+        if (res.ok) {
+          savedCount++;
+          setBanners((prev) =>
+            prev.map((b) => {
+              if (b.id !== bannerId) return b;
+              const updated = { ...b };
+              for (const [colKey, value] of Object.entries(bulkValues)) {
+                if (value.trim()) {
+                  (updated as Record<string, unknown>)[colKey] = value.trim();
+                }
               }
-            }
-            setBanners((prev) =>
-              prev.map((b) =>
-                b.id === bannerId ? { ...b, ...fieldKeyUpdates } : b
-              )
-            );
-          } catch {
-            errorCount++;
-          }
-        })
-      );
+              return updated;
+            })
+          );
+        }
+      } catch {
+        // continue
+      }
     }
 
     setIsBulkSaving(false);
-    setBulkResult(
-      errorCount === 0
-        ? `✓ Updated ${successCount} records`
-        : `Updated ${successCount}, failed ${errorCount}`
-    );
-    setTimeout(() => setBulkResult(null), 3000);
-    setSelectedIds(new Set());
+    setBulkResult(`Saved ${savedCount} of ${selectedIds.size} banners`);
     setBulkValues({});
+    setSelectedIds(new Set());
+    setTimeout(() => setBulkResult(null), 3000);
   };
 
   const handleBulkApply = () => {
-    if (selectedIds.size === 0) return;
-    // Scenario 16: count banners with existing non-empty values that would be overwritten
-    const ids = Array.from(selectedIds);
+    // Check for overwrite warning
     let overwriteCount = 0;
-    for (const bannerId of ids) {
+    for (const bannerId of Array.from(selectedIds)) {
       const banner = banners.find((b) => b.id === bannerId);
       if (!banner) continue;
       for (const [colKey, value] of Object.entries(bulkValues)) {
         if (!value.trim()) continue;
-        const existing = (banner as unknown as Record<string, unknown>)[colKey];
-        if (existing && String(existing).trim() !== "") {
-          overwriteCount++;
-          break; // count each banner at most once
-        }
+        const existing = (banner as unknown as Record<string, unknown>)[colKey] as string | undefined;
+        if (existing && existing.trim() !== "") overwriteCount++;
       }
     }
     if (overwriteCount > 0) {
       setBulkOverwriteCount(overwriteCount);
       setShowBulkOverwriteWarning(true);
-      return;
+    } else {
+      executeBulkApply();
     }
-    void executeBulkApply();
   };
 
+  // ── Sticky column left offsets ─────────────────────────────────────────────
+  const checkboxLeft = 0;
+  const formatLeft = isReadOnly ? 0 : 40; // px — sits right of 40px checkbox column
+
   return (
-    <div className="space-y-3">
-      {/* Scenario 16: Overwrite warning */}
-      {showBulkOverwriteWarning && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-3">
-          <p className="text-sm font-medium text-amber-800 flex-1">
-            ⚠ This will overwrite existing copy in {bulkOverwriteCount} row{bulkOverwriteCount > 1 ? "s" : ""}. Are you sure?
-          </p>
-          <button
-            onClick={() => void executeBulkApply()}
-            className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800"
-          >
-            Yes, overwrite
-          </button>
-          <button
-            onClick={() => setShowBulkOverwriteWarning(false)}
-            className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-      {/* Bulk action bar — shown when rows are selected */}
+    <div className="space-y-4">
+      {/* Bulk edit toolbar */}
       {!isReadOnly && selectedIds.size > 0 && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-end gap-3">
-          <p className="text-sm font-medium text-blue-800 self-center">
-            {selectedIds.size} row{selectedIds.size > 1 ? "s" : ""} selected — apply to all:
-          </p>
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <span className="text-xs font-medium text-blue-700">
+            {selectedIds.size} selected
+          </span>
           {columns.map((col) => (
-            <div key={`bulk-${col.variable}-${col.language}`} className="space-y-0.5">
-              <label className="block text-[10px] font-medium text-blue-700 uppercase tracking-wide">
+            <div key={`bulk-${col.variable}-${col.language}`} className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wider text-blue-500">
                 {col.label}
               </label>
               <input
                 type="text"
-                value={bulkValues[String(col.fieldKey)] || ""}
+                value={bulkValues[String(col.fieldKey)] ?? ""}
                 onChange={(e) =>
-                  setBulkValues((prev) => ({
-                    ...prev,
-                    [String(col.fieldKey)]: e.target.value,
-                  }))
+                  setBulkValues((prev) => ({ ...prev, [String(col.fieldKey)]: e.target.value }))
                 }
-                placeholder={`${col.label}…`}
-                className="rounded border border-blue-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-36"
+                placeholder={`${col.variable}…`}
+                className="w-32 rounded border border-blue-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
           ))}
+          {showBulkOverwriteWarning && (
+            <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+              <span>Will overwrite {bulkOverwriteCount} existing value{bulkOverwriteCount !== 1 ? "s" : ""}.</span>
+              <button
+                onClick={executeBulkApply}
+                className="font-medium underline hover:no-underline"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setShowBulkOverwriteWarning(false)}
+                className="font-medium underline hover:no-underline"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           <button
             onClick={handleBulkApply}
             disabled={isBulkSaving}
@@ -421,7 +433,10 @@ export default function CopyEditorTable({
           <thead className="bg-gray-50">
             <tr>
               {!isReadOnly && (
-                <th className="sticky left-0 z-10 bg-gray-50 px-3 py-3" style={{ minWidth: "40px", width: "40px" }}>
+                <th
+                  className="sticky z-20 bg-gray-50 px-3 py-3 border-r border-gray-200"
+                  style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
+                >
                   <input
                     type="checkbox"
                     checked={selectedIds.size === banners.length && banners.length > 0}
@@ -431,8 +446,8 @@ export default function CopyEditorTable({
                 </th>
               )}
               <th
-                className="sticky z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap"
-                style={{ left: isReadOnly ? 0 : "40px", minWidth: "200px" }}
+                className="sticky z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap border-r border-gray-200"
+                style={{ left: formatLeft, minWidth: "200px" }}
               >
                 Format
               </th>
@@ -463,14 +478,19 @@ export default function CopyEditorTable({
               const isExpanded = expandedCarousels.has(banner.id);
               const slides = slidesByParent[banner.id] || [];
               const isLoadingSlides = loadingSlides.has(banner.id);
+              const rowBg = isSelected ? "bg-blue-50" : "bg-white";
+
               return (
                 <>
                 <tr
                   key={banner.id}
-                  className={`hover:bg-gray-50/50 ${isSelected ? "bg-blue-50/40" : ""}`}
+                  className={`hover:bg-gray-50 ${isSelected ? "bg-blue-50" : "bg-white"}`}
                 >
                   {!isReadOnly && (
-                    <td className="sticky left-0 z-10 bg-inherit px-3 py-2" style={{ minWidth: "40px", width: "40px" }}>
+                    <td
+                      className={`sticky z-10 px-3 py-2 border-r border-gray-200 ${rowBg}`}
+                      style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
+                    >
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -481,8 +501,8 @@ export default function CopyEditorTable({
                   )}
                   {/* Format / Banner Name */}
                   <td
-                    className="sticky z-10 bg-inherit px-4 py-2 whitespace-nowrap"
-                    style={{ left: isReadOnly ? 0 : "40px", minWidth: "200px" }}
+                    className={`sticky z-10 px-4 py-2 whitespace-nowrap border-r border-gray-200 ${rowBg}`}
+                    style={{ left: formatLeft, minWidth: "200px" }}
                   >
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1.5">
@@ -495,7 +515,11 @@ export default function CopyEditorTable({
                             className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
                             title={isExpanded ? "Collapse slides" : "Expand slides"}
                           >
-                            {isLoadingSlides ? "…" : isExpanded ? `▲ ${slides.length} slides` : "▼ Carousel"}
+                            {isLoadingSlides
+                              ? "…"
+                              : isExpanded
+                              ? `▲ ${slides.length} slide${slides.length !== 1 ? "s" : ""}`
+                              : `▶ ${slides.length} slide${slides.length !== 1 ? "s" : ""} [Carousel]`}
                           </button>
                         )}
                       </div>
@@ -597,21 +621,25 @@ export default function CopyEditorTable({
                     )}
                   </td>
                 </tr>
+
                 {/* Slide child rows — shown when carousel is expanded */}
                 {isCarousel && isExpanded && slides.map((slide) => {
-                  const slideIdx = (slide.slideIndex ?? 1);
+                  const slideIdx = slide.slideIndex ?? 1;
                   const slideVars = getSlideVariables(banner, slideIdx);
                   const slideCols = getSlideColumns(slideVars);
                   const isImageOnly = slideVars.length === 0;
 
                   return (
-                    <tr key={slide.id} className="bg-purple-50/30 border-l-2 border-purple-200">
+                    <tr key={slide.id} className="bg-purple-50 border-l-2 border-purple-200">
                       {!isReadOnly && (
-                        <td className="sticky left-0 z-10 bg-purple-50/30 px-3 py-2" style={{ minWidth: "40px", width: "40px" }} />
+                        <td
+                          className="sticky z-10 bg-purple-50 px-3 py-2 border-r border-purple-100"
+                          style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
+                        />
                       )}
                       <td
-                        className="sticky z-10 bg-purple-50/30 px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8"
-                        style={{ left: isReadOnly ? 0 : "40px", minWidth: "200px" }}
+                        className="sticky z-10 bg-purple-50 px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8 border-r border-purple-100"
+                        style={{ left: formatLeft, minWidth: "200px" }}
                       >
                         <div className="flex items-center gap-1.5">
                           <span>↳ Slide {slideIdx}</span>
@@ -637,7 +665,6 @@ export default function CopyEditorTable({
                           {slide.status}
                         </span>
                       </td>
-                      {/* Render columns aligned to parent header, filling inactive slots with dim cells */}
                       {columns.map((col) => {
                         const isActive = slideCols.some(
                           (sc) => sc.variable === col.variable && sc.language === col.language
@@ -646,9 +673,9 @@ export default function CopyEditorTable({
                           return (
                             <td
                               key={`${slide.id}-${col.variable}-${col.language}-empty`}
-                              className="px-2 py-1.5 bg-gray-50/60"
+                              className="px-2 py-1.5 bg-purple-50/60"
                             >
-                              <span className="block text-[10px] text-gray-300 italic">—</span>
+                              <span className="block text-[10px] text-purple-200 italic">—</span>
                             </td>
                           );
                         }
@@ -694,7 +721,7 @@ export default function CopyEditorTable({
                                     ? "border-emerald-300 bg-emerald-50"
                                     : isError
                                     ? "border-red-300 bg-red-50"
-                                    : "border-gray-200 bg-white"
+                                    : "border-purple-200 bg-white"
                                 }`}
                               />
                             )}
