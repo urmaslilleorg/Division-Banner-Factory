@@ -204,6 +204,12 @@ export async function PATCH(
     const body = await req.json();
     const campaignId = params.id;
 
+    // ── Map camelCase client keys to Airtable field names ────────────────────
+    if ("copySheetUrl" in body) {
+      body["Copy_Sheet_URL"] = body["copySheetUrl"] ?? null;
+      delete body["copySheetUrl"];
+    }
+
     // ── 1. Update campaign record ─────────────────────────────────────────────
     const patchRes = await fetch(
       `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CAMPAIGNS_TABLE}/${campaignId}`,

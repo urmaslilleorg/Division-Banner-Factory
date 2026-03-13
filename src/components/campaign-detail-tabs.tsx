@@ -6,6 +6,7 @@ import { FieldConfig } from "@/lib/airtable-campaigns";
 import type { ClientVariable } from "@/lib/types";
 import CopyEditorTable from "@/components/copy-editor-table";
 import BannerGrid from "@/components/banner-grid";
+import ExternalCopySheet from "@/components/external-copy-sheet";
 
 type Tab = "copy" | "preview";
 
@@ -16,6 +17,7 @@ interface CampaignDetailTabsProps {
   clientVariables: ClientVariable[];
   userRole: string;
   defaultTab?: Tab;
+  copySheetUrl?: string | null;
 }
 
 export default function CampaignDetailTabs({
@@ -25,6 +27,7 @@ export default function CampaignDetailTabs({
   clientVariables,
   userRole,
   defaultTab = "copy",
+  copySheetUrl = null,
 }: CampaignDetailTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
 
@@ -67,7 +70,22 @@ export default function CampaignDetailTabs({
 
       {/* Copy & Assets tab */}
       {activeTab === "copy" && (
-        <div>
+        <div className="space-y-4">
+          {/* Task 1 & 5: External Copy Sheet section — collapsible, at top */}
+          <ExternalCopySheet
+            campaignId={campaignId}
+            initialUrl={copySheetUrl}
+            userRole={userRole}
+          />
+
+          {/* Divider info text */}
+          {copySheetUrl && (
+            <p className="text-xs text-gray-400 text-center -mt-2 mb-2">
+              Both views show the same data. Changes in the external sheet appear here after page refresh.
+            </p>
+          )}
+
+          {/* Inline Copy Editor — primary editing interface */}
           {fieldConfig.variables.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-200 py-12 text-center">
               <p className="text-sm text-gray-400">

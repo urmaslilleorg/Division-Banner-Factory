@@ -41,6 +41,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   let campaignName = campaignSlug;
   let launchMonth: string | null = null;
   let fieldConfig = null;
+  let copySheetUrl: string | null = null;
 
   // Try to find campaign record to get ID and metadata
   try {
@@ -59,6 +60,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
       campaignName = found.name;
       launchMonth = found.launchMonth ?? null;
       fieldConfig = found.fieldConfig;
+      copySheetUrl = found.copySheetUrl ?? null;
     } else if (!isRecordId) {
       campaignName = formattedName;
     }
@@ -159,6 +161,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         clientVariables={clientVariables}
         userRole={userRole}
         defaultTab={defaultTab}
+        copySheetUrl={copySheetUrl}
       />
     </div>
   );
