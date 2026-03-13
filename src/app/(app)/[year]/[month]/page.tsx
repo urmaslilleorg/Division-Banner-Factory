@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
+import { getClientConfigFromHeaders } from "@/lib/client-config";
 import Link from "next/link";
 import { ChevronLeft, Plus, ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -38,8 +40,13 @@ export default async function MonthDetailPage({ params }: PageProps) {
 
   const launchMonthLabel = `${monthName} ${year}`;
 
+  // Use client-scoped filter (same as campaigns/page.tsx) to avoid cross-client data leakage
+  void headers(); // ensure headers() is called to opt into dynamic rendering
+  const clientConfig = getClientConfigFromHeaders();
+  const campaignFilter = clientConfig?.airtable?.campaignFilter || undefined;
+
   const [campaigns, bannerSummaries] = await Promise.all([
-    fetchAllCampaigns(),
+    fetchAllCampaigns(campaignFilter),
     fetchBannerSummaries(),
   ]);
 

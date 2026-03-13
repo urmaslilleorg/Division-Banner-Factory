@@ -124,17 +124,23 @@ function buildInitialFormatConfigs(
   formats: AirtableFormat[],
   fieldConfig: CampaignInitialData["fieldConfig"]
 ): Record<string, FormatConfig> {
-  if (!fieldConfig?.formatConfigs) return {};
+  // Support both new schema (formatConfigs key) and old schema (formats as object)
+  const configSource: Record<string, { variables?: string[]; mode?: string; slideCount?: number; copy?: Record<string, string>; slides?: unknown[] }> | undefined =
+    fieldConfig?.formatConfigs ??
+    (fieldConfig?.formats && !Array.isArray(fieldConfig.formats)
+      ? (fieldConfig.formats as Record<string, { variables?: string[]; mode?: string; slideCount?: number; copy?: Record<string, string>; slides?: unknown[] }>)
+      : undefined);
+  if (!configSource) return {};
   const result: Record<string, FormatConfig> = {};
   for (const f of formats) {
-    const saved = fieldConfig.formatConfigs[f.formatName];
+    const saved = configSource[f.formatName];
     if (saved) {
       const vars = saved.variables ?? ["H1", "CTA"];
-      const rawSlides = saved.slides ?? [];
+      const rawSlides = (saved.slides ?? []) as Parameters<typeof normaliseSlide>[0][];
       const slides: SlideConfig[] = rawSlides.map((s, i) => normaliseSlide(s, i, vars));
       result[f.id] = {
         variables: vars,
-        mode: saved.mode ?? "default",
+        mode: (saved.mode as FormatConfig["mode"]) ?? "default",
         copy: saved.copy ?? {},
         slideCount: saved.slideCount ?? (slides.length || 3),
         slides,
@@ -181,9 +187,12 @@ export default function CampaignBuilderForm({
     initialData?.fieldConfig?.languages ?? ["ET"]
   );
 
-  // Pre-select formats from fieldConfig.formats (array of format names → match by name)
+  // Pre-select formats from fieldConfig.formats.
+  // Supports both new schema (string[]) and old schema (object keyed by formatName).
   const initialFormatIds = (() => {
-    const names = new Set(initialData?.fieldConfig?.formats ?? []);
+    const raw = initialData?.fieldConfig?.formats ?? [];
+    const namesArray: string[] = Array.isArray(raw) ? raw : Object.keys(raw);
+    const names = new Set(namesArray);
     return formats.filter((f) => names.has(f.formatName)).map((f) => f.id);
   })();
   const [selectedFormats, setSelectedFormats] = useState<string[]>(initialFormatIds);
