@@ -173,13 +173,15 @@ export default function NewClientWizard({ formats, variableSlots, initialData, e
         {STEPS.map((label, i) => (
           <div key={i} className="flex items-center">
             <button
-              onClick={() => i < step && setStep(i)}
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+              onClick={() => setStep(i)}
+              title={label}
+              aria-label={`Go to step ${i + 1}: ${label}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-colors cursor-pointer ${
                 i === step
-                  ? "bg-gray-900 text-white"
+                  ? "bg-gray-900 text-white ring-2 ring-gray-900 ring-offset-2"
                   : i < step
-                  ? "bg-gray-200 text-gray-700 cursor-pointer hover:bg-gray-300"
-                  : "bg-gray-100 text-gray-400"
+                  ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  : "bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
               }`}
             >
               {i < step ? (
