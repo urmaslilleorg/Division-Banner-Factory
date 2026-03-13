@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { Banner } from "@/lib/types";
 import type { ClientVariable } from "@/lib/types";
 import { FieldConfig, FormatFieldConfig, SlideVariableConfig } from "@/lib/airtable-campaigns";
@@ -99,8 +98,6 @@ export default function CopyEditorTable({
     }
     return { parentBanners: parents, initialSlidesByParent: slideMap };
   }, [initialBanners]);
-
-  const router = useRouter();
 
   const [banners, setBanners] = useState<Banner[]>(parentBanners);
   const [fieldConfig, setFieldConfig] = useState<FieldConfig>(initialFieldConfig);
@@ -418,11 +415,11 @@ export default function CopyEditorTable({
         });
       }
       setShowAddFormat(false);
-      // Force Next.js to re-render the server component so fresh Airtable data
-      // is fetched and the table shows the newly generated banner rows.
-      router.refresh();
+      // Full page reload so the server component re-fetches fresh Airtable data
+      // and the client component initialises with the new banner rows.
+      window.location.reload();
     },
-    [router]
+    []
   );
 
   // Total number of data columns (for colspan on carousel header row)
