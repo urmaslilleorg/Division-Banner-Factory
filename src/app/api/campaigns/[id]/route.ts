@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 /**
  * GET   /api/campaigns/[id]  — fetch single campaign
  * PATCH /api/campaigns/[id]  — update campaign metadata ONLY
