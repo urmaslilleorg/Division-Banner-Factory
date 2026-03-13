@@ -417,11 +417,11 @@ export default function CopyEditorTable({
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-100 text-sm">
+        <table className="w-full divide-y divide-gray-100 text-sm" style={{ minWidth: "max-content" }}>
           <thead className="bg-gray-50">
             <tr>
               {!isReadOnly && (
-                <th className="sticky left-0 z-10 bg-gray-50 px-3 py-3">
+                <th className="sticky left-0 z-10 bg-gray-50 px-3 py-3" style={{ minWidth: "40px", width: "40px" }}>
                   <input
                     type="checkbox"
                     checked={selectedIds.size === banners.length && banners.length > 0}
@@ -430,7 +430,10 @@ export default function CopyEditorTable({
                   />
                 </th>
               )}
-              <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap">
+              <th
+                className="sticky z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap"
+                style={{ left: isReadOnly ? 0 : "40px", minWidth: "200px" }}
+              >
                 Format
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
@@ -467,7 +470,7 @@ export default function CopyEditorTable({
                   className={`hover:bg-gray-50/50 ${isSelected ? "bg-blue-50/40" : ""}`}
                 >
                   {!isReadOnly && (
-                    <td className="sticky left-0 z-10 bg-inherit px-3 py-2">
+                    <td className="sticky left-0 z-10 bg-inherit px-3 py-2" style={{ minWidth: "40px", width: "40px" }}>
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -477,7 +480,10 @@ export default function CopyEditorTable({
                     </td>
                   )}
                   {/* Format / Banner Name */}
-                  <td className="sticky left-0 z-10 bg-inherit px-4 py-2 whitespace-nowrap">
+                  <td
+                    className="sticky z-10 bg-inherit px-4 py-2 whitespace-nowrap"
+                    style={{ left: isReadOnly ? 0 : "40px", minWidth: "200px" }}
+                  >
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-xs text-gray-600">
@@ -600,8 +606,13 @@ export default function CopyEditorTable({
 
                   return (
                     <tr key={slide.id} className="bg-purple-50/30 border-l-2 border-purple-200">
-                      {!isReadOnly && <td className="px-3 py-2" />}
-                      <td className="px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8">
+                      {!isReadOnly && (
+                        <td className="sticky left-0 z-10 bg-purple-50/30 px-3 py-2" style={{ minWidth: "40px", width: "40px" }} />
+                      )}
+                      <td
+                        className="sticky z-10 bg-purple-50/30 px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8"
+                        style={{ left: isReadOnly ? 0 : "40px", minWidth: "200px" }}
+                      >
                         <div className="flex items-center gap-1.5">
                           <span>↳ Slide {slideIdx}</span>
                           {isImageOnly && (
