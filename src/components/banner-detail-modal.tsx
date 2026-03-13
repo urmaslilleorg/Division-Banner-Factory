@@ -32,6 +32,8 @@ interface BannerDetailModalProps {
   onBannerUpdate: (updated: Banner) => void;
   /** Called when a slide record is updated (approval, upload, comment) */
   onSlideUpdate?: (updated: Banner) => void;
+  /** User role — client_viewer sees banners read-only (no approve/comment) */
+  userRole?: string;
 }
 
 // ─── Approval Status Dropdown ─────────────────────────────────────────────────
@@ -511,7 +513,9 @@ export default function BannerDetailModal({
   onOpenChange,
   onBannerUpdate,
   onSlideUpdate,
+  userRole = "client_reviewer",
 }: BannerDetailModalProps) {
+  const canApprove = userRole !== "client_viewer";
   const [newComment, setNewComment] = useState("");
   const [isSendingComment, setIsSendingComment] = useState(false);
 
@@ -750,19 +754,21 @@ export default function BannerDetailModal({
 
             {/* Approval action bar */}
             <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
-              <ApprovalDropdown
-                bannerId={banner.id}
-                currentStatus={
-                  (banner.approvalStatus as ApprovalStatus) ?? "Pending"
-                }
-                onStatusChange={(newStatus) =>
-                  onBannerUpdate({
-                    ...banner,
-                    approvalStatus: newStatus,
-                    clientApproved: newStatus === "Approved",
-                  })
-                }
-              />
+              {canApprove && (
+                <ApprovalDropdown
+                  bannerId={banner.id}
+                  currentStatus={
+                    (banner.approvalStatus as ApprovalStatus) ?? "Pending"
+                  }
+                  onStatusChange={(newStatus) =>
+                    onBannerUpdate({
+                      ...banner,
+                      approvalStatus: newStatus,
+                      clientApproved: newStatus === "Approved",
+                    })
+                  }
+                />
+              )}
               <Button variant="outline" size="sm" onClick={handleDownload}>
                 <Download className="mr-1 h-3 w-3" />
                 Download
@@ -786,28 +792,30 @@ export default function BannerDetailModal({
               ) : (
                 <p className="text-xs text-gray-400">No comments yet.</p>
               )}
-              <div className="flex gap-2">
-                <Textarea
-                  placeholder="Add a comment..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  rows={2}
-                  className="flex-1"
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleAddComment}
-                  disabled={isSendingComment || !newComment.trim()}
-                  className="self-end"
-                >
-                  {isSendingComment ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              {canApprove && (
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="Add a comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    rows={2}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleAddComment}
+                    disabled={isSendingComment || !newComment.trim()}
+                    className="self-end"
+                  >
+                    {isSendingComment ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </>
         )}

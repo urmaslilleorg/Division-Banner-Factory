@@ -340,6 +340,7 @@ export default function BannerGrid({
         onOpenChange={setModalOpen}
         onBannerUpdate={handleBannerUpdate}
         onSlideUpdate={handleSlideUpdate}
+        userRole={userRole}
       />
     </div>
   );
