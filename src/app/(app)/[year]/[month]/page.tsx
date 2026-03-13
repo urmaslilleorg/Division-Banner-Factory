@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { DownloadZipButton } from "@/components/download-zip-button";
+import { CopyCampaignModal } from "@/components/copy-campaign-modal";
 
 interface PageProps {
   params: { year: string; month: string };
@@ -169,6 +170,11 @@ export default async function MonthDetailPage({ params }: PageProps) {
                       campaignName={campaign.name}
                     />
                   )}
+                  <CopyCampaignModal
+                    campaignId={campaign.id}
+                    campaignName={campaign.name}
+                    launchMonth={campaign.launchMonth}
+                  />
                   <Link
                     href={`/dashboard/campaigns/${campaign.id}/edit?preview=true`}
                     className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
