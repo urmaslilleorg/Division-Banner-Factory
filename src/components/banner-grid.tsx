@@ -6,7 +6,6 @@ import BannerCard from "./banner-card";
 import FilterBar, { FilterState } from "./filter-bar";
 import BannerDetailModal from "./banner-detail-modal";
 import CampaignSummaryBar, { QuickFilter } from "./campaign-summary-bar";
-import DesignerControls from "./designer-controls";
 import { driveToDirectUrl } from "@/lib/drive";
 
 interface BannerGridProps {
@@ -201,9 +200,6 @@ export default function BannerGrid({
   const [selectedBanner, setSelectedBanner] = useState<Banner | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const isDesigner =
-    userRole === "division_designer" || userRole === "division_admin";
-
   // Separate slides from displayable banners; Preview tab shows only banners with images
   const { displayBanners, slidesByParentId } = useMemo(() => {
     const slides = banners.filter((b) => b.bannerType === "Slide");
@@ -284,30 +280,6 @@ export default function BannerGrid({
       prev.map((b) => (b.id === updatedSlide.id ? updatedSlide : b))
     );
   }, []);
-
-  // Optimistic delete: remove card and all its slides from grid immediately
-  const handleBannerDelete = useCallback(
-    (bannerId: string) => {
-      setBanners((prev) => {
-        const deleted = prev.find((b) => b.id === bannerId);
-        if (deleted?.bannerType === "Carousel") {
-          // Remove parent + all its slides
-          return prev.filter(
-            (b) =>
-              b.id !== bannerId &&
-              !(b.bannerType === "Slide" && b.parentBannerIds?.includes(bannerId))
-          );
-        }
-        return prev.filter((b) => b.id !== bannerId);
-      });
-      setSelectedBanner((prev) => (prev?.id === bannerId ? null : prev));
-      setModalOpen((open) => {
-        if (open && selectedBanner?.id === bannerId) return false;
-        return open;
-      });
-    },
-    [selectedBanner]
-  );
 
   // Slides for the currently selected carousel (passed to modal)
   const selectedSlides = useMemo(() => {
