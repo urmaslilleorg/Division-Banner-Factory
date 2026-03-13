@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { AirtableFormat } from "@/lib/airtable-campaigns";
 import { VariableDefinition } from "@/components/variables-manager";
 import { Button } from "@/components/ui/button";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, BookmarkPlus } from "lucide-react";
 import type { ClientVariable } from "@/lib/types";
 import ImportSection, { type ImportSectionState } from "@/components/import-section";
+import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
 
 const FALLBACK_VARIABLE_OPTIONS = [
   { value: "H1", label: "H1" },
@@ -97,6 +98,10 @@ interface CampaignBuilderFormProps {
   campaignId?: string;
   /** Pre-fill values — used when mode === "edit" */
   initialData?: CampaignInitialData;
+  /** Client subdomain — used for template API calls */
+  clientId?: string;
+  /** Saved templates for this client */
+  templates?: CampaignTemplate[];
 }
 
 // ── Helper: normalise a saved slide to SlideConfig ───────────────────────────
@@ -147,6 +152,8 @@ export default function CampaignBuilderForm({
   mode = "create",
   campaignId,
   initialData,
+  clientId,
+  templates = [],
 }: CampaignBuilderFormProps) {
   // Build variable options: start from global registry or fallback, then override labels
   const baseOptions = variableRegistry && variableRegistry.length > 0
@@ -211,6 +218,101 @@ export default function CampaignBuilderForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+
+  // ── Template state ──────────────────────────────────────────────────────────
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [showTemplateSaveUI, setShowTemplateSaveUI] = useState(false);
+
+  const handleSaveAsTemplate = async () => {
+    if (!clientId || !templateName.trim()) return;
+    setTemplateSaving(true);
+    try {
+      // Build the current fieldConfig snapshot
+      const selectedFormatData = formats.filter((f) => selectedFormats.includes(f.id));
+      const savedFormatConfigs: Record<string, object> = {};
+      for (const f of selectedFormatData) {
+        const cfg = getFormatConfig(f.id);
+        savedFormatConfigs[f.formatName] = {
+          variables: cfg.variables,
+          mode: cfg.mode,
+          copy: cfg.copy,
+          slideCount: cfg.slideCount,
+          slides: cfg.mode === "carousel"
+            ? cfg.slides.map((s) => ({ index: s.index, variables: s.variables, copy: s.copy }))
+            : [],
+        };
+      }
+      const fieldConfig = {
+        languages: selectedLanguages,
+        formats: selectedFormatData.map((f) => f.formatName),
+        variables: variableOptions.map((v) => v.value),
+        formatConfigs: savedFormatConfigs,
+        defaultCopy,
+      };
+      const res = await fetch(`/api/clients/${clientId}/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: templateName.trim(),
+          fieldConfig,
+          columnMapping: importState.columnMapping && Object.keys(importState.columnMapping).length > 0
+            ? importState.columnMapping
+            : null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save template");
+      setFlash(`Template "${templateName.trim()}" saved`);
+      setTemplateName("");
+      setShowTemplateSaveUI(false);
+    } catch {
+      setError("Failed to save template. Please try again.");
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const applyTemplate = (tpl: CampaignTemplate) => {
+    // Apply languages
+    setSelectedLanguages(tpl.fieldConfig.languages ?? ["ET"]);
+    // Apply formats — fieldConfig.formats can be string[] or Record<string, unknown>
+    const formatsRaw = tpl.fieldConfig.formats ?? [];
+    const formatsArray = Array.isArray(formatsRaw)
+      ? (formatsRaw as string[])
+      : Object.keys(formatsRaw as Record<string, unknown>);
+    const tplFormatNames = new Set(formatsArray);
+    const tplFormatIds = formats.filter((f) => tplFormatNames.has(f.formatName)).map((f) => f.id);
+    setSelectedFormats(tplFormatIds);
+    // Apply per-format configs
+    const newConfigs: Record<string, FormatConfig> = {};
+    for (const f of formats) {
+      if (!tplFormatIds.includes(f.id)) continue;
+      const saved = (tpl.fieldConfig.formatConfigs as Record<string, {
+        variables?: string[];
+        mode?: FormatMode;
+        copy?: Record<string, string>;
+        slideCount?: number;
+        slides?: Array<SlideConfig | SlideCopy>;
+      }>)?.[f.formatName];
+      if (saved) {
+        const vars = saved.variables ?? ["H1", "CTA"];
+        const rawSlides = saved.slides ?? [];
+        const slides: SlideConfig[] = rawSlides.map((s, i) => normaliseSlide(s, i, vars));
+        newConfigs[f.id] = {
+          variables: vars,
+          mode: saved.mode ?? "default",
+          copy: saved.copy ?? {},
+          slideCount: saved.slideCount ?? (slides.length || 3),
+          slides,
+        };
+      }
+    }
+    setFormatConfigs(newConfigs);
+    // Expand channels that have selected formats
+    const channels = new Set(formats.filter((f) => tplFormatIds.includes(f.id)).map((f) => f.channel || "Other"));
+    setExpandedChannels(Object.fromEntries(Array.from(channels).map((ch) => [ch, true])));
+    setFlash(`Template applied — review and save`);
+  };
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [importState, setImportState] = useState<ImportSectionState>({
@@ -998,6 +1100,29 @@ export default function CampaignBuilderForm({
         </div>
       )}
 
+      {/* Template selector — shown when templates exist */}
+      {templates.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Apply a saved template</span>
+            <select
+              className="rounded border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900"
+              defaultValue=""
+              onChange={(e) => {
+                const tpl = templates.find((t) => t.id === e.target.value);
+                if (tpl) applyTemplate(tpl);
+                e.target.value = "";
+              }}
+            >
+              <option value="" disabled>Select template…</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name} ({t.createdAt})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Import Section */}
       <ImportSection
         savedMapping={initialData?.columnMapping ?? null}
@@ -1020,7 +1145,7 @@ export default function CampaignBuilderForm({
       )}
 
       {/* Submit */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? (
             <><Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -1042,6 +1167,44 @@ export default function CampaignBuilderForm({
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel
           </Button>
+        )}
+        {/* Save as Template — only when clientId is available */}
+        {clientId && (
+          <div className="ml-auto flex items-center gap-2">
+            {showTemplateSaveUI ? (
+              <>
+                <input
+                  type="text"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSaveAsTemplate(); } if (e.key === "Escape") setShowTemplateSaveUI(false); }}
+                  placeholder="Template name…"
+                  autoFocus
+                  className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 w-44"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={templateSaving || !templateName.trim()}
+                  onClick={() => void handleSaveAsTemplate()}
+                >
+                  {templateSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setShowTemplateSaveUI(false)}>Cancel</Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-500 hover:text-gray-700"
+                onClick={() => setShowTemplateSaveUI(true)}
+              >
+                <BookmarkPlus className="mr-1 h-4 w-4" />
+                Save as Template
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </form>

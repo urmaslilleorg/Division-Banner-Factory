@@ -28,6 +28,7 @@ export default async function SettingsLayout({
         {[
           { href: "/settings/formats", label: "Formats" },
           { href: "/settings/variables", label: "Variables" },
+          { href: "/settings/templates", label: "Templates" },
         ].map((tab) => (
           <Link
             key={tab.href}

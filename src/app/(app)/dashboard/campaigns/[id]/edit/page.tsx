@@ -7,6 +7,11 @@ import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignBuilderForm, { CampaignInitialData } from "@/components/campaign-builder-form";
 import type { ClientVariable } from "@/lib/types";
 import type { VariableDefinition } from "@/components/variables-manager";
+import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
+
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
+const BASE_ID = "appIqinespXjbIERp";
+const CLIENTS_TABLE = "tblE3eM8D5vlRs6Qq";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
 function launchMonthToUrl(launchMonth: string | null | undefined): string {
@@ -24,8 +29,6 @@ function launchMonthToUrl(launchMonth: string | null | undefined): string {
 }
 
 async function fetchVariableRegistry(): Promise<VariableDefinition[]> {
-  const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
-  const BASE_ID = "appIqinespXjbIERp";
   const BRAND_ASSETS_TABLE = "tblXAWuxJ47Bejj5w";
   const REGISTRY_RECORD_ID = "recCjnJ8I3v3STPfW";
   try {
@@ -36,6 +39,22 @@ async function fetchVariableRegistry(): Promise<VariableDefinition[]> {
     if (!res.ok) return [];
     const record = await res.json();
     return JSON.parse(record.fields.Registry_JSON || "[]");
+  } catch {
+    return [];
+  }
+}
+
+async function fetchClientTemplates(recordId: string): Promise<CampaignTemplate[]> {
+  try {
+    const res = await fetch(
+      `https://api.airtable.com/v0/${BASE_ID}/${CLIENTS_TABLE}/${recordId}?fields[]=Client_Templates`,
+      { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` }, cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const data = await res.json() as { fields: { Client_Templates?: string } };
+    const raw = data.fields.Client_Templates;
+    if (!raw) return [];
+    return JSON.parse(raw) as CampaignTemplate[];
   } catch {
     return [];
   }
@@ -74,6 +93,11 @@ export default async function CampaignEditPage({ params }: PageProps) {
     const { fetchFormats } = await import("@/lib/airtable-campaigns");
     formats = await fetchFormats();
   }
+
+  // Fetch saved templates for this client
+  const templates = clientRecord?.id
+    ? await fetchClientTemplates(clientRecord.id)
+    : [];
 
   // Parse Field_Config JSON from campaign record
   let parsedFieldConfig: CampaignInitialData["fieldConfig"] = undefined;
@@ -125,6 +149,8 @@ export default async function CampaignEditPage({ params }: PageProps) {
         variableRegistry={variableRegistry}
         clientVariables={clientVariables}
         clientName={clientName}
+        clientId={clientSubdomain !== "admin" ? clientSubdomain : undefined}
+        templates={templates}
       />
     </main>
   );
