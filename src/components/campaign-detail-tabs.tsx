@@ -15,6 +15,7 @@ interface CampaignDetailTabsProps {
   banners: Banner[];
   fieldConfig: FieldConfig;
   clientVariables: ClientVariable[];
+  clientFormatIds?: string[];
   userRole: string;
   defaultTab?: Tab;
   copySheetUrl?: string | null;
@@ -27,6 +28,7 @@ export default function CampaignDetailTabs({
   banners,
   fieldConfig,
   clientVariables,
+  clientFormatIds = [],
   userRole,
   defaultTab = "copy",
   copySheetUrl = null,
@@ -166,6 +168,7 @@ export default function CampaignDetailTabs({
               fieldConfig={fieldConfig}
               userRole={userRole}
               clientVariables={clientVariables}
+              clientFormatIds={clientFormatIds}
             />
           )}
         </div>

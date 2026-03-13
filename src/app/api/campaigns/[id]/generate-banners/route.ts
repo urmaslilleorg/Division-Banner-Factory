@@ -2,9 +2,24 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/campaigns/[id]/generate-banners
  *
- * Creates ONLY the banner records that are missing for this campaign.
- * Compares Field_Config (configured formats × languages) against
- * existing Airtable banner records and creates the gaps.
+ * Two modes:
+ *
+ * 1. No body (or empty body): generates ALL missing banners for this campaign
+ *    by comparing Field_Config formats × languages against existing records.
+ *
+ * 2. Body with `formats` array: generates ONLY the specified formats and
+ *    optionally updates Field_Config to include them.
+ *    Body shape:
+ *      {
+ *        formats: [{
+ *          formatName: string,
+ *          variables: string[],
+ *          mode: "default" | "specific" | "carousel",
+ *          slideCount?: number,
+ *          slides?: { index: number; variables: string[] }[]
+ *        }],
+ *        updateFieldConfig?: boolean   // default true
+ *      }
  *
  * Auth: division_admin or division_designer.
  *
@@ -149,10 +164,25 @@ async function createBanners(
   return ids;
 }
 
+// ── Targeted format input shape ───────────────────────────────────────────────
+
+interface TargetedFormatInput {
+  formatName: string;
+  variables: string[];
+  mode: "default" | "specific" | "carousel";
+  slideCount?: number;
+  slides?: { index: number; variables: string[] }[];
+}
+
+interface GenerateBannersBody {
+  formats?: TargetedFormatInput[];
+  updateFieldConfig?: boolean;
+}
+
 // ── POST ───────────────────────────────────────────────────────────────────────
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -164,6 +194,17 @@ export async function POST(
     }
 
     const campaignId = params.id;
+
+    // Parse optional request body
+    let requestBody: GenerateBannersBody = {};
+    try {
+      const text = await req.text();
+      if (text && text.trim()) requestBody = JSON.parse(text) as GenerateBannersBody;
+    } catch {
+      // empty body is fine
+    }
+    const targetedFormats = requestBody.formats;
+    const updateFieldConfig = requestBody.updateFieldConfig !== false; // default true
 
     // 1. Fetch campaign record
     const campaign = await fetchCampaignById(campaignId);
@@ -180,10 +221,66 @@ export async function POST(
     }
 
     const languages: string[] = fieldConfig.languages ?? [];
-    const formatNames: string[] = Array.isArray(fieldConfig.formats)
-      ? fieldConfig.formats
-      : Object.keys(fieldConfig.formats ?? {});
-    const formatConfigs = fieldConfig.formatConfigs ?? {};
+
+    // If targeted formats provided, use them; otherwise use all configured formats
+    let formatNames: string[];
+    let formatConfigs: Record<string, unknown>;
+
+    if (targetedFormats && targetedFormats.length > 0) {
+      formatNames = targetedFormats.map((f) => f.formatName);
+      // Build formatConfigs from targeted input, merging with existing
+      const existingConfigs = fieldConfig.formatConfigs ?? {};
+      const newConfigs: Record<string, unknown> = { ...existingConfigs };
+      for (const tf of targetedFormats) {
+        newConfigs[tf.formatName] = {
+          variables: tf.variables,
+          mode: tf.mode,
+          slideCount: tf.slideCount ?? 3,
+          slides: tf.slides ?? [],
+        };
+      }
+      formatConfigs = newConfigs;
+
+      // Update Field_Config on the campaign record if requested
+      if (updateFieldConfig) {
+        const existingFormatNames: string[] = Array.isArray(fieldConfig.formats)
+          ? fieldConfig.formats
+          : Object.keys(fieldConfig.formats ?? {});
+        const allFormatNames = Array.from(new Set([...existingFormatNames, ...formatNames]));
+        // Merge all variables across all format configs
+        const allVariables = Array.from(
+          new Set(
+            Object.values(newConfigs).flatMap(
+              (cfg) => ((cfg as { variables?: string[] }).variables ?? [])
+            )
+          )
+        );
+        const updatedFieldConfig = {
+          ...fieldConfig,
+          formats: allFormatNames,
+          variables: Array.from(new Set([...(fieldConfig.variables ?? []), ...allVariables])),
+          formatConfigs: newConfigs,
+        };
+        // Fire-and-forget PATCH to update Field_Config
+        const CAMPAIGNS_TABLE = "tblSU3bV6StfuFQ2e";
+        await fetch(
+          `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CAMPAIGNS_TABLE}/${campaignId}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ fields: { Field_Config: JSON.stringify(updatedFieldConfig) } }),
+          }
+        );
+      }
+    } else {
+      formatNames = Array.isArray(fieldConfig.formats)
+        ? fieldConfig.formats
+        : Object.keys(fieldConfig.formats ?? {});
+      formatConfigs = fieldConfig.formatConfigs ?? {};
+    }
 
     if (languages.length === 0 || formatNames.length === 0) {
       return NextResponse.json({ bannersCreated: 0, slidesCreated: 0, alreadyExist: 0 });
@@ -261,9 +358,9 @@ export async function POST(
         (f["Figma_Frame_Base"] as string) ||
         generateFigmaFrame(channel, formatName, width, height);
 
-      const cfg = formatConfigs[formatName] ?? {};
-      const mode = (cfg.mode as string) ?? "default";
-      const targetSlideCount = (cfg.slideCount as number) ?? 3;
+      const cfg = (formatConfigs[formatName] ?? {}) as { mode?: string; slideCount?: number; variables?: string[] };
+      const mode = cfg.mode ?? "default";
+      const targetSlideCount = cfg.slideCount ?? 3;
 
       const baseFields = {
         Campaign_Name: campaignName,

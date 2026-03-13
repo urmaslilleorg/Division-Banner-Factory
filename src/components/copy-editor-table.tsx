@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import { Banner } from "@/lib/types";
 import type { ClientVariable } from "@/lib/types";
 import { FieldConfig, FormatFieldConfig, SlideVariableConfig } from "@/lib/airtable-campaigns";
+import AddFormatModal from "@/components/add-format-modal";
 
 interface CopyEditorTableProps {
   campaignId: string;
@@ -12,6 +13,8 @@ interface CopyEditorTableProps {
   userRole: string;
   /** Per-client variable labels — when provided, column headers show custom labels */
   clientVariables?: ClientVariable[];
+  /** Client-linked format record IDs — used to filter the Add Format picker */
+  clientFormatIds?: string[];
 }
 
 type SaveState = "idle" | "saving" | "success" | "error";
@@ -59,10 +62,12 @@ function isBannerRowComplete(
 }
 
 export default function CopyEditorTable({
+  campaignId,
   banners: initialBanners,
-  fieldConfig,
+  fieldConfig: initialFieldConfig,
   userRole,
   clientVariables,
+  clientFormatIds = [],
 }: CopyEditorTableProps) {
   /** Resolve display label for a variable slot, using client-specific label if available */
   const resolveLabel = (slot: string) => {
@@ -95,6 +100,8 @@ export default function CopyEditorTable({
   }, [initialBanners]);
 
   const [banners, setBanners] = useState<Banner[]>(parentBanners);
+  const [fieldConfig, setFieldConfig] = useState<FieldConfig>(initialFieldConfig);
+  const [showAddFormat, setShowAddFormat] = useState(false);
   const [cellState, setCellState] = useState<CellState | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReadOnly = userRole === "client_reviewer";
@@ -108,6 +115,9 @@ export default function CopyEditorTable({
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Per-format gear icon edit state — stores the format name being edited
+  const [editingFormatName, setEditingFormatName] = useState<string | null>(null);
 
   const toggleCarousel = async (parentId: string) => {
     if (expandedCarousels.has(parentId)) {
@@ -379,6 +389,41 @@ export default function CopyEditorTable({
   const checkboxLeft = 0;
   const formatLeft = isReadOnly ? 0 : 40;
 
+  // Derive existing format names from current fieldConfig
+  const existingFormatNames: string[] = Array.isArray(fieldConfig.formats)
+    ? fieldConfig.formats
+    : Object.keys(fieldConfig.formats ?? {});
+
+  // Handle successful format addition
+  const handleAddFormatSuccess = useCallback(
+    (newBanners: Banner[], updatedFieldConfig: FieldConfig) => {
+      setFieldConfig(updatedFieldConfig);
+      // Add new parent banners (non-Slide) to the table
+      const newParents = newBanners.filter((b) => b.bannerType !== "Slide");
+      if (newParents.length > 0) {
+        setBanners((prev) => [...prev, ...newParents]);
+      }
+      // Add slide children to slidesByParent map
+      const newSlides = newBanners.filter((b) => b.bannerType === "Slide");
+      if (newSlides.length > 0) {
+        setSlidesByParent((prev) => {
+          const next = { ...prev };
+          for (const slide of newSlides) {
+            const parentId = slide.parentBannerIds?.[0];
+            if (parentId) {
+              next[parentId] = [...(next[parentId] ?? []), slide].sort(
+                (a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0)
+              );
+            }
+          }
+          return next;
+        });
+      }
+      setShowAddFormat(false);
+    },
+    []
+  );
+
   // Total number of data columns (for colspan on carousel header row)
   // checkbox(1) + format(1) + lang(1) + status(1) + copy columns + ready(1) + delete(1 if canDelete)
   const totalCols =
@@ -392,6 +437,33 @@ export default function CopyEditorTable({
 
   return (
     <div className="space-y-4">
+      {/* Add Format Modal */}
+      {showAddFormat && (
+        <AddFormatModal
+          campaignId={campaignId}
+          fieldConfig={fieldConfig}
+          existingFormatNames={existingFormatNames}
+          clientFormatIds={clientFormatIds}
+          onClose={() => setShowAddFormat(false)}
+          onSuccess={handleAddFormatSuccess}
+        />
+      )}
+
+      {/* Toolbar: Add Format button (admin/designer only) */}
+      {!isReadOnly && ["division_admin", "division_designer"].includes(userRole) && (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => setShowAddFormat(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+            Add Format
+          </button>
+        </div>
+      )}
+
       {/* Delete error toast */}
       {deleteError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -535,6 +607,23 @@ export default function CopyEditorTable({
                           <span className="font-mono text-xs text-gray-600">
                             {banner.format || `${banner.width}×${banner.height}`}
                           </span>
+                          {canDelete && banner.formatName && (
+                            <button
+                              onClick={() => setEditingFormatName(
+                                editingFormatName === banner.formatName ? null : banner.formatName
+                              )}
+                              title="Edit format variables"
+                              className={`rounded p-0.5 transition-colors ${
+                                editingFormatName === banner.formatName
+                                  ? "text-gray-900 bg-gray-200"
+                                  : "text-gray-300 hover:text-gray-600 hover:bg-gray-100"
+                              }`}
+                            >
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             onClick={() => toggleCarousel(banner.id)}
                             className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
@@ -619,6 +708,23 @@ export default function CopyEditorTable({
                           <span className="font-mono text-xs text-gray-600">
                             {banner.format || `${banner.width}×${banner.height}`}
                           </span>
+                          {canDelete && banner.formatName && (
+                            <button
+                              onClick={() => setEditingFormatName(
+                                editingFormatName === banner.formatName ? null : banner.formatName
+                              )}
+                              title="Edit format variables"
+                              className={`rounded p-0.5 transition-colors ${
+                                editingFormatName === banner.formatName
+                                  ? "text-gray-900 bg-gray-200"
+                                  : "text-gray-300 hover:text-gray-600 hover:bg-gray-100"
+                              }`}
+                            >
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                         {banner.bannerName && (
                           <span className="font-mono text-[10px] text-gray-400 max-w-[220px] truncate" title={banner.bannerName}>
@@ -749,6 +855,22 @@ export default function CopyEditorTable({
                       </td>
                     )}
                   </tr>
+                )}
+
+                {/* ── Inline format edit panel — shown when gear icon is clicked ── */}
+                {canDelete && banner.formatName && editingFormatName === banner.formatName && (
+                  <FormatEditRow
+                    key={`edit-${banner.id}`}
+                    formatName={banner.formatName}
+                    fieldConfig={fieldConfig}
+                    campaignId={campaignId}
+                    totalCols={totalCols}
+                    onSave={(updatedConfig) => {
+                      setFieldConfig(updatedConfig);
+                      setEditingFormatName(null);
+                    }}
+                    onClose={() => setEditingFormatName(null)}
+                  />
                 )}
 
                 {/* ── Slide child rows — shown when carousel is expanded ── */}
@@ -902,5 +1024,175 @@ export default function CopyEditorTable({
         </table>
       </div>
     </div>
+  );
+}
+
+// ── FormatEditRow ─────────────────────────────────────────────────────────────
+/**
+ * Inline edit panel rendered as a full-width <tr> below the format row.
+ * Lets admin/designer update variables and mode for an existing format.
+ * Saves by PATCHing Field_Config on the campaign record.
+ */
+
+const VARIABLE_OPTIONS_EDIT = [
+  { value: "H1", label: "H1" },
+  { value: "H2", label: "H2" },
+  { value: "H3", label: "H3" },
+  { value: "CTA", label: "CTA" },
+  { value: "Price_Tag", label: "Price Tag" },
+  { value: "Illustration", label: "Illustration" },
+];
+
+type EditFormatMode = "default" | "specific" | "carousel";
+
+interface FormatEditRowProps {
+  formatName: string;
+  fieldConfig: FieldConfig;
+  campaignId: string;
+  totalCols: number;
+  onSave: (updatedConfig: FieldConfig) => void;
+  onClose: () => void;
+}
+
+function FormatEditRow({
+  formatName,
+  fieldConfig,
+  campaignId,
+  totalCols,
+  onSave,
+  onClose,
+}: FormatEditRowProps) {
+  const existingCfg = fieldConfig.formatConfigs?.[formatName];
+  const [variables, setVariables] = useState<string[]>(
+    existingCfg?.variables ?? fieldConfig.variables ?? ["H1", "CTA"]
+  );
+  const [mode, setMode] = useState<EditFormatMode>(
+    (existingCfg?.mode as EditFormatMode) ?? "default"
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const toggleVar = (v: string) => {
+    setVariables((prev) =>
+      prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updatedFormatConfigs = {
+        ...(fieldConfig.formatConfigs ?? {}),
+        [formatName]: {
+          ...(existingCfg ?? {}),
+          variables,
+          mode,
+        },
+      };
+      // Merge all variables across all format configs
+      const allVariables = Array.from(
+        new Set(
+          Object.values(updatedFormatConfigs).flatMap(
+            (cfg) => (cfg as { variables?: string[] }).variables ?? []
+          )
+        )
+      );
+      const updatedFieldConfig: FieldConfig = {
+        ...fieldConfig,
+        variables: Array.from(new Set([...(fieldConfig.variables ?? []), ...allVariables])),
+        formatConfigs: updatedFormatConfigs,
+      };
+
+      const CAMPAIGNS_TABLE = "tblSU3bV6StfuFQ2e";
+      const res = await fetch(`/api/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Field_Config: JSON.stringify(updatedFieldConfig) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Save failed (${res.status})`);
+      }
+      onSave(updatedFieldConfig);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="bg-gray-50 border-t border-b border-gray-200">
+      <td colSpan={totalCols} className="px-4 py-3">
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Format name label */}
+          <div className="flex items-center gap-1.5">
+            <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+            </svg>
+            <span className="text-xs font-semibold text-gray-700">{formatName}</span>
+          </div>
+
+          {/* Variable toggles */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-1">Variables:</span>
+            {VARIABLE_OPTIONS_EDIT.map((v) => (
+              <button
+                key={v.value}
+                type="button"
+                onClick={() => toggleVar(v.value)}
+                className={`rounded border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  variables.includes(v.value)
+                    ? "border-purple-600 bg-purple-600 text-white"
+                    : "border-gray-200 bg-white text-gray-400 hover:bg-gray-50"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Mode selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-1">Mode:</span>
+            {(["default", "specific", "carousel"] as EditFormatMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`rounded border px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${
+                  mode === m
+                    ? "border-gray-900 bg-gray-900 text-white"
+                    : "border-gray-200 bg-white text-gray-400 hover:bg-gray-50"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 ml-auto">
+            {saveError && (
+              <span className="text-[10px] text-red-600">{saveError}</span>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded border border-gray-200 px-3 py-1 text-[10px] font-medium text-gray-500 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded border border-gray-900 bg-gray-900 px-3 py-1 text-[10px] font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }

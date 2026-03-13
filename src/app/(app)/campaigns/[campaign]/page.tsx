@@ -6,7 +6,6 @@ import { fetchBanners } from "@/lib/airtable";
 import { fetchAllCampaigns, FieldConfig } from "@/lib/airtable-campaigns";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignDetailTabs from "@/components/campaign-detail-tabs";
-import GenerateBannersButton from "@/components/generate-banners-button";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
 function launchMonthToUrl(launchMonth: string | null): string {
@@ -219,6 +218,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   const clientSubdomain = clientConfig.subdomain || clientConfig.id;
   let banners;
   let clientVariables: import("@/lib/types").ClientVariable[] = [];
+  let clientFormatIds: string[] = [];
 
   try {
     const [fetchedBanners, clientRecord] = await Promise.all([
@@ -245,6 +245,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     ]);
     banners = fetchedBanners;
     clientVariables = clientRecord?.clientVariables ?? [];
+    clientFormatIds = clientRecord?.formatIds ?? [];
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return (
@@ -275,11 +276,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   // Normalise fieldConfig — handles old schema (formats as object, no variables array)
   const resolvedFieldConfig = normaliseFieldConfig(fieldConfig, clientConfig.languages ?? ["ET"]);
 
-  // Count missing banners for the Generate button
-  const { missingCount, totalConfigured } = countMissingBanners(resolvedFieldConfig, banners);
-
-  // Only division_admin and division_designer can generate banners
-  const canGenerate = ["division_admin", "division_designer"].includes(userRole);
+  // Count total configured formats for the subtitle
+  const { totalConfigured } = countMissingBanners(resolvedFieldConfig, banners);
 
   return (
     <div className="space-y-6">
@@ -300,20 +298,13 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         </p>
       </div>
 
-      {/* Generate missing banners — only shown to admin/designer when banners are missing */}
-      {canGenerate && campaignId && (
-        <GenerateBannersButton
-          campaignId={campaignId}
-          missingCount={missingCount}
-        />
-      )}
-
       {/* Two-tab layout: Copy & Assets | Preview */}
       <CampaignDetailTabs
         campaignId={campaignId ?? campaignName}
         banners={banners}
         fieldConfig={resolvedFieldConfig}
         clientVariables={clientVariables}
+        clientFormatIds={clientFormatIds}
         userRole={userRole}
         defaultTab={defaultTab}
         copySheetUrl={copySheetUrl}
