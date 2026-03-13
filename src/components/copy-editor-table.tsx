@@ -224,24 +224,6 @@ export default function CopyEditorTable({
     return slideCfg.variables;
   };
 
-  const getSlideColumns = (slideVariables: string[]) => {
-    const cols: { variable: string; language: string; fieldKey: keyof Banner; label: string }[] = [];
-    for (const variable of slideVariables) {
-      for (const lang of languages) {
-        const fieldKey = VARIABLE_TO_FIELD[variable]?.[lang];
-        if (!fieldKey) continue;
-        const customLabel = resolveLabel(variable);
-        cols.push({
-          variable,
-          language: lang,
-          fieldKey,
-          label: languages.length > 1 ? `${customLabel} (${lang})` : customLabel,
-        });
-      }
-    }
-    return cols;
-  };
-
   const handleBlur = useCallback(
     async (bannerId: string, fieldKey: keyof Banner, airtableField: string, value: string, currentBanners?: Banner[]) => {
       const bannerList = currentBanners ?? banners;
