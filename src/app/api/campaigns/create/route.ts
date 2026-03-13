@@ -224,6 +224,7 @@ export async function POST(request: NextRequest) {
         Channel: format.channel,
         Device: format.device,
         Format: `${format.widthPx}x${format.heightPx}`,
+        Format_Name: format.formatName,
         Figma_Frame: figmaFrame,
         Safe_Area: format.safeArea || "",
         Output_Format: outputFormat,

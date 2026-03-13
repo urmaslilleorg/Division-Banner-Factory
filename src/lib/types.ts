@@ -108,6 +108,8 @@ export interface Banner {
   parentBannerIds: string[];
   /** Human-readable banner name following Division naming convention */
   bannerName: string;
+  /** Format_Name from the Formats table (e.g. "Display_Horizontal") — used for variable locking */
+  formatName: string;
 }
 
 /**
@@ -161,5 +163,6 @@ export function parseBannerRecord(record: {
     slideIndex: (f["Slide_Index"] as number) || null,
     parentBannerIds: Array.isArray(f["Parent_Banner"]) ? (f["Parent_Banner"] as string[]) : [],
     bannerName: (f["Banner_Name"] as string) || "",
+    formatName: (f["Format_Name"] as string) || "",
   };
 }

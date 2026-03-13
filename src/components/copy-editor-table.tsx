@@ -200,13 +200,23 @@ export default function CopyEditorTable({
   }
 
   /**
+   * Resolve the formatConfigs lookup key for a banner.
+   * Priority: banner.formatName (Format_Name field) > banner.format (WxH dimensions).
+   * The formatConfigs keys are Format_Name values like "Display_Horizontal".
+   * Legacy banners without Format_Name fall back to dimensions; they will not lock
+   * (all columns editable) until re-generated with the updated create route.
+   */
+  const resolveFormatKey = (banner: Banner): string =>
+    banner.formatName || banner.format || `${banner.width}x${banner.height}`;
+
+  /**
    * Get the active variables for a banner's format from fieldConfig.
    * Returns the full variables list if no format-specific config is found.
    */
   const getFormatVariables = (banner: Banner): string[] => {
     if (!fieldConfig.formatConfigs) return variables;
-    const formatName = banner.format || `${banner.width}x${banner.height}`;
-    const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[formatName];
+    const key = resolveFormatKey(banner);
+    const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[key];
     if (!formatCfg) return variables;
     return formatCfg.variables ?? variables;
   };
@@ -216,8 +226,8 @@ export default function CopyEditorTable({
    */
   const getSlideVariables = (banner: Banner, slideIndex: number): string[] => {
     if (!fieldConfig.formatConfigs) return variables;
-    const formatName = banner.format || `${banner.width}x${banner.height}`;
-    const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[formatName];
+    const key = resolveFormatKey(banner);
+    const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[key];
     if (!formatCfg?.slides) return formatCfg?.variables ?? variables;
     const slideCfg: SlideVariableConfig | undefined = formatCfg.slides.find((s) => s.index === slideIndex);
     if (!slideCfg) return formatCfg.variables ?? variables;

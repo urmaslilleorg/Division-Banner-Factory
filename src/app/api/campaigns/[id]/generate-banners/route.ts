@@ -271,6 +271,7 @@ export async function POST(
         Channel: channel,
         Device: device,
         Format: `${width}x${height}`,
+        Format_Name: formatName,
         Figma_Frame: figmaFrameBase,
         Safe_Area: safeArea,
         Output_Format: outputFormat,
