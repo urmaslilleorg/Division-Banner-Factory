@@ -88,6 +88,7 @@ export default function AddFormatModal({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Fetch available formats (client-linked)
   useEffect(() => {
@@ -258,7 +259,14 @@ export default function AddFormatModal({
         },
       };
 
-      onSuccess(newBanners, updatedFieldConfig);
+      // Count newly created non-Slide banners for the success message
+      const newParentCount = newBanners.filter((b) => b.bannerType !== "Slide").length;
+      const msg = `✓ Format added — ${newParentCount} banner${newParentCount !== 1 ? "s" : ""} created`;
+      setSuccessMessage(msg);
+      // Brief green flash, then hand off to parent
+      setTimeout(() => {
+        onSuccess(newBanners, updatedFieldConfig);
+      }, 1200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -434,6 +442,13 @@ export default function AddFormatModal({
               {error}
             </div>
           )}
+
+          {/* Success flash */}
+          {successMessage && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+              {successMessage}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -452,8 +467,10 @@ export default function AddFormatModal({
             {isSubmitting ? (
               <>
                 <span className="animate-spin inline-block h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
-                Adding…
+                Adding format…
               </>
+            ) : successMessage ? (
+              successMessage
             ) : (
               "Add to campaign"
             )}
