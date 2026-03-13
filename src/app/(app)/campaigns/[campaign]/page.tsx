@@ -6,6 +6,7 @@ import { fetchBanners } from "@/lib/airtable";
 import { fetchAllCampaigns, FieldConfig } from "@/lib/airtable-campaigns";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignDetailTabs from "@/components/campaign-detail-tabs";
+import GenerateBannersButton from "@/components/generate-banners-button";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
 function launchMonthToUrl(launchMonth: string | null): string {
@@ -80,13 +81,54 @@ function normaliseFieldConfig(raw: FieldConfig | null, fallbackLanguages: string
   };
 }
 
+/**
+ * Count how many format × language combinations are missing banner records.
+ * Returns { missingCount, totalConfigured }.
+ */
+function countMissingBanners(
+  resolvedFieldConfig: FieldConfig,
+  banners: import("@/lib/types").Banner[]
+): { missingCount: number; totalConfigured: number } {
+  const { formats = [], languages = [], formatConfigs = {} } = resolvedFieldConfig;
+  let totalConfigured = 0;
+  let missingCount = 0;
+
+  for (const formatName of formats) {
+    const cfg = formatConfigs[formatName] ?? {};
+    const mode = (cfg.mode as string) ?? "default";
+
+    for (const language of languages) {
+      totalConfigured++;
+      if (mode === "carousel") {
+        const hasParent = banners.some(
+          (b) =>
+            (b.format === formatName || `${b.width}x${b.height}` === formatName) &&
+            b.language === language &&
+            b.bannerType === "Carousel"
+        );
+        if (!hasParent) missingCount++;
+      } else {
+        const hasStandard = banners.some(
+          (b) =>
+            (b.format === formatName || `${b.width}x${b.height}` === formatName) &&
+            b.language === language &&
+            b.bannerType === "Standard"
+        );
+        if (!hasStandard) missingCount++;
+      }
+    }
+  }
+
+  return { missingCount, totalConfigured };
+}
+
 interface CampaignPageProps {
   params: { campaign: string };
   searchParams?: { tab?: string };
 }
 
 export default async function CampaignPage({ params, searchParams }: CampaignPageProps) {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) redirect("/sign-in");
 
   const clientConfig = getClientConfigFromHeaders();
@@ -169,8 +211,9 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     );
   }
 
-  // TODO: derive role from Clerk session claims
-  const userRole = "division_admin";
+  // Derive user role from Clerk session claims
+  const role = (sessionClaims?.metadata as Record<string, unknown> | undefined)?.role as string | undefined;
+  const userRole = role ?? "division_admin";
 
   // Fetch banners and client variables in parallel
   const clientSubdomain = clientConfig.subdomain || clientConfig.id;
@@ -232,6 +275,12 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   // Normalise fieldConfig — handles old schema (formats as object, no variables array)
   const resolvedFieldConfig = normaliseFieldConfig(fieldConfig, clientConfig.languages ?? ["ET"]);
 
+  // Count missing banners for the Generate button
+  const { missingCount, totalConfigured } = countMissingBanners(resolvedFieldConfig, banners);
+
+  // Only division_admin and division_designer can generate banners
+  const canGenerate = ["division_admin", "division_designer"].includes(userRole);
+
   return (
     <div className="space-y-6">
       {/* Back link */}
@@ -247,9 +296,17 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
           {campaignName}
         </h1>
         <p className="text-sm text-gray-500">
-          {banners.length} banner{banners.length !== 1 ? "s" : ""} in this campaign
+          {banners.length} banner{banners.length !== 1 ? "s" : ""} · {totalConfigured} format{totalConfigured !== 1 ? "s" : ""} configured
         </p>
       </div>
+
+      {/* Generate missing banners — only shown to admin/designer when banners are missing */}
+      {canGenerate && campaignId && (
+        <GenerateBannersButton
+          campaignId={campaignId}
+          missingCount={missingCount}
+        />
+      )}
 
       {/* Two-tab layout: Copy & Assets | Preview */}
       <CampaignDetailTabs
