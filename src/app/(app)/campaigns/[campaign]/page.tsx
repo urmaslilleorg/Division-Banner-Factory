@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchBanners } from "@/lib/airtable";
-import { fetchAllCampaigns } from "@/lib/airtable-campaigns";
+import { fetchAllCampaigns, FieldConfig } from "@/lib/airtable-campaigns";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignDetailTabs from "@/components/campaign-detail-tabs";
 
@@ -20,6 +20,64 @@ function launchMonthToUrl(launchMonth: string | null): string {
   const year = parseInt(yearStr, 10);
   if (!month || isNaN(year)) return "/campaigns?preview=true";
   return `/${year}/${month}?preview=true`;
+}
+
+/**
+ * Normalise a FieldConfig that may come from the old builder schema
+ * (formats as an object keyed by formatName, no top-level variables array)
+ * into the canonical shape expected by CampaignDetailTabs / CopyEditorTable.
+ */
+function normaliseFieldConfig(raw: FieldConfig | null, fallbackLanguages: string[]): FieldConfig {
+  if (!raw) {
+    return {
+      variables: ["H1", "H2", "CTA"],
+      languages: fallbackLanguages,
+      formats: [],
+    };
+  }
+
+  // Derive top-level variables from per-format configs when missing
+  let variables = raw.variables ?? [];
+  if (variables.length === 0) {
+    const varSet = new Set<string>();
+    // New schema: formatConfigs keyed by formatName
+    if (raw.formatConfigs) {
+      for (const cfg of Object.values(raw.formatConfigs)) {
+        (cfg.variables ?? []).forEach((v) => varSet.add(v));
+      }
+    }
+    // Old schema: formats is an object keyed by formatName
+    const formatsVal = raw.formats as unknown;
+    if (formatsVal && typeof formatsVal === "object" && !Array.isArray(formatsVal)) {
+      for (const cfg of Object.values(formatsVal as Record<string, { variables?: string[] }>)) {
+        (cfg.variables ?? []).forEach((v) => varSet.add(v));
+      }
+    }
+    variables = varSet.size > 0 ? Array.from(varSet) : ["H1", "H2", "CTA"];
+  }
+
+  // Normalise formats to string[] (old schema stores it as an object)
+  const formatsRaw = raw.formats as unknown;
+  const formats: string[] = Array.isArray(formatsRaw)
+    ? formatsRaw
+    : formatsRaw && typeof formatsRaw === "object"
+    ? Object.keys(formatsRaw as object)
+    : [];
+
+  // Promote old-schema formats object into formatConfigs
+  const formatConfigs: FieldConfig["formatConfigs"] =
+    raw.formatConfigs ??
+    (formatsRaw && typeof formatsRaw === "object" && !Array.isArray(formatsRaw)
+      ? (formatsRaw as FieldConfig["formatConfigs"])
+      : undefined);
+
+  return {
+    ...raw,
+    variables,
+    formats,
+    formatConfigs,
+    languages: raw.languages?.length ? raw.languages : fallbackLanguages,
+  };
 }
 
 interface CampaignPageProps {
@@ -40,22 +98,33 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   let campaignId: string | null = null;
   let campaignName = campaignSlug;
   let launchMonth: string | null = null;
-  let fieldConfig = null;
+  let fieldConfig: FieldConfig | null = null;
   let copySheetUrl: string | null = null;
+  let campaignFound = false;
 
   // Try to find campaign record to get ID and metadata
   try {
     const campaigns = await fetchAllCampaigns();
+    // formattedName: "audit-standard" → "Audit Standard" (hyphen-separated words)
     const formattedName = campaignSlug
       .split("-")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" ");
     const found = isRecordId
       ? campaigns.find((c) => c.id === campaignSlug)
-      : campaigns.find((c) => c.name === formattedName) ||
+      : // 1. Exact formatted-name match
+        campaigns.find((c) => c.name === formattedName) ||
+        // 2. Exact slug match (handles names like "Avene_Sprin2026" with no spaces)
         campaigns.find((c) => c.name === campaignSlug) ||
-        campaigns.find((c) => c.name.toLowerCase() === campaignSlug.toLowerCase());
+        // 3. Case-insensitive slug match (handles "avene_sprin2026" → "Avene_Sprin2026")
+        campaigns.find((c) => c.name.toLowerCase() === campaignSlug.toLowerCase()) ||
+        // 4. Slug-from-name match: convert stored name to slug and compare
+        campaigns.find(
+          (c) =>
+            c.name.toLowerCase().replace(/\s+/g, "-") === campaignSlug.toLowerCase()
+        );
     if (found) {
+      campaignFound = true;
       campaignId = found.id;
       campaignName = found.name;
       launchMonth = found.launchMonth ?? null;
@@ -71,6 +140,33 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
     }
+  }
+
+  // ── Not found: show a graceful message instead of crashing ──────────────────
+  if (!campaignFound && !isRecordId) {
+    return (
+      <div className="space-y-6">
+        <Link
+          href="/campaigns?preview=true"
+          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors"
+        >
+          ← Back to Calendar
+        </Link>
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-12 text-center">
+          <h1 className="text-xl font-light text-gray-700 mb-2">Campaign not found</h1>
+          <p className="text-sm text-gray-400 mb-6">
+            No campaign matches <span className="font-mono text-gray-500">{campaignSlug}</span>.
+            It may have been renamed or deleted.
+          </p>
+          <Link
+            href="/campaigns?preview=true"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+          >
+            Go to Campaign Calendar
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // TODO: derive role from Clerk session claims
@@ -110,6 +206,12 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     console.error("Failed to fetch banners:", error);
     return (
       <div className="space-y-4">
+        <Link
+          href="/campaigns?preview=true"
+          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors"
+        >
+          ← Back to Calendar
+        </Link>
         <h1 className="text-3xl font-light tracking-tight text-gray-900">
           {campaignName}
         </h1>
@@ -127,12 +229,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   const tabParam = searchParams?.tab;
   const defaultTab = tabParam === "preview" ? "preview" : "copy";
 
-  // Resolve fieldConfig with sensible defaults
-  const resolvedFieldConfig = fieldConfig ?? {
-    variables: ["H1", "H2", "CTA"],
-    languages: clientConfig.languages ?? ["ET"],
-    formats: [],
-  };
+  // Normalise fieldConfig — handles old schema (formats as object, no variables array)
+  const resolvedFieldConfig = normaliseFieldConfig(fieldConfig, clientConfig.languages ?? ["ET"]);
 
   return (
     <div className="space-y-6">
