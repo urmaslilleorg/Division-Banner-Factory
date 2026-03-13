@@ -52,8 +52,6 @@ function buildEmptySlides(count: number, vars: string[]): SlideConfig[] {
 interface AddFormatModalProps {
   campaignId: string;
   fieldConfig: FieldConfig;
-  /** Current banner records — used to derive which formats are already in the campaign */
-  banners: Banner[];
   /** Client-linked format record IDs — used to filter the picker */
   clientFormatIds: string[];
   onClose: () => void;
@@ -63,20 +61,10 @@ interface AddFormatModalProps {
 export default function AddFormatModal({
   campaignId,
   fieldConfig,
-  banners,
   clientFormatIds,
   onClose,
   onSuccess,
 }: AddFormatModalProps) {
-  // Derive "already added" from actual banner records, not Field_Config.
-  // A format is considered present only if at least one non-Slide banner record exists.
-  const existingFormatNames: string[] = Array.from(
-    new Set(
-      banners
-        .filter((b) => b.bannerType !== "Slide" && b.formatName)
-        .map((b) => b.formatName as string)
-    )
-  );
   const [formats, setFormats] = useState<AirtableFormat[]>([]);
   const [loadingFormats, setLoadingFormats] = useState(true);
   const [selectedFormatIds, setSelectedFormatIds] = useState<string[]>([]);
@@ -318,15 +306,12 @@ export default function AddFormatModal({
                 Loading formats…
               </div>
             ) : (
-              <div className="relative">
-                {/* Overlay disabled formats */}
-                <FormatPickerWithDisabled
-                  formats={formats}
-                  selected={selectedFormatIds}
-                  onChange={handleFormatChange}
-                  disabledFormatNames={existingFormatNames}
-                />
-              </div>
+              <FormatPicker
+                formats={formats}
+                selected={selectedFormatIds}
+                onChange={handleFormatChange}
+                showCount={false}
+              />
             )}
           </section>
 
@@ -481,65 +466,3 @@ export default function AddFormatModal({
   );
 }
 
-/**
- * FormatPicker wrapper that visually disables already-added formats.
- * Wraps each disabled row in a relative container with an overlay.
- */
-function FormatPickerWithDisabled({
-  formats,
-  selected,
-  onChange,
-  disabledFormatNames,
-}: {
-  formats: AirtableFormat[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-  disabledFormatNames: string[];
-}) {
-  // Filter out already-added formats from the selectable list and mark them
-  const availableFormats = formats.filter(
-    (f) => !disabledFormatNames.includes(f.formatName)
-  );
-  const disabledFormats = formats.filter((f) =>
-    disabledFormatNames.includes(f.formatName)
-  );
-
-  return (
-    <div className="space-y-2">
-      {/* Available formats */}
-      {availableFormats.length > 0 ? (
-        <FormatPicker
-          formats={availableFormats}
-          selected={selected}
-          onChange={onChange}
-          showCount={false}
-        />
-      ) : (
-        <p className="text-sm text-gray-400 italic">
-          All client formats are already in this campaign.
-        </p>
-      )}
-
-      {/* Already-added formats (greyed out) */}
-      {disabledFormats.length > 0 && (
-        <div className="mt-2 space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-1">
-            Already in campaign
-          </p>
-          {disabledFormats.map((f) => (
-            <div
-              key={f.id}
-              className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 opacity-50 cursor-not-allowed"
-            >
-              <span className="h-3.5 w-3.5 rounded border border-gray-300 bg-gray-200 flex-shrink-0" />
-              <span className="text-xs text-gray-500">
-                {f.formatName}
-                <span className="ml-2 text-[10px] text-gray-400">(already added)</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

@@ -443,7 +443,6 @@ export default function CopyEditorTable({
         <AddFormatModal
           campaignId={campaignId}
           fieldConfig={fieldConfig}
-          banners={banners}
           clientFormatIds={clientFormatIds}
           onClose={() => setShowAddFormat(false)}
           onSuccess={handleAddFormatSuccess}
