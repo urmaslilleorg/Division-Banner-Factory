@@ -1104,7 +1104,6 @@ function FormatEditRow({
         formatConfigs: updatedFormatConfigs,
       };
 
-      const CAMPAIGNS_TABLE = "tblSU3bV6StfuFQ2e";
       const res = await fetch(`/api/campaigns/${campaignId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
