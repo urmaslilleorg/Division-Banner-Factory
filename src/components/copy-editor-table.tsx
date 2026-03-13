@@ -74,8 +74,6 @@ export default function CopyEditorTable({
   };
 
   // ── Split banners into parent rows and pre-grouped slides ──────────────────
-  // Slide records are already included in the banners prop (fetchBanners with
-  // includeSlides=true). We separate them so they are NOT rendered as flat rows.
   const { parentBanners, initialSlidesByParent } = useMemo(() => {
     const parents: Banner[] = [];
     const slideMap: Record<string, Banner[]> = {};
@@ -90,7 +88,6 @@ export default function CopyEditorTable({
         parents.push(b);
       }
     }
-    // Sort slides by Slide_Index within each parent
     for (const parentId of Object.keys(slideMap)) {
       slideMap[parentId].sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
     }
@@ -103,9 +100,8 @@ export default function CopyEditorTable({
   const isReadOnly = userRole === "client_reviewer";
   const canDelete = ["division_admin", "division_designer"].includes(userRole);
 
-  // Carousel expand/collapse state — collapsed by default (empty Set)
+  // Carousel expand/collapse state — collapsed by default
   const [expandedCarousels, setExpandedCarousels] = useState<Set<string>>(new Set());
-  // Slides pre-loaded from the banners prop; extended by API fetch if needed
   const [slidesByParent, setSlidesByParent] = useState<Record<string, Banner[]>>(initialSlidesByParent);
   const [loadingSlides, setLoadingSlides] = useState<Set<string>>(new Set());
 
@@ -119,9 +115,7 @@ export default function CopyEditorTable({
       return;
     }
     setExpandedCarousels((prev) => new Set(Array.from(prev).concat(parentId)));
-    // If slides were already loaded from the prop, no API call needed
     if (slidesByParent[parentId] && slidesByParent[parentId].length > 0) return;
-    // Fallback: fetch slides from API
     setLoadingSlides((prev) => new Set(Array.from(prev).concat(parentId)));
     try {
       const res = await fetch(`/api/banners?parentId=${parentId}`);
@@ -143,13 +137,34 @@ export default function CopyEditorTable({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Delete failed (${res.status})`);
       }
-      // Remove from table optimistically
       setBanners((prev) => prev.filter((b) => b.id !== bannerId));
       setSlidesByParent((prev) => {
         const next = { ...prev };
         delete next[bannerId];
         return next;
       });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+      setTimeout(() => setDeleteError(null), 4000);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleSlideDelete = async (parentId: string, slideId: string) => {
+    setDeleteError(null);
+    setDeletingId(slideId);
+    try {
+      const res = await fetch(`/api/banners/${slideId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed (${res.status})`);
+      }
+      // Remove the slide from local state
+      setSlidesByParent((prev) => ({
+        ...prev,
+        [parentId]: (prev[parentId] ?? []).filter((s) => s.id !== slideId),
+      }));
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed");
       setTimeout(() => setDeleteError(null), 4000);
@@ -183,6 +198,18 @@ export default function CopyEditorTable({
       });
     }
   }
+
+  /**
+   * Get the active variables for a banner's format from fieldConfig.
+   * Returns the full variables list if no format-specific config is found.
+   */
+  const getFormatVariables = (banner: Banner): string[] => {
+    if (!fieldConfig.formatConfigs) return variables;
+    const formatName = banner.format || `${banner.width}x${banner.height}`;
+    const formatCfg: FormatFieldConfig | undefined = fieldConfig.formatConfigs[formatName];
+    if (!formatCfg) return variables;
+    return formatCfg.variables ?? variables;
+  };
 
   /**
    * Get the active variables for a specific slide of a carousel banner.
@@ -358,7 +385,18 @@ export default function CopyEditorTable({
 
   // ── Sticky column left offsets ─────────────────────────────────────────────
   const checkboxLeft = 0;
-  const formatLeft = isReadOnly ? 0 : 40; // px — sits right of 40px checkbox column
+  const formatLeft = isReadOnly ? 0 : 40;
+
+  // Total number of data columns (for colspan on carousel header row)
+  // checkbox(1) + format(1) + lang(1) + status(1) + copy columns + ready(1) + delete(1 if canDelete)
+  const totalCols =
+    (isReadOnly ? 0 : 1) + // checkbox
+    1 + // format
+    1 + // lang
+    1 + // status
+    columns.length + // copy columns
+    1 + // ready
+    (canDelete ? 1 : 0); // delete
 
   return (
     <div className="space-y-4">
@@ -464,7 +502,8 @@ export default function CopyEditorTable({
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
             {banners.map((banner) => {
-              const isComplete = isBannerRowComplete(banner, variables, languages);
+              const formatVars = getFormatVariables(banner);
+              const isComplete = isBannerRowComplete(banner, formatVars, languages);
               const isSelected = selectedIds.has(banner.id);
               const isCarousel = banner.bannerType === "Carousel";
               const isExpanded = expandedCarousels.has(banner.id);
@@ -475,34 +514,35 @@ export default function CopyEditorTable({
 
               return (
                 <>
-                <tr
-                  key={banner.id}
-                  className={`hover:bg-gray-50 ${isSelected ? "bg-blue-50" : "bg-white"} ${isDeleting ? "opacity-50" : ""}`}
-                >
-                  {!isReadOnly && (
-                    <td
-                      className={`sticky z-10 px-3 py-2 border-r border-gray-200 ${rowBg}`}
-                      style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(banner.id)}
-                        className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
-                      />
-                    </td>
-                  )}
-                  {/* Format / Banner Name */}
-                  <td
-                    className={`sticky z-10 px-4 py-2 whitespace-nowrap border-r border-gray-200 ${rowBg}`}
-                    style={{ left: formatLeft, minWidth: "200px" }}
+                {/* ── Carousel parent: header-only row ── */}
+                {isCarousel ? (
+                  <tr
+                    key={banner.id}
+                    className={`hover:bg-gray-50 ${isSelected ? "bg-blue-50" : "bg-white"} ${isDeleting ? "opacity-50" : ""}`}
                   >
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs text-gray-600">
-                          {banner.format || `${banner.width}×${banner.height}`}
-                        </span>
-                        {isCarousel && (
+                    {!isReadOnly && (
+                      <td
+                        className={`sticky z-10 px-3 py-2 border-r border-gray-200 ${rowBg}`}
+                        style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(banner.id)}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
+                        />
+                      </td>
+                    )}
+                    {/* Format cell with expand/collapse button */}
+                    <td
+                      className={`sticky z-10 px-4 py-2 whitespace-nowrap border-r border-gray-200 ${rowBg}`}
+                      style={{ left: formatLeft, minWidth: "200px" }}
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs text-gray-600">
+                            {banner.format || `${banner.width}×${banner.height}`}
+                          </span>
                           <button
                             onClick={() => toggleCarousel(banner.id)}
                             className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
@@ -514,146 +554,238 @@ export default function CopyEditorTable({
                               ? `▲ ${slides.length} slide${slides.length !== 1 ? "s" : ""}`
                               : `▶ ${slides.length} slide${slides.length !== 1 ? "s" : ""} [Carousel]`}
                           </button>
+                        </div>
+                        {banner.bannerName && (
+                          <span className="font-mono text-[10px] text-gray-400 max-w-[220px] truncate" title={banner.bannerName}>
+                            {banner.bannerName}
+                          </span>
                         )}
                       </div>
-                      {banner.bannerName && (
-                        <span className="font-mono text-[10px] text-gray-400 max-w-[220px] truncate" title={banner.bannerName}>
-                          {banner.bannerName}
+                    </td>
+                    {/* Span remaining columns with a muted "expand to edit slides" hint */}
+                    <td
+                      colSpan={totalCols - (isReadOnly ? 1 : 2)}
+                      className="px-4 py-2 text-xs text-gray-400 italic"
+                    >
+                      {isExpanded
+                        ? `${slides.length} slide${slides.length !== 1 ? "s" : ""} — edit copy in slide rows below`
+                        : "Click ▶ to expand slides and edit copy"}
+                    </td>
+                    {/* Delete button for carousel parent */}
+                    {canDelete && (
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete this Carousel banner and all ${slides.length} slide${slides.length !== 1 ? "s" : ""}?`)) {
+                              handleDelete(banner.id);
+                            }
+                          }}
+                          disabled={isDeleting}
+                          title="Delete carousel and all slides"
+                          className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                        >
+                          {isDeleting ? (
+                            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          )}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ) : (
+                  /* ── Standard/Specific banner: full editable row ── */
+                  <tr
+                    key={banner.id}
+                    className={`hover:bg-gray-50 ${isSelected ? "bg-blue-50" : "bg-white"} ${isDeleting ? "opacity-50" : ""}`}
+                  >
+                    {!isReadOnly && (
+                      <td
+                        className={`sticky z-10 px-3 py-2 border-r border-gray-200 ${rowBg}`}
+                        style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(banner.id)}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-gray-900"
+                        />
+                      </td>
+                    )}
+                    {/* Format / Banner Name */}
+                    <td
+                      className={`sticky z-10 px-4 py-2 whitespace-nowrap border-r border-gray-200 ${rowBg}`}
+                      style={{ left: formatLeft, minWidth: "200px" }}
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs text-gray-600">
+                            {banner.format || `${banner.width}×${banner.height}`}
+                          </span>
+                        </div>
+                        {banner.bannerName && (
+                          <span className="font-mono text-[10px] text-gray-400 max-w-[220px] truncate" title={banner.bannerName}>
+                            {banner.bannerName}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    {/* Language */}
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          banner.language === "ET"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-green-100 text-green-700"
+                        }`}
+                      >
+                        {banner.language}
+                      </span>
+                    </td>
+                    {/* Status */}
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                        {banner.status}
+                      </span>
+                    </td>
+                    {/* Copy cells — locked for inactive variables (Task 3) */}
+                    {columns.map((col) => {
+                      const isActive = formatVars.includes(col.variable);
+                      if (!isActive) {
+                        // Inactive variable — greyed out, not editable
+                        return (
+                          <td
+                            key={`${banner.id}-${col.variable}-${col.language}-locked`}
+                            className="px-2 py-1.5 bg-gray-100"
+                          >
+                            <span className="block text-[11px] text-gray-300 select-none">—</span>
+                          </td>
+                        );
+                      }
+                      const value = (banner[col.fieldKey] as string) || "";
+                      const isEmpty = value.trim() === "";
+                      const isSaving =
+                        cellState?.bannerId === banner.id &&
+                        cellState.field === String(col.fieldKey) &&
+                        cellState.state === "saving";
+                      const isSuccess =
+                        cellState?.bannerId === banner.id &&
+                        cellState.field === String(col.fieldKey) &&
+                        cellState.state === "success";
+                      const isError =
+                        cellState?.bannerId === banner.id &&
+                        cellState.field === String(col.fieldKey) &&
+                        cellState.state === "error";
+                      return (
+                        <td
+                          key={`${banner.id}-${col.variable}-${col.language}`}
+                          className={`px-2 py-1.5 transition-colors ${
+                            col.variable === "H1" && isEmpty && !isReadOnly ? "bg-amber-50" : ""
+                          } ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
+                        >
+                          {isReadOnly ? (
+                            <span className="block min-h-[28px] text-sm text-gray-700">{value}</span>
+                          ) : (
+                            <input
+                              type="text"
+                              defaultValue={value}
+                              disabled={isSaving}
+                              onBlur={(e) =>
+                                handleBlur(
+                                  banner.id,
+                                  col.fieldKey,
+                                  FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
+                                  e.target.value
+                                )
+                              }
+                              placeholder={col.variable === "H1" ? "Required" : ""}
+                              className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 ${
+                                isSaving
+                                  ? "border-gray-200 bg-gray-50 text-gray-400"
+                                  : isSuccess
+                                  ? "border-emerald-300 bg-emerald-50"
+                                  : isError
+                                  ? "border-red-300 bg-red-50"
+                                  : col.variable === "H1" && isEmpty
+                                  ? "border-amber-300 bg-amber-50"
+                                  : "border-gray-200 bg-white"
+                              }`}
+                            />
+                          )}
+                        </td>
+                      );
+                    })}
+                    {/* Ready badge */}
+                    <td className="px-3 py-2">
+                      {isComplete ? (
+                        <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                          Ready ✓
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-400">
+                          Incomplete
                         </span>
                       )}
-                    </div>
-                  </td>
-                  {/* Language */}
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        banner.language === "ET"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-green-100 text-green-700"
-                      }`}
-                    >
-                      {banner.language}
-                    </span>
-                  </td>
-                  {/* Status */}
-                  <td className="px-3 py-2">
-                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
-                      {banner.status}
-                    </span>
-                  </td>
-                  {/* Copy cells */}
-                  {columns.map((col) => {
-                    const value = (banner[col.fieldKey] as string) || "";
-                    const isEmpty = value.trim() === "";
-                    const isSaving =
-                      cellState?.bannerId === banner.id &&
-                      cellState.field === String(col.fieldKey) &&
-                      cellState.state === "saving";
-                    const isSuccess =
-                      cellState?.bannerId === banner.id &&
-                      cellState.field === String(col.fieldKey) &&
-                      cellState.state === "success";
-                    const isError =
-                      cellState?.bannerId === banner.id &&
-                      cellState.field === String(col.fieldKey) &&
-                      cellState.state === "error";
-                    return (
-                      <td
-                        key={`${banner.id}-${col.variable}-${col.language}`}
-                        className={`px-2 py-1.5 transition-colors ${
-                          col.variable === "H1" && isEmpty && !isReadOnly ? "bg-amber-50" : ""
-                        } ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
-                      >
-                        {isReadOnly ? (
-                          <span className="block min-h-[28px] text-sm text-gray-700">{value}</span>
-                        ) : (
-                          <input
-                            type="text"
-                            defaultValue={value}
-                            disabled={isSaving}
-                            onBlur={(e) =>
-                              handleBlur(
-                                banner.id,
-                                col.fieldKey,
-                                FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
-                                e.target.value
-                              )
-                            }
-                            placeholder={col.variable === "H1" ? "Required" : ""}
-                            className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 ${
-                              isSaving
-                                ? "border-gray-200 bg-gray-50 text-gray-400"
-                                : isSuccess
-                                ? "border-emerald-300 bg-emerald-50"
-                                : isError
-                                ? "border-red-300 bg-red-50"
-                                : col.variable === "H1" && isEmpty
-                                ? "border-amber-300 bg-amber-50"
-                                : "border-gray-200 bg-white"
-                            }`}
-                          />
-                        )}
-                      </td>
-                    );
-                  })}
-                  {/* Ready badge */}
-                  <td className="px-3 py-2">
-                    {isComplete ? (
-                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                        Ready ✓
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-400">
-                        Incomplete
-                      </span>
-                    )}
-                  </td>
-                  {/* Delete button — admin/designer only */}
-                  {canDelete && (
-                    <td className="px-2 py-2 text-right">
-                      <button
-                        onClick={() => {
-                          const label = isCarousel
-                            ? `Delete this Carousel banner and all ${slides.length} slide${slides.length !== 1 ? "s" : ""}?`
-                            : "Delete this banner?";
-                          if (window.confirm(label)) handleDelete(banner.id);
-                        }}
-                        disabled={isDeleting}
-                        title="Delete banner"
-                        className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
-                      >
-                        {isDeleting ? (
-                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                          </svg>
-                        ) : (
-                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                          </svg>
-                        )}
-                      </button>
                     </td>
-                  )}
-                </tr>
+                    {/* Delete button — admin/designer only */}
+                    {canDelete && (
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          onClick={() => {
+                            if (window.confirm("Delete this banner?")) handleDelete(banner.id);
+                          }}
+                          disabled={isDeleting}
+                          title="Delete banner"
+                          className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                        >
+                          {isDeleting ? (
+                            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          )}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                )}
 
-                {/* Slide child rows — shown when carousel is expanded */}
+                {/* ── Slide child rows — shown when carousel is expanded ── */}
                 {isCarousel && isExpanded && slides.map((slide) => {
                   const slideIdx = slide.slideIndex ?? 1;
                   const slideVars = getSlideVariables(banner, slideIdx);
-                  const slideCols = getSlideColumns(slideVars);
+                  const slideIsDeleting = deletingId === slide.id;
                   const isImageOnly = slideVars.length === 0;
+                  const slideIsSelected = selectedIds.has(slide.id);
+                  const slideBg = slideIsSelected ? "bg-blue-50" : "bg-purple-50";
 
                   return (
-                    <tr key={slide.id} className="bg-purple-50 border-l-2 border-purple-200">
+                    <tr key={slide.id} className={`border-l-2 border-purple-200 ${slideIsDeleting ? "opacity-50" : ""} ${slideIsSelected ? "bg-blue-50" : "bg-purple-50"}`}>
+                      {/* Checkbox for slide row */}
                       {!isReadOnly && (
                         <td
-                          className="sticky z-10 bg-purple-50 px-3 py-2 border-r border-purple-100"
+                          className={`sticky z-10 px-3 py-2 border-r border-purple-100 ${slideBg}`}
                           style={{ left: checkboxLeft, minWidth: "40px", width: "40px" }}
-                        />
+                        >
+                          <input
+                            type="checkbox"
+                            checked={slideIsSelected}
+                            onChange={() => toggleSelect(slide.id)}
+                            className="h-3.5 w-3.5 rounded border-purple-300 text-purple-700"
+                          />
+                        </td>
                       )}
                       <td
-                        className="sticky z-10 bg-purple-50 px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8 border-r border-purple-100"
+                        className={`sticky z-10 px-4 py-2 font-mono text-xs text-purple-600 whitespace-nowrap pl-8 border-r border-purple-100 ${slideBg}`}
                         style={{ left: formatLeft, minWidth: "200px" }}
                       >
                         <div className="flex items-center gap-1.5">
@@ -681,16 +813,14 @@ export default function CopyEditorTable({
                         </span>
                       </td>
                       {columns.map((col) => {
-                        const isActive = slideCols.some(
-                          (sc) => sc.variable === col.variable && sc.language === col.language
-                        );
+                        const isActive = slideVars.includes(col.variable);
                         if (!isActive) {
                           return (
                             <td
-                              key={`${slide.id}-${col.variable}-${col.language}-empty`}
-                              className="px-2 py-1.5 bg-purple-50/60"
+                              key={`${slide.id}-${col.variable}-${col.language}-locked`}
+                              className="px-2 py-1.5 bg-gray-100"
                             >
-                              <span className="block text-[10px] text-purple-200 italic">—</span>
+                              <span className="block text-[11px] text-gray-300 select-none">—</span>
                             </td>
                           );
                         }
@@ -742,9 +872,34 @@ export default function CopyEditorTable({
                           </td>
                         );
                       })}
+                      {/* Ready cell placeholder */}
                       <td className="px-3 py-2" />
-                      {/* Empty cell for delete column alignment */}
-                      {canDelete && <td className="px-2 py-2" />}
+                      {/* Delete slide button */}
+                      {canDelete && (
+                        <td className="px-2 py-2 text-right">
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete Slide ${slideIdx}?`)) {
+                                handleSlideDelete(banner.id, slide.id);
+                              }
+                            }}
+                            disabled={slideIsDeleting}
+                            title={`Delete Slide ${slideIdx}`}
+                            className="rounded p-1 text-purple-200 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                          >
+                            {slideIsDeleting ? (
+                              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                              </svg>
+                            ) : (
+                              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                              </svg>
+                            )}
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

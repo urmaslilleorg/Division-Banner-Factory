@@ -79,45 +79,136 @@ export async function DELETE(
 
     const recordId = params.id;
 
-    // Check if this banner has Carousel slides (Banner_Type = "Slide" with Parent_Banner = this record)
-    const slidesParams = new URLSearchParams();
-    slidesParams.set(
-      "filterByFormula",
-      `AND({Banner_Type}="Slide",FIND("${recordId}",ARRAYJOIN({Parent_Banner})))`
-    );
-    slidesParams.set("fields[]", "id");
-
-    const slidesRes = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${slidesParams.toString()}`,
+    // ── Fetch the record to determine its type ─────────────────────────────
+    const recordRes = await fetch(
+      `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${recordId}`,
       {
         headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
         cache: "no-store",
       }
     );
 
-    let childrenDeleted = 0;
-
-    if (slidesRes.ok) {
-      const slidesData = (await slidesRes.json()) as { records: { id: string }[] };
-      const slideIds = slidesData.records.map((r) => r.id);
-
-      // Delete child slide records in batches of 10 (Airtable limit)
-      for (let i = 0; i < slideIds.length; i += 10) {
-        const batch = slideIds.slice(i, i + 10);
-        const deleteParams = new URLSearchParams();
-        batch.forEach((id) => deleteParams.append("records[]", id));
-        await fetch(
-          `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${deleteParams.toString()}`,
-          {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
-          }
-        );
-        childrenDeleted += batch.length;
-      }
+    if (!recordRes.ok) {
+      const err = await recordRes.text();
+      throw new Error(`Airtable GET error ${recordRes.status}: ${err}`);
     }
 
-    // Delete the parent banner record
+    const recordData = await recordRes.json() as {
+      id: string;
+      fields: Record<string, unknown>;
+    };
+
+    const bannerType = recordData.fields["Banner_Type"] as string | undefined;
+
+    // ── Case 1: Slide — delete only this record, decrement parent Slide_Count ──
+    if (bannerType === "Slide") {
+      const parentIds = recordData.fields["Parent_Banner"] as string[] | undefined;
+
+      // Delete the slide record
+      const deleteRes = await fetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${recordId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+        }
+      );
+
+      if (!deleteRes.ok) {
+        const err = await deleteRes.text();
+        throw new Error(`Airtable DELETE error ${deleteRes.status}: ${err}`);
+      }
+
+      // Decrement parent Slide_Count if we have a parent
+      if (parentIds && parentIds.length > 0) {
+        const parentId = parentIds[0];
+        try {
+          const parentRes = await fetch(
+            `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${parentId}`,
+            {
+              headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+              cache: "no-store",
+            }
+          );
+          if (parentRes.ok) {
+            const parentData = await parentRes.json() as { fields: Record<string, unknown> };
+            const currentCount = (parentData.fields["Slide_Count"] as number) ?? 0;
+            const newCount = Math.max(0, currentCount - 1);
+            await fetch(
+              `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${parentId}`,
+              {
+                method: "PATCH",
+                headers: {
+                  Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ fields: { Slide_Count: newCount } }),
+              }
+            );
+          }
+        } catch {
+          // Non-fatal — slide was deleted, just couldn't update count
+          console.warn("Could not decrement parent Slide_Count for", parentId);
+        }
+      }
+
+      return NextResponse.json({ deleted: true, type: "Slide", childrenDeleted: 0 });
+    }
+
+    // ── Case 2: Carousel parent — cascade-delete all child slides ─────────
+    if (bannerType === "Carousel") {
+      const slidesParams = new URLSearchParams();
+      slidesParams.set(
+        "filterByFormula",
+        `AND({Banner_Type}="Slide",FIND("${recordId}",ARRAYJOIN({Parent_Banner})))`
+      );
+      slidesParams.set("fields[]", "id");
+
+      const slidesRes = await fetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${slidesParams.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+          cache: "no-store",
+        }
+      );
+
+      let childrenDeleted = 0;
+
+      if (slidesRes.ok) {
+        const slidesData = (await slidesRes.json()) as { records: { id: string }[] };
+        const slideIds = slidesData.records.map((r) => r.id);
+
+        for (let i = 0; i < slideIds.length; i += 10) {
+          const batch = slideIds.slice(i, i + 10);
+          const deleteParams = new URLSearchParams();
+          batch.forEach((id) => deleteParams.append("records[]", id));
+          await fetch(
+            `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${deleteParams.toString()}`,
+            {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+            }
+          );
+          childrenDeleted += batch.length;
+        }
+      }
+
+      const deleteRes = await fetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${recordId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+        }
+      );
+
+      if (!deleteRes.ok) {
+        const err = await deleteRes.text();
+        throw new Error(`Airtable DELETE error ${deleteRes.status}: ${err}`);
+      }
+
+      return NextResponse.json({ deleted: true, type: "Carousel", childrenDeleted });
+    }
+
+    // ── Case 3: Standard / Specific — simple single-record delete ─────────
     const deleteRes = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${recordId}`,
       {
@@ -131,7 +222,7 @@ export async function DELETE(
       throw new Error(`Airtable DELETE error ${deleteRes.status}: ${err}`);
     }
 
-    return NextResponse.json({ deleted: true, childrenDeleted });
+    return NextResponse.json({ deleted: true, type: bannerType ?? "Standard", childrenDeleted: 0 });
   } catch (error) {
     console.error("Banner DELETE failed:", error);
     return NextResponse.json(
