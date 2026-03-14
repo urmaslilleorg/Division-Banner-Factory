@@ -25,6 +25,7 @@
     PRICE_TAG: "Bold",
     ILLUSTRATION: "Italic"
   };
+  var SLIDE_GAP = 100;
   figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
   (async () => {
     const clientId = await figma.clientStorage.getAsync("dbf_clientId").catch(() => void 0);
@@ -119,26 +120,26 @@
     }
   };
   async function createFrameFromPayload(frameData) {
+    const w = frameData.width || 800;
+    const h = frameData.height || 600;
     const frame = figma.createFrame();
     frame.name = frameData.figmaFrame;
-    frame.resize(frameData.width || 800, frameData.height || 600);
+    frame.resize(w, h);
     frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
     if (frameData.type === "Standard") {
       await addTextLayers(frame, frameData.copy, frameData.activeVariables);
     } else if (frameData.type === "Carousel" && frameData.slides) {
-      let slideX = 0;
+      const slideIds = [];
       for (const slide of frameData.slides) {
         const slideFrame = figma.createFrame();
         slideFrame.name = `${frameData.figmaFrame}_Slide_${slide.index}`;
-        slideFrame.resize(frameData.width || 800, frameData.height || 600);
+        slideFrame.resize(w, h);
         slideFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-        slideFrame.x = slideX;
-        slideFrame.y = 0;
-        slideX += (frameData.width || 800) + GRID_GAP;
         await addTextLayers(slideFrame, slide.copy, slide.activeVariables);
-        frame.appendChild(slideFrame);
+        figma.currentPage.appendChild(slideFrame);
+        slideIds.push(slideFrame.id);
       }
-      frame.resize(slideX - GRID_GAP, frameData.height || 600);
+      frame.setPluginData("slideIds", JSON.stringify(slideIds));
     }
     return frame;
   }
@@ -168,6 +169,24 @@
       addFrameLabel(frame, 0, y);
       frame.x = 0;
       frame.y = y + LABEL_CLEARANCE;
+      let rowWidth = frame.width;
+      const rawIds = frame.getPluginData("slideIds");
+      if (rawIds) {
+        try {
+          const slideIds = JSON.parse(rawIds);
+          let slideX = frame.width + SLIDE_GAP;
+          for (const id of slideIds) {
+            const slideNode = figma.getNodeById(id);
+            if (!slideNode)
+              continue;
+            slideNode.x = slideX;
+            slideNode.y = y + LABEL_CLEARANCE;
+            slideX += slideNode.width + SLIDE_GAP;
+            rowWidth = slideX - SLIDE_GAP;
+          }
+        } catch (e) {
+        }
+      }
       y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
     }
   }

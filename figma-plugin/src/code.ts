@@ -91,11 +91,10 @@ const SLOT_STYLE: Record<string, string> = {
   PRICE_TAG: "Bold",
   ILLUSTRATION: "Italic",
 };
+/** Gap between carousel slides placed horizontally. */
+const SLIDE_GAP = 100;
 
-/** Grid gap between auto-created frames (px). */
-
-
-// ── Plugin entry ──────────────────────────────────────────────────────────────
+// ── Plugin entry ───────────────────────────────────────────────────────────────
 
 figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
 
@@ -214,34 +213,42 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 // ── Frame creation ────────────────────────────────────────────────────────────
 
 /**
- * Create a top-level frame (and its text layers) from a FramePayload.
- * For Carousel frames, also creates slide sub-frames.
+ * Create a top-level frame from a FramePayload.
+ *
+ * Standard: one frame with text layers.
+ * Carousel: a parent frame (container, NO text layers) + individual slide
+ *           frames placed on the PAGE to the right of the parent.
+ *           Returns the parent frame; slide frames are tracked separately
+ *           via the returned slideFrames array on the parent (stored as
+ *           a plugin data tag so the layout function can position them).
  */
 async function createFrameFromPayload(frameData: FramePayload): Promise<FrameNode> {
+  const w = frameData.width  || 800;
+  const h = frameData.height || 600;
+
   const frame = figma.createFrame();
   frame.name = frameData.figmaFrame;
-  frame.resize(frameData.width || 800, frameData.height || 600);
+  frame.resize(w, h);
   frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
 
   if (frameData.type === "Standard") {
     await addTextLayers(frame, frameData.copy, frameData.activeVariables);
   } else if (frameData.type === "Carousel" && frameData.slides) {
-    // Create a sub-frame for each slide, positioned side by side
-    let slideX = 0;
+    // Parent is a container only — no text layers
+    // Create each slide as a separate top-level frame on the page
+    const slideIds: string[] = [];
     for (const slide of frameData.slides) {
       const slideFrame = figma.createFrame();
       slideFrame.name = `${frameData.figmaFrame}_Slide_${slide.index}`;
-      slideFrame.resize(frameData.width || 800, frameData.height || 600);
+      slideFrame.resize(w, h);
       slideFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-      slideFrame.x = slideX;
-      slideFrame.y = 0;
-      slideX += (frameData.width || 800) + GRID_GAP;
-
       await addTextLayers(slideFrame, slide.copy, slide.activeVariables);
-      frame.appendChild(slideFrame);
+      // Add to page (not inside parent)
+      figma.currentPage.appendChild(slideFrame);
+      slideIds.push(slideFrame.id);
     }
-    // Expand parent to contain all slides
-    frame.resize(slideX - GRID_GAP, frameData.height || 600);
+    // Store slide IDs on parent so layoutFramesInGrid can position them
+    frame.setPluginData("slideIds", JSON.stringify(slideIds));
   }
 
   return frame;
@@ -282,33 +289,52 @@ async function addTextLayers(
 
 // ── Grid layout ───────────────────────────────────────────────────────────────
 
-/** Gap between frames in the vertical stack. */
+/** Vertical gap between rows. */
 const GRID_Y_GAP = 200;
 /** Space reserved above each frame for the label. */
 const LABEL_CLEARANCE = 40;
 
 /**
- * Arrange frames in a vertical stack (one below the other).
- * - All frames aligned to x = 0
- * - 200 px gap between frames
- * - A grey label (name + dimensions) sits 40 px above each frame
- * - Frames sorted by height descending so tallest are at the top
+ * Arrange frames in a vertical stack.
+ * Standard frames: one per row, left-aligned at x=0.
+ * Carousel frames: parent at x=0, slides extend horizontally to the right
+ *   with SLIDE_GAP between them. All on the same row (same Y).
+ * A grey label sits LABEL_CLEARANCE px above each parent/standard frame.
+ * Rows sorted tallest-first.
  */
 function layoutFramesInGrid(frames: FrameNode[]): void {
-  // Sort tallest first — gives a natural "biggest banner first" reading order
+  // Sort tallest first
   const sorted = [...frames].sort((a, b) => b.height - a.height);
 
   let y = 0;
 
   for (const frame of sorted) {
-    // Place label above the frame
+    // Place label above this row
     addFrameLabel(frame, 0, y);
 
-    // Place frame below the label
+    // Place the parent/standard frame
     frame.x = 0;
     frame.y = y + LABEL_CLEARANCE;
 
-    // Advance y cursor
+    // Resolve slide frames (carousel only)
+    let rowWidth = frame.width;
+    const rawIds = frame.getPluginData("slideIds");
+    if (rawIds) {
+      try {
+        const slideIds: string[] = JSON.parse(rawIds);
+        let slideX = frame.width + SLIDE_GAP;
+        for (const id of slideIds) {
+          const slideNode = figma.getNodeById(id) as FrameNode | null;
+          if (!slideNode) continue;
+          slideNode.x = slideX;
+          slideNode.y = y + LABEL_CLEARANCE;
+          slideX += slideNode.width + SLIDE_GAP;
+          rowWidth = slideX - SLIDE_GAP;
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // Advance y cursor by the tallest element in this row
     y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
   }
 }
