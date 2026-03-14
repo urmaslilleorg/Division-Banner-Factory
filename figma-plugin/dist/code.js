@@ -77,33 +77,52 @@
             frameName: frameData.figmaFrame
           });
           try {
-            const existing = figma.currentPage.findOne(
-              (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
-            );
-            if (existing) {
-              if (frameData.type === "Standard") {
-                await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
-              } else if (frameData.type === "Carousel" && frameData.slides) {
-                for (const slide of frameData.slides) {
-                  const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
-                  const slideFrame = existing.findOne(
-                    (n) => n.type === "FRAME" && n.name === slideFrameName
+            if (frameData.type === "Carousel" && frameData.slides) {
+              let anyCreated = false;
+              for (const slide of frameData.slides) {
+                const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
+                const existingSlide = figma.currentPage.findOne(
+                  (n) => n.type === "FRAME" && n.name === slideFrameName
+                );
+                if (existingSlide) {
+                  await applyCopyToFrame(existingSlide, slide.copy, slide.activeVariables);
+                  updated++;
+                  applied++;
+                } else {
+                  const slideFrame = await createSlideFrame(
+                    slideFrameName,
+                    frameData.width || 800,
+                    frameData.height || 600,
+                    slide.copy,
+                    slide.activeVariables
                   );
-                  if (slideFrame) {
-                    await applyCopyToFrame(slideFrame, slide.copy, slide.activeVariables);
-                  } else {
-                    await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
-                    break;
+                  if (slide.index === 1) {
+                    slideFrame.setPluginData(
+                      "carouselLabel",
+                      `${frameData.figmaFrame}  ${frameData.width || 800}\xD7${frameData.height || 600} (${frameData.slides.length} slides)`
+                    );
+                    slideFrame.setPluginData("isCarouselFirst", "true");
                   }
+                  newFrames.push(slideFrame);
+                  anyCreated = true;
+                  created++;
+                  applied++;
                 }
               }
-              updated++;
-              applied++;
             } else {
-              const newFrame = await createFrameFromPayload(frameData);
-              newFrames.push(newFrame);
-              created++;
-              applied++;
+              const existing = figma.currentPage.findOne(
+                (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
+              );
+              if (existing) {
+                await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
+                updated++;
+                applied++;
+              } else {
+                const newFrame = await createStandardFrame(frameData);
+                newFrames.push(newFrame);
+                created++;
+                applied++;
+              }
             }
           } catch (err) {
             errors.push(`${frameData.figmaFrame}: ${String(err)}`);
@@ -119,28 +138,20 @@
       figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
     }
   };
-  async function createFrameFromPayload(frameData) {
-    const w = frameData.width || 800;
-    const h = frameData.height || 600;
+  async function createStandardFrame(frameData) {
     const frame = figma.createFrame();
     frame.name = frameData.figmaFrame;
-    frame.resize(w, h);
+    frame.resize(frameData.width || 800, frameData.height || 600);
     frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    if (frameData.type === "Standard") {
-      await addTextLayers(frame, frameData.copy, frameData.activeVariables);
-    } else if (frameData.type === "Carousel" && frameData.slides) {
-      const slideIds = [];
-      for (const slide of frameData.slides) {
-        const slideFrame = figma.createFrame();
-        slideFrame.name = `${frameData.figmaFrame}_Slide_${slide.index}`;
-        slideFrame.resize(w, h);
-        slideFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-        await addTextLayers(slideFrame, slide.copy, slide.activeVariables);
-        figma.currentPage.appendChild(slideFrame);
-        slideIds.push(slideFrame.id);
-      }
-      frame.setPluginData("slideIds", JSON.stringify(slideIds));
-    }
+    await addTextLayers(frame, frameData.copy, frameData.activeVariables);
+    return frame;
+  }
+  async function createSlideFrame(name, width, height, copy, activeVariables) {
+    const frame = figma.createFrame();
+    frame.name = name;
+    frame.resize(width, height);
+    frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    await addTextLayers(frame, copy, activeVariables);
     return frame;
   }
   async function addTextLayers(frame, copy, activeVariables) {
@@ -163,43 +174,68 @@
   var GRID_Y_GAP = 200;
   var LABEL_CLEARANCE = 40;
   function layoutFramesInGrid(frames) {
-    const sorted = [...frames].sort((a, b) => b.height - a.height);
-    let y = 0;
-    for (const frame of sorted) {
-      addFrameLabel(frame, 0, y);
-      frame.x = 0;
-      frame.y = y + LABEL_CLEARANCE;
-      let rowWidth = frame.width;
-      const rawIds = frame.getPluginData("slideIds");
-      if (rawIds) {
-        try {
-          const slideIds = JSON.parse(rawIds);
-          let slideX = frame.width + SLIDE_GAP;
-          for (const id of slideIds) {
-            const slideNode = figma.getNodeById(id);
-            if (!slideNode)
-              continue;
-            slideNode.x = slideX;
-            slideNode.y = y + LABEL_CLEARANCE;
-            slideX += slideNode.width + SLIDE_GAP;
-            rowWidth = slideX - SLIDE_GAP;
-          }
-        } catch (e) {
-        }
+    const carouselGroups = /* @__PURE__ */ new Map();
+    const standardFrames = [];
+    for (const frame of frames) {
+      const slideMatch = frame.name.match(/^(.+)_Slide_(\d+)$/);
+      if (slideMatch) {
+        const baseName = slideMatch[1];
+        if (!carouselGroups.has(baseName))
+          carouselGroups.set(baseName, []);
+        carouselGroups.get(baseName).push(frame);
+      } else {
+        standardFrames.push(frame);
       }
-      y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
+    }
+    for (const slides of carouselGroups.values()) {
+      slides.sort((a, b) => {
+        const ai = parseInt(a.name.match(/_Slide_(\d+)$/)[1]);
+        const bi = parseInt(b.name.match(/_Slide_(\d+)$/)[1]);
+        return ai - bi;
+      });
+    }
+    const rows = [
+      ...standardFrames.map((f) => ({ type: "standard", frame: f })),
+      ...[...carouselGroups.entries()].map(([baseName, slides]) => ({ type: "carousel", slides, baseName }))
+    ];
+    rows.sort((a, b) => {
+      const ha = a.type === "standard" ? a.frame.height : a.slides[0].height;
+      const hb = b.type === "standard" ? b.frame.height : b.slides[0].height;
+      return hb - ha;
+    });
+    let y = 0;
+    for (const row of rows) {
+      if (row.type === "standard") {
+        const frame = row.frame;
+        addFrameLabelText(`${frame.name}  ${frame.width}\xD7${frame.height}`, 0, y);
+        frame.x = 0;
+        frame.y = y + LABEL_CLEARANCE;
+        y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
+      } else {
+        const { slides, baseName } = row;
+        const w = slides[0].width;
+        const h = slides[0].height;
+        addFrameLabelText(`${baseName}  ${w}\xD7${h} (${slides.length} slides)`, 0, y);
+        let slideX = 0;
+        for (const slide of slides) {
+          slide.x = slideX;
+          slide.y = y + LABEL_CLEARANCE;
+          slideX += slide.width + SLIDE_GAP;
+        }
+        y += LABEL_CLEARANCE + h + GRID_Y_GAP;
+      }
     }
   }
-  function addFrameLabel(frame, frameX, labelY) {
+  function addFrameLabelText(text, x, y) {
     try {
       const label = figma.createText();
-      label.name = `__label__${frame.name}`;
+      label.name = `__label__${text}`;
       label.fontName = { family: "Inter", style: "Regular" };
       label.fontSize = 16;
       label.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
-      label.characters = `${frame.name}  ${frame.width}\xD7${frame.height}`;
-      label.x = frameX;
-      label.y = labelY;
+      label.characters = text;
+      label.x = x;
+      label.y = y;
       figma.currentPage.appendChild(label);
     } catch (e) {
     }

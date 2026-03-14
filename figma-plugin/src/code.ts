@@ -149,7 +149,7 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
       // Track newly created frames so we can grid-lay them out at the end
       const newFrames: FrameNode[] = [];
 
-      // ── STEP 1: Process each frame in the payload ────────────────────────────
+      // ── STEP 1: Process each frame in the payload ────────────────────────
       for (let i = 0; i < frames.length; i++) {
         const frameData = frames[i];
 
@@ -161,36 +161,52 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
         });
 
         try {
-          const existing = figma.currentPage.findOne(
-            (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
-          ) as FrameNode | null;
+          if (frameData.type === "Carousel" && frameData.slides) {
+            // ── CAROUSEL: work with individual slide frames, no parent ────────
+            let anyCreated = false;
+            for (const slide of frameData.slides) {
+              const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
+              const existingSlide = figma.currentPage.findOne(
+                (n) => n.type === "FRAME" && n.name === slideFrameName
+              ) as FrameNode | null;
 
-          if (existing) {
-            // ── UPDATE: only touch text layers ────────────────────────────────
-            if (frameData.type === "Standard") {
-              await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
-            } else if (frameData.type === "Carousel" && frameData.slides) {
-              for (const slide of frameData.slides) {
-                const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
-                const slideFrame = existing.findOne(
-                  (n) => n.type === "FRAME" && n.name === slideFrameName
-                ) as FrameNode | null;
-                if (slideFrame) {
-                  await applyCopyToFrame(slideFrame, slide.copy, slide.activeVariables);
-                } else {
-                  await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
-                  break;
+              if (existingSlide) {
+                await applyCopyToFrame(existingSlide, slide.copy, slide.activeVariables);
+                updated++;
+                applied++;
+              } else {
+                const slideFrame = await createSlideFrame(
+                  slideFrameName, frameData.width || 800, frameData.height || 600,
+                  slide.copy, slide.activeVariables
+                );
+                // Tag first slide with carousel metadata for layout
+                if (slide.index === 1) {
+                  slideFrame.setPluginData("carouselLabel",
+                    `${frameData.figmaFrame}  ${frameData.width || 800}\u00d7${frameData.height || 600} (${frameData.slides!.length} slides)`);
+                  slideFrame.setPluginData("isCarouselFirst", "true");
                 }
+                newFrames.push(slideFrame);
+                anyCreated = true;
+                created++;
+                applied++;
               }
             }
-            updated++;
-            applied++;
           } else {
-            // ── CREATE: build frame + text layers from scratch ─────────────────
-            const newFrame = await createFrameFromPayload(frameData);
-            newFrames.push(newFrame);
-            created++;
-            applied++;
+            // ── STANDARD: single frame ────────────────────────────────────────
+            const existing = figma.currentPage.findOne(
+              (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
+            ) as FrameNode | null;
+
+            if (existing) {
+              await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
+              updated++;
+              applied++;
+            } else {
+              const newFrame = await createStandardFrame(frameData);
+              newFrames.push(newFrame);
+              created++;
+              applied++;
+            }
           }
         } catch (err) {
           errors.push(`${frameData.figmaFrame}: ${String(err)}`);
@@ -209,48 +225,31 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
     figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
   }
 };
+// ── Frame creation ───────────────────────────────────────────────────────────────
 
-// ── Frame creation ────────────────────────────────────────────────────────────
-
-/**
- * Create a top-level frame from a FramePayload.
- *
- * Standard: one frame with text layers.
- * Carousel: a parent frame (container, NO text layers) + individual slide
- *           frames placed on the PAGE to the right of the parent.
- *           Returns the parent frame; slide frames are tracked separately
- *           via the returned slideFrames array on the parent (stored as
- *           a plugin data tag so the layout function can position them).
- */
-async function createFrameFromPayload(frameData: FramePayload): Promise<FrameNode> {
-  const w = frameData.width  || 800;
-  const h = frameData.height || 600;
-
+/** Create a standard (non-carousel) frame with text layers. */
+async function createStandardFrame(frameData: FramePayload): Promise<FrameNode> {
   const frame = figma.createFrame();
   frame.name = frameData.figmaFrame;
-  frame.resize(w, h);
+  frame.resize(frameData.width || 800, frameData.height || 600);
   frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+  await addTextLayers(frame, frameData.copy, frameData.activeVariables);
+  return frame;
+}
 
-  if (frameData.type === "Standard") {
-    await addTextLayers(frame, frameData.copy, frameData.activeVariables);
-  } else if (frameData.type === "Carousel" && frameData.slides) {
-    // Parent is a container only — no text layers
-    // Create each slide as a separate top-level frame on the page
-    const slideIds: string[] = [];
-    for (const slide of frameData.slides) {
-      const slideFrame = figma.createFrame();
-      slideFrame.name = `${frameData.figmaFrame}_Slide_${slide.index}`;
-      slideFrame.resize(w, h);
-      slideFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-      await addTextLayers(slideFrame, slide.copy, slide.activeVariables);
-      // Add to page (not inside parent)
-      figma.currentPage.appendChild(slideFrame);
-      slideIds.push(slideFrame.id);
-    }
-    // Store slide IDs on parent so layoutFramesInGrid can position them
-    frame.setPluginData("slideIds", JSON.stringify(slideIds));
-  }
-
+/** Create a single carousel slide frame with text layers. */
+async function createSlideFrame(
+  name: string,
+  width: number,
+  height: number,
+  copy: Record<string, string>,
+  activeVariables: string[]
+): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.name = name;
+  frame.resize(width, height);
+  frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+  await addTextLayers(frame, copy, activeVariables);
   return frame;
 }
 
@@ -296,65 +295,100 @@ const LABEL_CLEARANCE = 40;
 
 /**
  * Arrange frames in a vertical stack.
+ *
  * Standard frames: one per row, left-aligned at x=0.
- * Carousel frames: parent at x=0, slides extend horizontally to the right
- *   with SLIDE_GAP between them. All on the same row (same Y).
- * A grey label sits LABEL_CLEARANCE px above each parent/standard frame.
+ * Carousel slides: Slide_1 is tagged with isCarouselFirst=true.
+ *   Slide_1 starts at x=0; subsequent slides (Slide_2, Slide_3, ...)
+ *   are placed to the right of the previous slide with SLIDE_GAP.
+ *   All slides in a carousel share the same Y (same row).
+ *
+ * A grey label sits LABEL_CLEARANCE px above each row's first frame.
  * Rows sorted tallest-first.
  */
 function layoutFramesInGrid(frames: FrameNode[]): void {
-  // Sort tallest first
-  const sorted = [...frames].sort((a, b) => b.height - a.height);
+  // Separate standard frames from carousel slide groups
+  // Group carousel slides by their base name (everything before _Slide_)
+  const carouselGroups = new Map<string, FrameNode[]>();
+  const standardFrames: FrameNode[] = [];
+
+  for (const frame of frames) {
+    const slideMatch = frame.name.match(/^(.+)_Slide_(\d+)$/);
+    if (slideMatch) {
+      const baseName = slideMatch[1];
+      if (!carouselGroups.has(baseName)) carouselGroups.set(baseName, []);
+      carouselGroups.get(baseName)!.push(frame);
+    } else {
+      standardFrames.push(frame);
+    }
+  }
+
+  // Sort carousel slides within each group by slide index
+  for (const slides of carouselGroups.values()) {
+    slides.sort((a, b) => {
+      const ai = parseInt(a.name.match(/_Slide_(\d+)$/)![1]);
+      const bi = parseInt(b.name.match(/_Slide_(\d+)$/)![1]);
+      return ai - bi;
+    });
+  }
+
+  // Build row entries: each entry is either a single standard frame
+  // or an array of carousel slides (treated as one row)
+  type RowEntry = { type: "standard"; frame: FrameNode } | { type: "carousel"; slides: FrameNode[]; baseName: string };
+  const rows: RowEntry[] = [
+    ...standardFrames.map(f => ({ type: "standard" as const, frame: f })),
+    ...[...carouselGroups.entries()].map(([baseName, slides]) => ({ type: "carousel" as const, slides, baseName })),
+  ];
+
+  // Sort rows tallest-first (by the height of the first/only frame)
+  rows.sort((a, b) => {
+    const ha = a.type === "standard" ? a.frame.height : a.slides[0].height;
+    const hb = b.type === "standard" ? b.frame.height : b.slides[0].height;
+    return hb - ha;
+  });
 
   let y = 0;
 
-  for (const frame of sorted) {
-    // Place label above this row
-    addFrameLabel(frame, 0, y);
-
-    // Place the parent/standard frame
-    frame.x = 0;
-    frame.y = y + LABEL_CLEARANCE;
-
-    // Resolve slide frames (carousel only)
-    let rowWidth = frame.width;
-    const rawIds = frame.getPluginData("slideIds");
-    if (rawIds) {
-      try {
-        const slideIds: string[] = JSON.parse(rawIds);
-        let slideX = frame.width + SLIDE_GAP;
-        for (const id of slideIds) {
-          const slideNode = figma.getNodeById(id) as FrameNode | null;
-          if (!slideNode) continue;
-          slideNode.x = slideX;
-          slideNode.y = y + LABEL_CLEARANCE;
-          slideX += slideNode.width + SLIDE_GAP;
-          rowWidth = slideX - SLIDE_GAP;
-        }
-      } catch { /* non-fatal */ }
+  for (const row of rows) {
+    if (row.type === "standard") {
+      const frame = row.frame;
+      // Label: "FrameName  WxH"
+      addFrameLabelText(`${frame.name}  ${frame.width}\u00d7${frame.height}`, 0, y);
+      frame.x = 0;
+      frame.y = y + LABEL_CLEARANCE;
+      y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
+    } else {
+      const { slides, baseName } = row;
+      const w = slides[0].width;
+      const h = slides[0].height;
+      // Label: "BaseName  WxH (N slides)"
+      addFrameLabelText(`${baseName}  ${w}\u00d7${h} (${slides.length} slides)`, 0, y);
+      let slideX = 0;
+      for (const slide of slides) {
+        slide.x = slideX;
+        slide.y = y + LABEL_CLEARANCE;
+        slideX += slide.width + SLIDE_GAP;
+      }
+      y += LABEL_CLEARANCE + h + GRID_Y_GAP;
     }
-
-    // Advance y cursor by the tallest element in this row
-    y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
   }
 }
 
 /**
- * Add a grey label text node above a frame.
- * Label text: "<frameName>  <width>×<height>"
- * Position: (frameX, labelY) — 30 px above the frame.
+ * Add a grey label text node at the given position.
+ * @param text  Full label string, e.g. "FrameName  960×1200 (3 slides)"
+ * @param x     Left edge of the label
+ * @param y     Top edge of the label (should be LABEL_CLEARANCE px above the frame)
  */
-function addFrameLabel(frame: FrameNode, frameX: number, labelY: number): void {
+function addFrameLabelText(text: string, x: number, y: number): void {
   try {
     const label = figma.createText();
-    label.name = `__label__${frame.name}`;
+    label.name = `__label__${text}`;
     label.fontName = { family: "Inter", style: "Regular" };
     label.fontSize = 16;
     label.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
-    label.characters = `${frame.name}  ${frame.width}\u00d7${frame.height}`;
-    label.x = frameX;
-    label.y = labelY;
-    // Place label on the same parent as the frame (current page)
+    label.characters = text;
+    label.x = x;
+    label.y = y;
     figma.currentPage.appendChild(label);
   } catch {
     // Non-fatal — label is cosmetic only
