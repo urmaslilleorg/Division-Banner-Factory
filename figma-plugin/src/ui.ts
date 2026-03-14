@@ -131,7 +131,13 @@ btnApply.addEventListener("click", () => {
   showStatus("Applying copy to Figma frames…", "loading");
 
   parent.postMessage(
-    { pluginMessage: { type: "APPLY_COPY", frames: currentPayload.frames } },
+    {
+      pluginMessage: {
+        type: "APPLY_COPY",
+        campaignName: currentPayload.campaignName,
+        frames: currentPayload.frames,
+      },
+    },
     "*"
   );
 });
@@ -154,10 +160,13 @@ window.onmessage = (event: MessageEvent) => {
 
   if (msg.type === "DONE") {
     progressBar.style.width = "100%";
+    const parts: string[] = [];
+    if (msg.created > 0) parts.push(`${msg.created} created`);
+    if (msg.updated > 0) parts.push(`${msg.updated} updated`);
     const errorSummary =
-      msg.errors.length > 0 ? `\n⚠ ${msg.errors.length} error(s): ${msg.errors.join("; ")}` : "";
+      msg.errors.length > 0 ? `  ⚠ ${msg.errors.length} error(s): ${msg.errors.join("; ")}` : "";
     showStatus(
-      `✓ Done — ${msg.applied} frame${msg.applied !== 1 ? "s" : ""} updated, ${msg.skipped} skipped.${errorSummary}`,
+      `✓ Done — ${parts.join(", ") || "0 frames"}.${errorSummary}`,
       msg.errors.length > 0 ? "error" : "success"
     );
     btnApply.disabled = false;

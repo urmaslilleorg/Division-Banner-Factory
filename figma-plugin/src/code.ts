@@ -3,19 +3,23 @@
 /**
  * Division Banner Factory — Figma Plugin (main thread)
  *
- * Receives messages from the UI panel and applies copy to text layers
- * inside the target frames.
- *
  * Message protocol (UI → plugin):
- *   { type: "APPLY_COPY", frames: FramePayload[] }
- *   { type: "RESIZE", width: number, height: number }
+ *   { type: "APPLY_COPY", campaignName: string, frames: FramePayload[] }
+ *   { type: "RESIZE",     width: number, height: number }
  *   { type: "CLOSE" }
  *
  * Message protocol (plugin → UI):
  *   { type: "READY" }
  *   { type: "PROGRESS", current: number, total: number, frameName: string }
- *   { type: "DONE", applied: number, skipped: number, errors: string[] }
- *   { type: "ERROR", message: string }
+ *   { type: "DONE",     applied: number, created: number, updated: number, errors: string[] }
+ *   { type: "ERROR",    message: string }
+ *
+ * Apply flow:
+ *   STEP 0 — Ensure a page named <campaignName> exists (create if missing, switch to it).
+ *   STEP 1 — For each frame in the payload:
+ *              • If frame exists on the page → UPDATE text layers only.
+ *              • If frame is missing         → CREATE frame + text layers from scratch.
+ *   STEP 2 — Lay out newly created frames in a grid (100 px gaps).
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -30,6 +34,8 @@ interface FramePayload {
   recordId: string;
   name: string;
   figmaFrame: string;
+  width: number;
+  height: number;
   type: "Standard" | "Carousel";
   copy: Record<string, string>;
   activeVariables: string[];
@@ -38,6 +44,7 @@ interface FramePayload {
 
 interface ApplyCopyMessage {
   type: "APPLY_COPY";
+  campaignName: string;
   frames: FramePayload[];
 }
 
@@ -53,9 +60,44 @@ interface CloseMessage {
 
 type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage;
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+/** Vertical Y positions for each text slot inside a newly created frame. */
+const SLOT_Y: Record<string, number> = {
+  H1: 40,
+  H2: 100,
+  H3: 160,
+  CTA: 220,
+  PRICE_TAG: 280,
+  ILLUSTRATION: 340,
+};
+
+/** Font size for each slot. */
+const SLOT_SIZE: Record<string, number> = {
+  H1: 32,
+  H2: 24,
+  H3: 18,
+  CTA: 20,
+  PRICE_TAG: 24,
+  ILLUSTRATION: 16,
+};
+
+/** Font style for each slot. */
+const SLOT_STYLE: Record<string, string> = {
+  H1: "Bold",
+  H2: "Regular",
+  H3: "Regular",
+  CTA: "Bold",
+  PRICE_TAG: "Bold",
+  ILLUSTRATION: "Italic",
+};
+
+/** Grid gap between auto-created frames (px). */
+const GRID_GAP = 100;
+
 // ── Plugin entry ──────────────────────────────────────────────────────────────
 
-figma.showUI(__html__, { width: 420, height: 560, title: "Division Banner Factory" });
+figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
 figma.ui.postMessage({ type: "READY" });
 
 figma.ui.onmessage = async (msg: PluginMessage) => {
@@ -70,107 +112,247 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
   }
 
   if (msg.type === "APPLY_COPY") {
-    const { frames } = msg;
+    const { campaignName, frames } = msg;
     let applied = 0;
-    let skipped = 0;
+    let created = 0;
+    let updated = 0;
     const errors: string[] = [];
 
-    for (let i = 0; i < frames.length; i++) {
-      const frame = frames[i];
-      figma.ui.postMessage({
-        type: "PROGRESS",
-        current: i + 1,
-        total: frames.length,
-        frameName: frame.name,
-      });
+    try {
+      // ── STEP 0: Ensure campaign page exists ──────────────────────────────────
+      let page = figma.root.children.find(
+        (p) => p.type === "PAGE" && p.name === campaignName
+      ) as PageNode | undefined;
 
-      try {
-        // Find the top-level frame by name
-        const topFrame = figma.currentPage.findOne(
-          (n) => n.type === "FRAME" && n.name === frame.figmaFrame
-        ) as FrameNode | null;
-
-        if (!topFrame) {
-          errors.push(`Frame not found: ${frame.figmaFrame}`);
-          skipped++;
-          continue;
-        }
-
-        if (frame.type === "Standard") {
-          await applyCopyToFrame(topFrame, frame.copy, frame.activeVariables);
-          applied++;
-        } else if (frame.type === "Carousel" && frame.slides) {
-          // For carousels, find child frames by slide index
-          for (const slide of frame.slides) {
-            const slideFrameName = `${frame.figmaFrame}_Slide_${slide.index}`;
-            const slideFrame = topFrame.findOne(
-              (n) => n.type === "FRAME" && n.name === slideFrameName
-            ) as FrameNode | null;
-
-            if (slideFrame) {
-              await applyCopyToFrame(slideFrame, slide.copy, slide.activeVariables);
-              applied++;
-            } else {
-              // Try applying to the top frame if no slide sub-frames
-              await applyCopyToFrame(topFrame, frame.copy, frame.activeVariables);
-              applied++;
-              break;
-            }
-          }
-        }
-      } catch (err) {
-        errors.push(`Error on ${frame.name}: ${String(err)}`);
-        skipped++;
+      if (!page) {
+        page = figma.createPage();
+        page.name = campaignName;
       }
+
+      figma.currentPage = page;
+
+      // Pre-load fonts once before any frame creation
+      await loadRequiredFonts();
+
+      // Track newly created frames so we can grid-lay them out at the end
+      const newFrames: FrameNode[] = [];
+
+      // ── STEP 1: Process each frame in the payload ────────────────────────────
+      for (let i = 0; i < frames.length; i++) {
+        const frameData = frames[i];
+
+        figma.ui.postMessage({
+          type: "PROGRESS",
+          current: i + 1,
+          total: frames.length,
+          frameName: frameData.figmaFrame,
+        });
+
+        try {
+          const existing = figma.currentPage.findOne(
+            (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
+          ) as FrameNode | null;
+
+          if (existing) {
+            // ── UPDATE: only touch text layers ────────────────────────────────
+            if (frameData.type === "Standard") {
+              await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
+            } else if (frameData.type === "Carousel" && frameData.slides) {
+              for (const slide of frameData.slides) {
+                const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
+                const slideFrame = existing.findOne(
+                  (n) => n.type === "FRAME" && n.name === slideFrameName
+                ) as FrameNode | null;
+                if (slideFrame) {
+                  await applyCopyToFrame(slideFrame, slide.copy, slide.activeVariables);
+                } else {
+                  await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
+                  break;
+                }
+              }
+            }
+            updated++;
+            applied++;
+          } else {
+            // ── CREATE: build frame + text layers from scratch ─────────────────
+            const newFrame = await createFrameFromPayload(frameData);
+            newFrames.push(newFrame);
+            created++;
+            applied++;
+          }
+        } catch (err) {
+          errors.push(`${frameData.figmaFrame}: ${String(err)}`);
+        }
+      }
+
+      // ── STEP 2: Grid-layout newly created frames ─────────────────────────────
+      if (newFrames.length > 0) {
+        layoutFramesInGrid(newFrames);
+      }
+    } catch (err) {
+      figma.ui.postMessage({ type: "ERROR", message: String(err) });
+      return;
     }
 
-    figma.ui.postMessage({ type: "DONE", applied, skipped, errors });
+    figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
   }
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Frame creation ────────────────────────────────────────────────────────────
 
 /**
- * Apply copy values to text layers inside a frame.
- * Matches layers by name (case-insensitive) against the variable slot names.
- * e.g. a layer named "H1" or "h1" gets the value from copy["H1"].
- *
- * Loads fonts before editing — required by Figma API.
+ * Create a top-level frame (and its text layers) from a FramePayload.
+ * For Carousel frames, also creates slide sub-frames.
+ */
+async function createFrameFromPayload(frameData: FramePayload): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.name = frameData.figmaFrame;
+  frame.resize(frameData.width || 800, frameData.height || 600);
+  frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+
+  if (frameData.type === "Standard") {
+    await addTextLayers(frame, frameData.copy, frameData.activeVariables);
+  } else if (frameData.type === "Carousel" && frameData.slides) {
+    // Create a sub-frame for each slide, positioned side by side
+    let slideX = 0;
+    for (const slide of frameData.slides) {
+      const slideFrame = figma.createFrame();
+      slideFrame.name = `${frameData.figmaFrame}_Slide_${slide.index}`;
+      slideFrame.resize(frameData.width || 800, frameData.height || 600);
+      slideFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      slideFrame.x = slideX;
+      slideFrame.y = 0;
+      slideX += (frameData.width || 800) + GRID_GAP;
+
+      await addTextLayers(slideFrame, slide.copy, slide.activeVariables);
+      frame.appendChild(slideFrame);
+    }
+    // Expand parent to contain all slides
+    frame.resize(slideX - GRID_GAP, frameData.height || 600);
+  }
+
+  return frame;
+}
+
+/**
+ * Add text nodes to a frame for each active variable slot.
+ * Positions are fixed per slot (see SLOT_Y).
+ */
+async function addTextLayers(
+  frame: FrameNode,
+  copy: Record<string, string>,
+  activeVariables: string[]
+): Promise<void> {
+  for (const slot of activeVariables) {
+    const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
+    const value = copy[slot] ?? `[${slot}]`;
+
+    const textNode = figma.createText();
+    textNode.name = slot;
+
+    // Apply font properties
+    const style = SLOT_STYLE[slotKey] ?? "Regular";
+    const size = SLOT_SIZE[slotKey] ?? 16;
+    textNode.fontName = { family: "Inter", style };
+    textNode.fontSize = size;
+
+    // Set text (must be done after fontName is set)
+    textNode.characters = value;
+
+    // Position
+    textNode.x = 40;
+    textNode.y = SLOT_Y[slotKey] ?? 40 + activeVariables.indexOf(slot) * 60;
+
+    frame.appendChild(textNode);
+  }
+}
+
+// ── Grid layout ───────────────────────────────────────────────────────────────
+
+/**
+ * Arrange an array of frames in a horizontal row starting at x=0, y=0.
+ * Each frame is placed to the right of the previous one with GRID_GAP spacing.
+ * If total width exceeds ~4000 px, wraps to next row.
+ */
+function layoutFramesInGrid(frames: FrameNode[]): void {
+  const ROW_MAX_WIDTH = 4000;
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+
+  for (const frame of frames) {
+    if (x > 0 && x + frame.width > ROW_MAX_WIDTH) {
+      // Wrap to next row
+      x = 0;
+      y += rowHeight + GRID_GAP;
+      rowHeight = 0;
+    }
+    frame.x = x;
+    frame.y = y;
+    x += frame.width + GRID_GAP;
+    if (frame.height > rowHeight) rowHeight = frame.height;
+  }
+}
+
+// ── Font loading ──────────────────────────────────────────────────────────────
+
+/**
+ * Pre-load all font variants used by the plugin.
+ * Falls back gracefully — if Inter is unavailable, tries Roboto then Arial.
+ */
+async function loadRequiredFonts(): Promise<void> {
+  const families = ["Inter", "Roboto", "Arial"];
+  const styles = ["Regular", "Bold", "Italic"];
+
+  for (const family of families) {
+    let allLoaded = true;
+    for (const style of styles) {
+      try {
+        await figma.loadFontAsync({ family, style });
+      } catch {
+        allLoaded = false;
+      }
+    }
+    if (allLoaded) return; // First family that fully loads wins
+  }
+}
+
+// ── Update helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Apply copy values to existing text layers inside a frame.
+ * Matches layers by name (case-insensitive, spaces → underscores).
+ * Does NOT touch position, size, or styling — preserves designer work.
  */
 async function applyCopyToFrame(
   frame: FrameNode,
   copy: Record<string, string>,
   activeVariables: string[]
 ): Promise<void> {
-  // Collect all text nodes inside the frame
   const textNodes = frame.findAll((n) => n.type === "TEXT") as TextNode[];
 
   for (const textNode of textNodes) {
-    const layerName = textNode.name.toUpperCase().replace(/\s+/g, "_");
+    const layerKey = textNode.name.toUpperCase().replace(/\s+/g, "_");
 
-    // Find which variable slot this layer corresponds to
     const matchingSlot = activeVariables.find(
-      (slot) => slot.toUpperCase() === layerName
+      (slot) => slot.toUpperCase().replace(/\s+/g, "_") === layerKey
     );
-
     if (!matchingSlot) continue;
 
     const newText = copy[matchingSlot];
     if (newText === undefined || newText === null) continue;
 
-    // Load all fonts used in this text node before editing
+    // Load fonts currently used in this node before editing
     const fonts = textNode.getRangeFontName(0, textNode.characters.length);
     if (typeof fonts !== "symbol") {
-      // Single font
       await figma.loadFontAsync(fonts as FontName);
     } else {
-      // Mixed fonts — load each unique font
-      const uniqueFonts = new Set<string>();
+      const seen = new Set<string>();
       for (let i = 0; i < textNode.characters.length; i++) {
         const font = textNode.getRangeFontName(i, i + 1) as FontName;
         const key = `${font.family}::${font.style}`;
-        if (!uniqueFonts.has(key)) {
-          uniqueFonts.add(key);
+        if (!seen.has(key)) {
+          seen.add(key);
           await figma.loadFontAsync(font);
         }
       }
