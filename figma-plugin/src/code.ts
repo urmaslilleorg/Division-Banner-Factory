@@ -58,7 +58,11 @@ interface CloseMessage {
   type: "CLOSE";
 }
 
-type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage;
+interface ExportToMenteMessage {
+  type: "EXPORT_TO_MENTE";
+}
+
+type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -230,7 +234,83 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 
     figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
   }
+
+  // ── EXPORT: Export _MASTER_ frames as PNG and send to UI for upload ──────────
+  if (msg.type === "EXPORT_TO_MENTE") {
+    const page = figma.currentPage;
+
+    // 1. Determine frames to export
+    const selected = figma.currentPage.selection
+      .filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_")) as FrameNode[];
+
+    const framesToExport: FrameNode[] = selected.length > 0
+      ? selected
+      : (page.children.filter(
+          (n) => n.type === "FRAME" && n.name.startsWith("_MASTER_")
+        ) as FrameNode[]);
+
+    if (framesToExport.length === 0) {
+      figma.ui.postMessage({
+        type: "EXPORT_ERROR",
+        message: "No _MASTER_ frames found on this page. Run Fetch + Apply first.",
+      });
+      return;
+    }
+
+    // 2. Export each frame
+    for (let i = 0; i < framesToExport.length; i++) {
+      const frame = framesToExport[i];
+
+      figma.ui.postMessage({
+        type: "EXPORT_PROGRESS",
+        current: i + 1,
+        total: framesToExport.length,
+        frameName: frame.name,
+      });
+
+      try {
+        const pngBytes = await frame.exportAsync({
+          format: "PNG",
+          constraint: { type: "SCALE", value: 1 },
+        });
+
+        const base64 = figma.base64Encode(pngBytes);
+
+        figma.ui.postMessage({
+          type: "FRAME_EXPORTED",
+          frameName: frame.name,
+          base64,
+          width: frame.width,
+          height: frame.height,
+        });
+      } catch (err) {
+        figma.ui.postMessage({
+          type: "FRAME_EXPORT_ERROR",
+          frameName: frame.name,
+          error: String(err),
+        });
+      }
+    }
+
+    figma.ui.postMessage({
+      type: "EXPORT_DONE",
+      exported: framesToExport.length,
+    });
+    return;
+  }
 };
+
+// ── Selection change listener ─────────────────────────────────────────────────
+figma.on("selectionchange", () => {
+  const selected = figma.currentPage.selection
+    .filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_"));
+  figma.ui.postMessage({
+    type: "SELECTION_CHANGED",
+    count: selected.length,
+  });
+});
+
+
 // ── Frame creation ───────────────────────────────────────────────────────────────
 
 /** Create a standard (non-carousel) frame with text layers. */

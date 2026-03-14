@@ -130,7 +130,62 @@
       }
       figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
     }
+    if (msg.type === "EXPORT_TO_MENTE") {
+      const page = figma.currentPage;
+      const selected = figma.currentPage.selection.filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_"));
+      const framesToExport = selected.length > 0 ? selected : page.children.filter(
+        (n) => n.type === "FRAME" && n.name.startsWith("_MASTER_")
+      );
+      if (framesToExport.length === 0) {
+        figma.ui.postMessage({
+          type: "EXPORT_ERROR",
+          message: "No _MASTER_ frames found on this page. Run Fetch + Apply first."
+        });
+        return;
+      }
+      for (let i = 0; i < framesToExport.length; i++) {
+        const frame = framesToExport[i];
+        figma.ui.postMessage({
+          type: "EXPORT_PROGRESS",
+          current: i + 1,
+          total: framesToExport.length,
+          frameName: frame.name
+        });
+        try {
+          const pngBytes = await frame.exportAsync({
+            format: "PNG",
+            constraint: { type: "SCALE", value: 1 }
+          });
+          const base64 = figma.base64Encode(pngBytes);
+          figma.ui.postMessage({
+            type: "FRAME_EXPORTED",
+            frameName: frame.name,
+            base64,
+            width: frame.width,
+            height: frame.height
+          });
+        } catch (err) {
+          figma.ui.postMessage({
+            type: "FRAME_EXPORT_ERROR",
+            frameName: frame.name,
+            error: String(err)
+          });
+        }
+      }
+      figma.ui.postMessage({
+        type: "EXPORT_DONE",
+        exported: framesToExport.length
+      });
+      return;
+    }
   };
+  figma.on("selectionchange", () => {
+    const selected = figma.currentPage.selection.filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_"));
+    figma.ui.postMessage({
+      type: "SELECTION_CHANGED",
+      count: selected.length
+    });
+  });
   async function createStandardFrame(frameData) {
     const frame = figma.createFrame();
     frame.name = frameData.figmaFrame;

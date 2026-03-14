@@ -81,11 +81,14 @@
 
     .btn:disabled { opacity: 0.4; cursor: default; }
 
-    .btn-primary { background: #6366f1; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+    .btn-primary   { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled)   { background: #4f46e5; }
 
     .btn-secondary { background: #f4f4f5; color: #111; border: 1px solid #e4e4e7; }
     .btn-secondary:hover:not(:disabled) { background: #e4e4e7; }
+
+    .btn-export    { background: #0ea5e9; color: #fff; }
+    .btn-export:hover:not(:disabled)    { background: #0284c7; }
 
     .btn-row { display: flex; gap: 8px; margin-top: 4px; }
 
@@ -105,7 +108,7 @@
 
     .frame-list {
       margin-top: 12px;
-      max-height: 180px;
+      max-height: 140px;
       overflow-y: auto;
       border: 1px solid #e4e4e7;
       border-radius: 6px;
@@ -139,7 +142,44 @@
       transition: width 0.2s;
     }
 
-    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 14px 0; }
+    .progress-bar.export { background: #0ea5e9; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #f0f0f0;
+      margin: 14px 0;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+
+    .export-list {
+      margin-top: 10px;
+      max-height: 160px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .export-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .export-item:last-child { border-bottom: none; }
+    .export-icon { font-size: 12px; min-width: 16px; }
+    .export-name { font-family: monospace; color: #333; font-size: 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .export-state { font-size: 10px; color: #888; }
 
     .loading-dots::after {
       content: '';
@@ -170,6 +210,8 @@
     </select>
   </div>
 
+  <!-- ── IMPORT section ──────────────────────────────────────── -->
+  <div class="section-label">Import — Mente → Figma</div>
   <div class="btn-row">
     <button class="btn btn-secondary" id="btnFetch" disabled>Fetch frames</button>
     <button class="btn btn-primary"   id="btnApply" disabled>Apply copy</button>
@@ -184,6 +226,24 @@
   </div>
 
   <div id="frameList" class="frame-list" style="display:none"></div>
+
+  <!-- ── EXPORT section ──────────────────────────────────────── -->
+  <hr class="divider" />
+  <div class="section-label">Export — Figma → Mente</div>
+
+  <div class="btn-row">
+    <button class="btn btn-export" id="btnExport" disabled>Export all</button>
+  </div>
+
+  <div id="exportStatus" class="status info" style="display:none"></div>
+
+  <div id="exportProgressWrap" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar export" id="exportProgressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="exportList" class="export-list" style="display:none"></div>
 <script>"use strict";
 (() => {
   // src/ui.ts
@@ -196,11 +256,20 @@
   var progressWrap = document.getElementById("progressWrap");
   var progressBar = document.getElementById("progressBar");
   var frameListEl = document.getElementById("frameList");
+  var btnExport = document.getElementById("btnExport");
+  var exportStatusEl = document.getElementById("exportStatus");
+  var exportProgressWrap = document.getElementById("exportProgressWrap");
+  var exportProgressBar = document.getElementById("exportProgressBar");
+  var exportListEl = document.getElementById("exportList");
   var clients = [];
   var campaigns = [];
   var currentPayload = null;
+  var selectedFrameCount = 0;
   var savedClientId;
   var savedCampaignId;
+  var exportFrames = [];
+  var exportTotal = 0;
+  var exportDoneCount = 0;
   function savePrefs(clientId, campaignId) {
     if (clientId !== void 0)
       savedClientId = clientId;
@@ -219,6 +288,11 @@
   function hideStatus() {
     statusEl.style.display = "none";
   }
+  function showExportStatus(msg, type) {
+    exportStatusEl.textContent = msg;
+    exportStatusEl.className = `status ${type}`;
+    exportStatusEl.style.display = "block";
+  }
   function renderFrameList(frames) {
     frameListEl.innerHTML = frames.map(
       (f) => `
@@ -229,6 +303,19 @@
     ).join("");
     frameListEl.style.display = "block";
   }
+  function renderExportList() {
+    exportListEl.innerHTML = exportFrames.map((f) => {
+      const icon = f.status === "done" ? "\u2705" : f.status === "failed" ? "\u26A0" : f.status === "skipped" ? "\u23ED" : f.status === "uploading" ? "\u{1F504}" : "\u23F3";
+      const stateLabel = f.status === "done" ? "uploaded" : f.status === "failed" ? `failed${f.error ? `: ${f.error.substring(0, 40)}` : ""}` : f.status === "skipped" ? "skipped (no match)" : f.status === "uploading" ? "uploading\u2026" : "waiting";
+      return `
+        <div class="export-item">
+          <span class="export-icon">${icon}</span>
+          <span class="export-name">${f.frameName}</span>
+          <span class="export-state">${stateLabel}</span>
+        </div>`;
+    }).join("");
+    exportListEl.style.display = "block";
+  }
   function campaignLabel(c) {
     const parts = [];
     if (c.formatCount > 0)
@@ -236,6 +323,27 @@
     if (c.month)
       parts.push(c.month);
     return parts.length > 0 ? `${c.name}  (${parts.join(" \xB7 ")})` : c.name;
+  }
+  function updateExportButton() {
+    if (!currentPayload) {
+      btnExport.disabled = true;
+      btnExport.textContent = "Export all";
+      return;
+    }
+    btnExport.disabled = false;
+    if (selectedFrameCount > 0) {
+      btnExport.textContent = `Export ${selectedFrameCount} selected`;
+    } else {
+      let total = 0;
+      for (const f of currentPayload.frames) {
+        if (f.type === "Carousel" && f.slides) {
+          total += f.slides.length;
+        } else {
+          total += 1;
+        }
+      }
+      btnExport.textContent = `Export all (${total})`;
+    }
   }
   async function loadClients() {
     clientSelect.disabled = true;
@@ -279,6 +387,7 @@
     currentPayload = null;
     frameListEl.style.display = "none";
     hideStatus();
+    updateExportButton();
     try {
       const url = `${ROOT_API}/api/campaigns/list?client=${encodeURIComponent(client.name)}`;
       const res = await fetch(url);
@@ -333,6 +442,7 @@
     btnApply.disabled = true;
     frameListEl.style.display = "none";
     hideStatus();
+    updateExportButton();
   });
   btnFetch.addEventListener("click", async () => {
     var _a;
@@ -343,6 +453,7 @@
     btnApply.disabled = true;
     currentPayload = null;
     frameListEl.style.display = "none";
+    updateExportButton();
     const campaign = campaigns.find((c) => c.id === campaignId);
     showStatus(`Fetching frames for "${(_a = campaign == null ? void 0 : campaign.name) != null ? _a : campaignId}"\u2026`, "loading");
     try {
@@ -360,6 +471,7 @@
       );
       renderFrameList(data.frames);
       btnApply.disabled = false;
+      updateExportButton();
     } catch (err) {
       showStatus(`Fetch failed: ${String(err)}`, "error");
     } finally {
@@ -385,7 +497,92 @@
       "*"
     );
   });
-  window.onmessage = (event) => {
+  btnExport.addEventListener("click", () => {
+    if (!currentPayload)
+      return;
+    exportFrames = [];
+    exportDoneCount = 0;
+    exportListEl.style.display = "none";
+    exportListEl.innerHTML = "";
+    exportProgressWrap.style.display = "block";
+    exportProgressBar.style.width = "0%";
+    showExportStatus("Exporting frames\u2026", "loading");
+    btnExport.disabled = true;
+    btnFetch.disabled = true;
+    btnApply.disabled = true;
+    parent.postMessage({ pluginMessage: { type: "EXPORT_TO_MENTE" } }, "*");
+  });
+  function findRecordId(frameName) {
+    if (!currentPayload)
+      return null;
+    const standard = currentPayload.frames.find((f) => f.figmaFrame === frameName);
+    if (standard)
+      return standard.recordId;
+    const slideMatch = frameName.match(/^(.+)_Slide_(\d+)$/);
+    if (slideMatch) {
+      const parentName = slideMatch[1];
+      const slideIndex = parseInt(slideMatch[2], 10);
+      const parent2 = currentPayload.frames.find(
+        (f) => f.type === "Carousel" && f.figmaFrame === parentName
+      );
+      if (parent2 && parent2.slides) {
+        const slide = parent2.slides.find((s) => s.index === slideIndex);
+        if (slide && slide.recordId)
+          return slide.recordId;
+        const byPosition = parent2.slides[slideIndex - 1];
+        if (byPosition && byPosition.recordId)
+          return byPosition.recordId;
+      }
+    }
+    return null;
+  }
+  function getClientSubdomain() {
+    var _a;
+    const clientId = clientSelect.value;
+    const client = clients.find((c) => c.id === clientId);
+    return (_a = client == null ? void 0 : client.subdomain) != null ? _a : "sydameapteek";
+  }
+  async function uploadFrame(frameName, base64) {
+    const idx = exportFrames.findIndex((f) => f.frameName === frameName);
+    const recordId = findRecordId(frameName);
+    if (!recordId) {
+      if (idx >= 0)
+        exportFrames[idx].status = "skipped";
+      renderExportList();
+      return;
+    }
+    if (idx >= 0)
+      exportFrames[idx].status = "uploading";
+    renderExportList();
+    const subdomain = getClientSubdomain();
+    const clientUrl = `https://${subdomain}.menteproduction.com`;
+    const imageData = `data:image/png;base64,${base64}`;
+    try {
+      const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageData, fileName: `${frameName}.png` })
+      });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({ error: uploadRes.statusText }));
+        throw new Error(err.error || `HTTP ${uploadRes.status}`);
+      }
+      await fetch(`${clientUrl}/api/banners/${recordId}/plugin-update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Client_Review" })
+      });
+      if (idx >= 0)
+        exportFrames[idx].status = "done";
+    } catch (err) {
+      if (idx >= 0) {
+        exportFrames[idx].status = "failed";
+        exportFrames[idx].error = String(err);
+      }
+    }
+    renderExportList();
+  }
+  window.onmessage = async (event) => {
     const msg = event.data.pluginMessage;
     if (!msg)
       return;
@@ -423,6 +620,66 @@ ${msg.errors.join("\n")}` : "";
       showStatus(`Error: ${msg.message}`, "error");
       btnApply.disabled = false;
       btnFetch.disabled = false;
+    }
+    if (msg.type === "SELECTION_CHANGED") {
+      selectedFrameCount = msg.count;
+      updateExportButton();
+    }
+    if (msg.type === "EXPORT_PROGRESS") {
+      exportTotal = msg.total;
+      const pct = Math.round(msg.current / exportTotal * 50);
+      exportProgressBar.style.width = `${pct}%`;
+      showExportStatus(`Exporting\u2026 ${msg.current}/${exportTotal}: ${msg.frameName}`, "loading");
+      if (msg.current === 1) {
+        exportFrames = [];
+      }
+      if (!exportFrames.find((f) => f.frameName === msg.frameName)) {
+        exportFrames.push({ frameName: msg.frameName, status: "waiting" });
+        renderExportList();
+      }
+    }
+    if (msg.type === "FRAME_EXPORTED") {
+      await uploadFrame(msg.frameName, msg.base64);
+      exportDoneCount++;
+      const uploadPct = 50 + Math.round(exportDoneCount / exportTotal * 50);
+      exportProgressBar.style.width = `${uploadPct}%`;
+    }
+    if (msg.type === "FRAME_EXPORT_ERROR") {
+      const idx = exportFrames.findIndex((f) => f.frameName === msg.frameName);
+      if (idx >= 0) {
+        exportFrames[idx].status = "failed";
+        exportFrames[idx].error = msg.error;
+      }
+      exportDoneCount++;
+      renderExportList();
+    }
+    if (msg.type === "EXPORT_DONE") {
+      exportProgressBar.style.width = "100%";
+      const done = exportFrames.filter((f) => f.status === "done").length;
+      const failed = exportFrames.filter((f) => f.status === "failed").length;
+      const skipped = exportFrames.filter((f) => f.status === "skipped").length;
+      const parts = [];
+      if (done > 0)
+        parts.push(`\u2705 ${done} exported`);
+      if (skipped > 0)
+        parts.push(`\u23ED ${skipped} skipped`);
+      if (failed > 0)
+        parts.push(`\u26A0 ${failed} failed`);
+      showExportStatus(
+        parts.join(" \xB7 ") || "Export complete",
+        failed > 0 ? "error" : "success"
+      );
+      btnExport.disabled = false;
+      btnFetch.disabled = false;
+      btnApply.disabled = false;
+      updateExportButton();
+    }
+    if (msg.type === "EXPORT_ERROR") {
+      showExportStatus(`Export error: ${msg.message}`, "error");
+      btnExport.disabled = false;
+      btnFetch.disabled = false;
+      btnApply.disabled = false;
+      updateExportButton();
     }
   };
 })();

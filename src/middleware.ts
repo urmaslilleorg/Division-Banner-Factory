@@ -13,6 +13,8 @@ const isPublicRoute = createRouteMatcher([
   "/api/campaigns/list",
   "/api/campaigns/lookup",
   "/api/campaigns/:id/figma-sync",
+  "/api/banners/:id/upload-image",
+  "/api/banners/:id/plugin-update",
 ]);
 
 // /admin/* routes require division_admin role

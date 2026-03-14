@@ -81,11 +81,14 @@
 
     .btn:disabled { opacity: 0.4; cursor: default; }
 
-    .btn-primary { background: #6366f1; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+    .btn-primary   { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled)   { background: #4f46e5; }
 
     .btn-secondary { background: #f4f4f5; color: #111; border: 1px solid #e4e4e7; }
     .btn-secondary:hover:not(:disabled) { background: #e4e4e7; }
+
+    .btn-export    { background: #0ea5e9; color: #fff; }
+    .btn-export:hover:not(:disabled)    { background: #0284c7; }
 
     .btn-row { display: flex; gap: 8px; margin-top: 4px; }
 
@@ -105,7 +108,7 @@
 
     .frame-list {
       margin-top: 12px;
-      max-height: 180px;
+      max-height: 140px;
       overflow-y: auto;
       border: 1px solid #e4e4e7;
       border-radius: 6px;
@@ -139,7 +142,44 @@
       transition: width 0.2s;
     }
 
-    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 14px 0; }
+    .progress-bar.export { background: #0ea5e9; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #f0f0f0;
+      margin: 14px 0;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+
+    .export-list {
+      margin-top: 10px;
+      max-height: 160px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .export-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .export-item:last-child { border-bottom: none; }
+    .export-icon { font-size: 12px; min-width: 16px; }
+    .export-name { font-family: monospace; color: #333; font-size: 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .export-state { font-size: 10px; color: #888; }
 
     .loading-dots::after {
       content: '';
@@ -170,6 +210,8 @@
     </select>
   </div>
 
+  <!-- ── IMPORT section ──────────────────────────────────────── -->
+  <div class="section-label">Import — Mente → Figma</div>
   <div class="btn-row">
     <button class="btn btn-secondary" id="btnFetch" disabled>Fetch frames</button>
     <button class="btn btn-primary"   id="btnApply" disabled>Apply copy</button>
@@ -184,5 +226,23 @@
   </div>
 
   <div id="frameList" class="frame-list" style="display:none"></div>
+
+  <!-- ── EXPORT section ──────────────────────────────────────── -->
+  <hr class="divider" />
+  <div class="section-label">Export — Figma → Mente</div>
+
+  <div class="btn-row">
+    <button class="btn btn-export" id="btnExport" disabled>Export all</button>
+  </div>
+
+  <div id="exportStatus" class="status info" style="display:none"></div>
+
+  <div id="exportProgressWrap" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar export" id="exportProgressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="exportList" class="export-list" style="display:none"></div>
 </body>
 </html>

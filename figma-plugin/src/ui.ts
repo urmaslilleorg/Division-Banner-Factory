@@ -1,17 +1,23 @@
 /**
  * Division Banner Factory — Figma Plugin UI
  *
- * Flow:
+ * IMPORT flow:
  *   1. On open → fetch client list from /api/clients/list
  *   2. Populate Client dropdown (auto-select if only 1)
  *   3. User selects client → fetch campaign list from /api/campaigns/list?client=<name>
  *   4. Populate Campaign dropdown (auto-select if only 1)
- *      Show: "Campaign Name (N formats · Month)"
  *   5. User selects campaign → Fetch frames becomes active
  *   6. Click Fetch → GET /api/campaigns/<id>/figma-sync
  *   7. Click Apply → sends APPLY_COPY to plugin main thread
  *
- * Last selections are saved to localStorage and restored on next open.
+ * EXPORT flow:
+ *   1. Fetch must have been run first (needs frame data for record ID matching)
+ *   2. Button shows "Export all (N)" or "Export N selected" based on selection
+ *   3. Click Export → sends EXPORT_TO_MENTE to main thread
+ *   4. Main thread exports each frame as PNG, sends FRAME_EXPORTED per frame
+ *   5. UI uploads each PNG to /api/banners/[id]/upload-image
+ *   6. UI updates status to Client_Review via /api/banners/[id]/plugin-update
+ *   7. Shows per-frame result: ✅ uploaded / ⚠ failed / ⏭ skipped (no match)
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,6 +40,7 @@ interface SlideCopyPayload {
   index: number;
   copy: Record<string, string>;
   activeVariables: string[];
+  recordId?: string;
 }
 
 interface FramePayload {
@@ -64,27 +71,44 @@ const ROOT_API = "https://sydameapteek.menteproduction.com";
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
-const clientSelect   = document.getElementById("clientSelect")   as HTMLSelectElement;
-const campaignSelect = document.getElementById("campaignSelect") as HTMLSelectElement;
-const btnFetch       = document.getElementById("btnFetch")       as HTMLButtonElement;
-const btnApply       = document.getElementById("btnApply")       as HTMLButtonElement;
-const statusEl       = document.getElementById("status")         as HTMLDivElement;
-const progressWrap   = document.getElementById("progressWrap")   as HTMLDivElement;
-const progressBar    = document.getElementById("progressBar")    as HTMLDivElement;
-const frameListEl    = document.getElementById("frameList")      as HTMLDivElement;
+const clientSelect        = document.getElementById("clientSelect")        as HTMLSelectElement;
+const campaignSelect      = document.getElementById("campaignSelect")      as HTMLSelectElement;
+const btnFetch            = document.getElementById("btnFetch")            as HTMLButtonElement;
+const btnApply            = document.getElementById("btnApply")            as HTMLButtonElement;
+const statusEl            = document.getElementById("status")              as HTMLDivElement;
+const progressWrap        = document.getElementById("progressWrap")        as HTMLDivElement;
+const progressBar         = document.getElementById("progressBar")         as HTMLDivElement;
+const frameListEl         = document.getElementById("frameList")           as HTMLDivElement;
+
+const btnExport           = document.getElementById("btnExport")           as HTMLButtonElement;
+const exportStatusEl      = document.getElementById("exportStatus")        as HTMLDivElement;
+const exportProgressWrap  = document.getElementById("exportProgressWrap")  as HTMLDivElement;
+const exportProgressBar   = document.getElementById("exportProgressBar")   as HTMLDivElement;
+const exportListEl        = document.getElementById("exportList")          as HTMLDivElement;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let clients: ClientItem[] = [];
 let campaigns: CampaignItem[] = [];
 let currentPayload: SyncPayload | null = null;
+let selectedFrameCount = 0; // updated via SELECTION_CHANGED from main thread
 
 // In-memory prefs (populated from figma.clientStorage via READY message)
 let savedClientId: string | undefined;
 let savedCampaignId: string | undefined;
 
+// Export state
+interface ExportFrameState {
+  frameName: string;
+  status: "waiting" | "uploading" | "done" | "failed" | "skipped";
+  error?: string;
+}
+let exportFrames: ExportFrameState[] = [];
+let exportTotal = 0;
+let exportDoneCount = 0;
+
 function savePrefs(clientId?: string, campaignId?: string) {
-  if (clientId !== undefined)  savedClientId  = clientId;
+  if (clientId !== undefined)   savedClientId   = clientId;
   if (campaignId !== undefined) savedCampaignId = campaignId;
   parent.postMessage(
     { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId } },
@@ -100,8 +124,12 @@ function showStatus(msg: string, type: "info" | "success" | "error" | "loading")
   statusEl.style.display = "block";
 }
 
-function hideStatus() {
-  statusEl.style.display = "none";
+function hideStatus() { statusEl.style.display = "none"; }
+
+function showExportStatus(msg: string, type: "info" | "success" | "error" | "loading") {
+  exportStatusEl.textContent = msg;
+  exportStatusEl.className = `status ${type}`;
+  exportStatusEl.style.display = "block";
 }
 
 function renderFrameList(frames: FramePayload[]) {
@@ -117,11 +145,58 @@ function renderFrameList(frames: FramePayload[]) {
   frameListEl.style.display = "block";
 }
 
+function renderExportList() {
+  exportListEl.innerHTML = exportFrames
+    .map((f) => {
+      const icon =
+        f.status === "done"      ? "✅" :
+        f.status === "failed"    ? "⚠" :
+        f.status === "skipped"   ? "⏭" :
+        f.status === "uploading" ? "🔄" : "⏳";
+      const stateLabel =
+        f.status === "done"      ? "uploaded" :
+        f.status === "failed"    ? `failed${f.error ? `: ${f.error.substring(0, 40)}` : ""}` :
+        f.status === "skipped"   ? "skipped (no match)" :
+        f.status === "uploading" ? "uploading…" : "waiting";
+      return `
+        <div class="export-item">
+          <span class="export-icon">${icon}</span>
+          <span class="export-name">${f.frameName}</span>
+          <span class="export-state">${stateLabel}</span>
+        </div>`;
+    })
+    .join("");
+  exportListEl.style.display = "block";
+}
+
 function campaignLabel(c: CampaignItem): string {
   const parts: string[] = [];
   if (c.formatCount > 0) parts.push(`${c.formatCount} formats`);
   if (c.month) parts.push(c.month);
   return parts.length > 0 ? `${c.name}  (${parts.join(" · ")})` : c.name;
+}
+
+function updateExportButton() {
+  if (!currentPayload) {
+    btnExport.disabled = true;
+    btnExport.textContent = "Export all";
+    return;
+  }
+  btnExport.disabled = false;
+  if (selectedFrameCount > 0) {
+    btnExport.textContent = `Export ${selectedFrameCount} selected`;
+  } else {
+    // Count all _MASTER_ frames including carousel slides
+    let total = 0;
+    for (const f of currentPayload.frames) {
+      if (f.type === "Carousel" && f.slides) {
+        total += f.slides.length;
+      } else {
+        total += 1;
+      }
+    }
+    btnExport.textContent = `Export all (${total})`;
+  }
 }
 
 // ── Step 1: Load clients ──────────────────────────────────────────────────────
@@ -154,7 +229,6 @@ async function loadClients() {
       clientSelect.value = savedClientId;
       await loadCampaigns(savedClientId);
     } else if (clients.length === 1) {
-      // Auto-select single client
       clientSelect.value = clients[0].id;
       await loadCampaigns(clients[0].id);
     }
@@ -164,7 +238,7 @@ async function loadClients() {
   }
 }
 
-// ── Step 2: Load campaigns for selected client ────────────────────────────────
+// ── Step 2: Load campaigns ────────────────────────────────────────────────────
 
 async function loadCampaigns(clientId: string) {
   const client = clients.find((c) => c.id === clientId);
@@ -176,6 +250,7 @@ async function loadCampaigns(clientId: string) {
   currentPayload = null;
   frameListEl.style.display = "none";
   hideStatus();
+  updateExportButton();
 
   try {
     const url = `${ROOT_API}/api/campaigns/list?client=${encodeURIComponent(client.name)}`;
@@ -197,12 +272,10 @@ async function loadCampaigns(clientId: string) {
     }
     campaignSelect.disabled = false;
 
-    // Restore saved campaign selection (only if it belongs to this client)
     if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
       campaignSelect.value = savedCampaignId;
       btnFetch.disabled = false;
     } else if (campaigns.length === 1) {
-      // Auto-select single campaign
       campaignSelect.value = campaigns[0].id;
       btnFetch.disabled = false;
     }
@@ -212,7 +285,7 @@ async function loadCampaigns(clientId: string) {
   }
 }
 
-// ── Event: client selection changes ──────────────────────────────────────────
+// ── Event: client selection ───────────────────────────────────────────────────
 
 clientSelect.addEventListener("change", async () => {
   const clientId = clientSelect.value;
@@ -222,12 +295,12 @@ clientSelect.addEventListener("change", async () => {
     btnFetch.disabled = true;
     return;
   }
-  savePrefs(clientId, ""); // save client, clear campaign
+  savePrefs(clientId, "");
   savedCampaignId = undefined;
   await loadCampaigns(clientId);
 });
 
-// ── Event: campaign selection changes ────────────────────────────────────────
+// ── Event: campaign selection ─────────────────────────────────────────────────
 
 campaignSelect.addEventListener("change", () => {
   const campaignId = campaignSelect.value;
@@ -237,11 +310,11 @@ campaignSelect.addEventListener("change", () => {
   } else {
     btnFetch.disabled = true;
   }
-  // Reset payload when campaign changes
   currentPayload = null;
   btnApply.disabled = true;
   frameListEl.style.display = "none";
   hideStatus();
+  updateExportButton();
 });
 
 // ── Step 3: Fetch frames ──────────────────────────────────────────────────────
@@ -254,6 +327,7 @@ btnFetch.addEventListener("click", async () => {
   btnApply.disabled = true;
   currentPayload = null;
   frameListEl.style.display = "none";
+  updateExportButton();
 
   const campaign = campaigns.find((c) => c.id === campaignId);
   showStatus(`Fetching frames for "${campaign?.name ?? campaignId}"…`, "loading");
@@ -273,6 +347,7 @@ btnFetch.addEventListener("click", async () => {
     );
     renderFrameList(data.frames);
     btnApply.disabled = false;
+    updateExportButton();
   } catch (err) {
     showStatus(`Fetch failed: ${String(err)}`, "error");
   } finally {
@@ -302,15 +377,128 @@ btnApply.addEventListener("click", () => {
   );
 });
 
+// ── Step 5: Export to Mente ───────────────────────────────────────────────────
+
+btnExport.addEventListener("click", () => {
+  if (!currentPayload) return;
+
+  // Reset export state
+  exportFrames = [];
+  exportDoneCount = 0;
+  exportListEl.style.display = "none";
+  exportListEl.innerHTML = "";
+  exportProgressWrap.style.display = "block";
+  exportProgressBar.style.width = "0%";
+  showExportStatus("Exporting frames…", "loading");
+
+  btnExport.disabled = true;
+  btnFetch.disabled = true;
+  btnApply.disabled = true;
+
+  parent.postMessage({ pluginMessage: { type: "EXPORT_TO_MENTE" } }, "*");
+});
+
+// ── Upload helper ─────────────────────────────────────────────────────────────
+
+/**
+ * Find the Airtable record ID for a given Figma frame name.
+ * Handles both standard frames and carousel slides (_Slide_N suffix).
+ */
+function findRecordId(frameName: string): string | null {
+  if (!currentPayload) return null;
+
+  // Standard frame: exact match on figmaFrame
+  const standard = currentPayload.frames.find((f) => f.figmaFrame === frameName);
+  if (standard) return standard.recordId;
+
+  // Carousel slide: _MASTER_..._Slide_N
+  const slideMatch = frameName.match(/^(.+)_Slide_(\d+)$/);
+  if (slideMatch) {
+    const parentName = slideMatch[1];
+    const slideIndex = parseInt(slideMatch[2], 10); // 1-based
+    const parent = currentPayload.frames.find(
+      (f) => f.type === "Carousel" && f.figmaFrame === parentName
+    );
+    if (parent && parent.slides) {
+      const slide = parent.slides.find((s) => s.index === slideIndex);
+      if (slide && slide.recordId) return slide.recordId;
+      // Fallback: use array position
+      const byPosition = parent.slides[slideIndex - 1];
+      if (byPosition && byPosition.recordId) return byPosition.recordId;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get the client subdomain for the selected client.
+ */
+function getClientSubdomain(): string {
+  const clientId = clientSelect.value;
+  const client = clients.find((c) => c.id === clientId);
+  return client?.subdomain ?? "sydameapteek";
+}
+
+async function uploadFrame(frameName: string, base64: string): Promise<void> {
+  const idx = exportFrames.findIndex((f) => f.frameName === frameName);
+
+  // Find record ID
+  const recordId = findRecordId(frameName);
+  if (!recordId) {
+    if (idx >= 0) exportFrames[idx].status = "skipped";
+    renderExportList();
+    return;
+  }
+
+  if (idx >= 0) exportFrames[idx].status = "uploading";
+  renderExportList();
+
+  const subdomain = getClientSubdomain();
+  const clientUrl = `https://${subdomain}.menteproduction.com`;
+  const imageData = `data:image/png;base64,${base64}`;
+
+  try {
+    // 1. Upload image
+    const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-image`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: imageData, fileName: `${frameName}.png` }),
+    });
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.json().catch(() => ({ error: uploadRes.statusText }));
+      throw new Error(err.error || `HTTP ${uploadRes.status}`);
+    }
+
+    // 2. Update status to Client_Review
+    await fetch(`${clientUrl}/api/banners/${recordId}/plugin-update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Client_Review" }),
+    });
+
+    if (idx >= 0) exportFrames[idx].status = "done";
+  } catch (err) {
+    if (idx >= 0) {
+      exportFrames[idx].status = "failed";
+      exportFrames[idx].error = String(err);
+    }
+  }
+
+  renderExportList();
+}
+
 // ── Messages from plugin main thread ─────────────────────────────────────────
 
-window.onmessage = (event: MessageEvent) => {
+window.onmessage = async (event: MessageEvent) => {
   const msg = event.data.pluginMessage;
   if (!msg) return;
 
+  // ── IMPORT messages ──────────────────────────────────────────────────────
+
   if (msg.type === "READY") {
-    // Restore prefs from figma.clientStorage (passed by main thread on startup)
-    if (msg.savedClientId)  savedClientId  = msg.savedClientId;
+    if (msg.savedClientId)   savedClientId   = msg.savedClientId;
     if (msg.savedCampaignId) savedCampaignId = msg.savedCampaignId;
     hideStatus();
     loadClients();
@@ -343,5 +531,76 @@ window.onmessage = (event: MessageEvent) => {
     showStatus(`Error: ${msg.message}`, "error");
     btnApply.disabled = false;
     btnFetch.disabled = false;
+  }
+
+  // ── EXPORT messages ──────────────────────────────────────────────────────
+
+  if (msg.type === "SELECTION_CHANGED") {
+    selectedFrameCount = msg.count as number;
+    updateExportButton();
+  }
+
+  if (msg.type === "EXPORT_PROGRESS") {
+    exportTotal = msg.total as number;
+    const pct = Math.round(((msg.current as number) / exportTotal) * 50); // first 50% = export phase
+    exportProgressBar.style.width = `${pct}%`;
+    showExportStatus(`Exporting… ${msg.current}/${exportTotal}: ${msg.frameName}`, "loading");
+
+    // Pre-populate export list with "waiting" entries on first progress message
+    if ((msg.current as number) === 1) {
+      exportFrames = [];
+    }
+    // Add this frame to the list if not already present
+    if (!exportFrames.find((f) => f.frameName === msg.frameName)) {
+      exportFrames.push({ frameName: msg.frameName as string, status: "waiting" });
+      renderExportList();
+    }
+  }
+
+  if (msg.type === "FRAME_EXPORTED") {
+    // Upload the frame
+    await uploadFrame(msg.frameName as string, msg.base64 as string);
+    exportDoneCount++;
+    const uploadPct = 50 + Math.round((exportDoneCount / exportTotal) * 50);
+    exportProgressBar.style.width = `${uploadPct}%`;
+  }
+
+  if (msg.type === "FRAME_EXPORT_ERROR") {
+    const idx = exportFrames.findIndex((f) => f.frameName === msg.frameName);
+    if (idx >= 0) {
+      exportFrames[idx].status = "failed";
+      exportFrames[idx].error = msg.error as string;
+    }
+    exportDoneCount++;
+    renderExportList();
+  }
+
+  if (msg.type === "EXPORT_DONE") {
+    exportProgressBar.style.width = "100%";
+    const done    = exportFrames.filter((f) => f.status === "done").length;
+    const failed  = exportFrames.filter((f) => f.status === "failed").length;
+    const skipped = exportFrames.filter((f) => f.status === "skipped").length;
+
+    const parts: string[] = [];
+    if (done    > 0) parts.push(`✅ ${done} exported`);
+    if (skipped > 0) parts.push(`⏭ ${skipped} skipped`);
+    if (failed  > 0) parts.push(`⚠ ${failed} failed`);
+
+    showExportStatus(
+      parts.join(" · ") || "Export complete",
+      failed > 0 ? "error" : "success"
+    );
+    btnExport.disabled = false;
+    btnFetch.disabled = false;
+    btnApply.disabled = false;
+    updateExportButton();
+  }
+
+  if (msg.type === "EXPORT_ERROR") {
+    showExportStatus(`Export error: ${msg.message}`, "error");
+    btnExport.disabled = false;
+    btnFetch.disabled = false;
+    btnApply.disabled = false;
+    updateExportButton();
   }
 };
