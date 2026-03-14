@@ -148,8 +148,8 @@
   </div>
 
   <div class="field">
-    <label for="campaignId">Campaign ID</label>
-    <input type="text" id="campaignId" placeholder="rec..." />
+    <label for="campaignUrl">Campaign name</label>
+    <input type="text" id="campaignUrl" placeholder="e.g. Avene_Sprin2026" />
   </div>
 
   <div class="btn-row">
@@ -172,7 +172,7 @@
 (() => {
   // src/ui.ts
   var apiUrlInput = document.getElementById("apiUrl");
-  var campaignIdInput = document.getElementById("campaignId");
+  var campaignUrlInput = document.getElementById("campaignUrl");
   var btnFetch = document.getElementById("btnFetch");
   var btnApply = document.getElementById("btnApply");
   var statusEl = document.getElementById("status");
@@ -181,11 +181,11 @@
   var frameListEl = document.getElementById("frameList");
   var currentPayload = null;
   var savedUrl = localStorage.getItem("dbf_apiUrl");
-  var savedId = localStorage.getItem("dbf_campaignId");
+  var savedCampaignUrl = localStorage.getItem("dbf_campaignUrl");
   if (savedUrl)
     apiUrlInput.value = savedUrl;
-  if (savedId)
-    campaignIdInput.value = savedId;
+  if (savedCampaignUrl)
+    campaignUrlInput.value = savedCampaignUrl;
   function showStatus(msg, type) {
     statusEl.textContent = msg;
     statusEl.className = `status ${type}`;
@@ -204,23 +204,55 @@
     ).join("");
     frameListEl.style.display = "block";
   }
+  function extractSlug(input) {
+    const trimmed = input.trim();
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      try {
+        const url = new URL(trimmed);
+        const parts = url.pathname.split("/").filter(Boolean);
+        const idx = parts.indexOf("campaigns");
+        if (idx !== -1 && parts[idx + 1]) {
+          return parts[idx + 1];
+        }
+      } catch (e) {
+      }
+    }
+    return trimmed;
+  }
   btnFetch.addEventListener("click", async () => {
     const baseUrl = apiUrlInput.value.trim().replace(/\/$/, "");
-    const campaignId = campaignIdInput.value.trim();
-    if (!baseUrl || !campaignId) {
-      showStatus("Please enter both Platform URL and Campaign ID.", "error");
+    const campaignInput = campaignUrlInput.value.trim();
+    if (!baseUrl || !campaignInput) {
+      showStatus("Please enter both Platform URL and Campaign URL.", "error");
       return;
     }
     localStorage.setItem("dbf_apiUrl", baseUrl);
-    localStorage.setItem("dbf_campaignId", campaignId);
+    localStorage.setItem("dbf_campaignUrl", campaignInput);
     btnFetch.disabled = true;
     btnApply.disabled = true;
     currentPayload = null;
     frameListEl.style.display = "none";
-    showStatus("Fetching frames from platform\u2026", "loading");
+    const slug = extractSlug(campaignInput);
+    showStatus(`Looking up campaign "${slug}"\u2026`, "loading");
+    let recordId;
     try {
-      const url = `${baseUrl}/api/campaigns/${campaignId}/figma-sync`;
-      const res = await fetch(url, { method: "GET" });
+      const lookupUrl = `${baseUrl}/api/campaigns/lookup?slug=${encodeURIComponent(slug)}`;
+      const lookupRes = await fetch(lookupUrl);
+      if (!lookupRes.ok) {
+        const err = await lookupRes.json().catch(() => ({ error: lookupRes.statusText }));
+        throw new Error(err.error || `HTTP ${lookupRes.status}`);
+      }
+      const lookup = await lookupRes.json();
+      recordId = lookup.recordId;
+      showStatus(`Found "${lookup.campaignName}" \u2014 fetching frames\u2026`, "loading");
+    } catch (err) {
+      showStatus(`Campaign lookup failed: ${String(err)}`, "error");
+      btnFetch.disabled = false;
+      return;
+    }
+    try {
+      const syncUrl = `${baseUrl}/api/campaigns/${recordId}/figma-sync`;
+      const res = await fetch(syncUrl, { method: "GET" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error || `HTTP ${res.status}`);
