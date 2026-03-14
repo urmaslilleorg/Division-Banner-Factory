@@ -51,6 +51,8 @@ export interface Campaign {
   productName: string;
   copySheetUrl: string | null;
   copyProgress: number;
+  figmaCampaignFile: string | null;
+  lastFigmaSync: string | null;
 }
 
 export interface SlideVariableConfig {
@@ -123,6 +125,8 @@ function parseCampaign(record: AirtableRecord): Campaign {
     productName: (f["Product_Name"] as string) || "",
     copySheetUrl: (f["Copy_Sheet_URL"] as string) || null,
     copyProgress: (f["Copy_Progress"] as number) || 0,
+    figmaCampaignFile: (f["Figma_Campaign_File"] as string) || null,
+    lastFigmaSync: (f["Last_Figma_Sync"] as string) || null,
   };
 }
 

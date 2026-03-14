@@ -1,0 +1,14 @@
+{
+  "name": "division-banner-factory-plugin",
+  "version": "0.1.0",
+  "description": "Figma plugin for Division Banner Factory — syncs copy from Airtable into Figma frames.",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.94.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
+  }
+}

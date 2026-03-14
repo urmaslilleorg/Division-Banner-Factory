@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Division Banner Factory</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #111;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"], input[type="url"] {
+      width: 100%;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: monospace;
+      color: #111;
+      background: #fafafa;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus, input[type="url"]:focus {
+      border-color: #6366f1;
+      background: #fff;
+    }
+
+    .field { margin-bottom: 12px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+
+    .btn-secondary { background: #f4f4f5; color: #111; border: 1px solid #e4e4e7; }
+    .btn-secondary:hover:not(:disabled) { background: #e4e4e7; }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+
+    .status {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .status.info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .status.loading { background: #fafafa; color: #555; border: 1px solid #e4e4e7; }
+
+    .frame-list {
+      margin-top: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .frame-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .frame-item:last-child { border-bottom: none; }
+
+    .frame-name { font-family: monospace; color: #333; }
+    .frame-type { font-size: 10px; color: #888; background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
+
+    .progress-bar-wrap {
+      margin-top: 8px;
+      height: 4px;
+      background: #e4e4e7;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #6366f1;
+      border-radius: 2px;
+      transition: width 0.2s;
+    }
+
+    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 14px 0; }
+
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>Division Banner Factory</h1>
+
+  <div class="field">
+    <label for="apiUrl">Platform URL</label>
+    <input type="url" id="apiUrl" placeholder="https://division-banner-factory.vercel.app" />
+  </div>
+
+  <div class="field">
+    <label for="campaignId">Campaign ID</label>
+    <input type="text" id="campaignId" placeholder="rec..." />
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-secondary" id="btnFetch">Fetch frames</button>
+    <button class="btn btn-primary" id="btnApply" disabled>
+      Apply copy
+    </button>
+  </div>
+
+  <div id="status" class="status info" style="display:none"></div>
+
+  <div id="progressWrap" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="frameList" class="frame-list" style="display:none"></div>
+</body>
+</html>

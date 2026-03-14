@@ -1,0 +1,12 @@
+{
+  "name": "Division Banner Factory",
+  "id": "division-banner-factory",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "permissions": ["currentuser", "activeusers"],
+  "networkAccess": {
+    "allowedDomains": ["https://division-banner-factory.vercel.app", "https://*.vercel.app"]
+  }
+}

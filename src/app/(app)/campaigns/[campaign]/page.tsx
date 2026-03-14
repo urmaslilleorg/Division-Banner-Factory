@@ -6,6 +6,7 @@ import { fetchBanners } from "@/lib/airtable";
 import { fetchAllCampaigns, FieldConfig } from "@/lib/airtable-campaigns";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignDetailTabs from "@/components/campaign-detail-tabs";
+import { FigmaIntegrationPanel } from "@/components/figma-integration-panel";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
 function launchMonthToUrl(launchMonth: string | null): string {
@@ -141,6 +142,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   let launchMonth: string | null = null;
   let fieldConfig: FieldConfig | null = null;
   let copySheetUrl: string | null = null;
+  let figmaCampaignFile: string | null = null;
+  let lastFigmaSync: string | null = null;
   let campaignFound = false;
 
   // Try to find campaign record to get ID and metadata
@@ -171,6 +174,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
       launchMonth = found.launchMonth ?? null;
       fieldConfig = found.fieldConfig;
       copySheetUrl = found.copySheetUrl ?? null;
+      figmaCampaignFile = found.figmaCampaignFile ?? null;
+      lastFigmaSync = found.lastFigmaSync ?? null;
     } else if (!isRecordId) {
       campaignName = formattedName;
     }
@@ -297,6 +302,16 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
           {banners.length} banner{banners.length !== 1 ? "s" : ""} · {totalConfigured} format{totalConfigured !== 1 ? "s" : ""} configured
         </p>
       </div>
+
+      {/* Figma Integration — admin/designer only */}
+      {(userRole === "division_admin" || userRole === "division_designer") && (
+        <FigmaIntegrationPanel
+          campaignId={campaignId ?? campaignName}
+          initialFileKey={figmaCampaignFile}
+          initialLastSync={lastFigmaSync}
+          hasFigmaToken={!!process.env.FIGMA_ACCESS_TOKEN}
+        />
+      )}
 
       {/* Two-tab layout: Copy & Assets | Preview */}
       <CampaignDetailTabs
