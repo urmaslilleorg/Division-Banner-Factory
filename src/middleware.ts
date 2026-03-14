@@ -8,6 +8,11 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/webhooks(.*)",
+  // Figma plugin public endpoints — no auth, called from Figma sandbox
+  "/api/clients/list",
+  "/api/campaigns/list",
+  "/api/campaigns/lookup",
+  "/api/campaigns/:id/figma-sync",
 ]);
 
 // /admin/* routes require division_admin role
