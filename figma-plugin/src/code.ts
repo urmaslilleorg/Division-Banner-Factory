@@ -98,7 +98,13 @@ const GRID_GAP = 100;
 // ── Plugin entry ──────────────────────────────────────────────────────────────
 
 figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
-figma.ui.postMessage({ type: "READY" });
+
+// Send READY with any saved preferences
+(async () => {
+  const clientId  = await figma.clientStorage.getAsync("dbf_clientId").catch(() => undefined);
+  const campaignId = await figma.clientStorage.getAsync("dbf_campaignId").catch(() => undefined);
+  figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId });
+})();
 
 figma.ui.onmessage = async (msg: PluginMessage) => {
   if (msg.type === "RESIZE") {
@@ -108,6 +114,13 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 
   if (msg.type === "CLOSE") {
     figma.closePlugin();
+    return;
+  }
+
+  if (msg.type === "SAVE_PREFS") {
+    const { clientId, campaignId } = msg as unknown as { type: string; clientId?: string; campaignId?: string };
+    if (clientId !== undefined)  await figma.clientStorage.setAsync("dbf_clientId",  clientId).catch(() => {});
+    if (campaignId !== undefined) await figma.clientStorage.setAsync("dbf_campaignId", campaignId).catch(() => {});
     return;
   }
 

@@ -79,6 +79,19 @@ let clients: ClientItem[] = [];
 let campaigns: CampaignItem[] = [];
 let currentPayload: SyncPayload | null = null;
 
+// In-memory prefs (populated from figma.clientStorage via READY message)
+let savedClientId: string | undefined;
+let savedCampaignId: string | undefined;
+
+function savePrefs(clientId?: string, campaignId?: string) {
+  if (clientId !== undefined)  savedClientId  = clientId;
+  if (campaignId !== undefined) savedCampaignId = campaignId;
+  parent.postMessage(
+    { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId } },
+    "*"
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function showStatus(msg: string, type: "info" | "success" | "error" | "loading") {
@@ -137,7 +150,6 @@ async function loadClients() {
     clientSelect.disabled = false;
 
     // Restore saved selection
-    const savedClientId = localStorage.getItem("dbf_clientId");
     if (savedClientId && clients.find((c) => c.id === savedClientId)) {
       clientSelect.value = savedClientId;
       await loadCampaigns(savedClientId);
@@ -186,7 +198,6 @@ async function loadCampaigns(clientId: string) {
     campaignSelect.disabled = false;
 
     // Restore saved campaign selection (only if it belongs to this client)
-    const savedCampaignId = localStorage.getItem("dbf_campaignId");
     if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
       campaignSelect.value = savedCampaignId;
       btnFetch.disabled = false;
@@ -211,8 +222,8 @@ clientSelect.addEventListener("change", async () => {
     btnFetch.disabled = true;
     return;
   }
-  localStorage.setItem("dbf_clientId", clientId);
-  localStorage.removeItem("dbf_campaignId"); // reset campaign when client changes
+  savePrefs(clientId, ""); // save client, clear campaign
+  savedCampaignId = undefined;
   await loadCampaigns(clientId);
 });
 
@@ -221,7 +232,7 @@ clientSelect.addEventListener("change", async () => {
 campaignSelect.addEventListener("change", () => {
   const campaignId = campaignSelect.value;
   if (campaignId) {
-    localStorage.setItem("dbf_campaignId", campaignId);
+    savePrefs(undefined, campaignId);
     btnFetch.disabled = false;
   } else {
     btnFetch.disabled = true;
@@ -298,6 +309,9 @@ window.onmessage = (event: MessageEvent) => {
   if (!msg) return;
 
   if (msg.type === "READY") {
+    // Restore prefs from figma.clientStorage (passed by main thread on startup)
+    if (msg.savedClientId)  savedClientId  = msg.savedClientId;
+    if (msg.savedCampaignId) savedCampaignId = msg.savedCampaignId;
     hideStatus();
     loadClients();
   }

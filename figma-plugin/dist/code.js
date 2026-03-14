@@ -27,7 +27,11 @@
   };
   var GRID_GAP = 100;
   figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
-  figma.ui.postMessage({ type: "READY" });
+  (async () => {
+    const clientId = await figma.clientStorage.getAsync("dbf_clientId").catch(() => void 0);
+    const campaignId = await figma.clientStorage.getAsync("dbf_campaignId").catch(() => void 0);
+    figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId });
+  })();
   figma.ui.onmessage = async (msg) => {
     if (msg.type === "RESIZE") {
       figma.ui.resize(msg.width, msg.height);
@@ -35,6 +39,16 @@
     }
     if (msg.type === "CLOSE") {
       figma.closePlugin();
+      return;
+    }
+    if (msg.type === "SAVE_PREFS") {
+      const { clientId, campaignId } = msg;
+      if (clientId !== void 0)
+        await figma.clientStorage.setAsync("dbf_clientId", clientId).catch(() => {
+        });
+      if (campaignId !== void 0)
+        await figma.clientStorage.setAsync("dbf_campaignId", campaignId).catch(() => {
+        });
       return;
     }
     if (msg.type === "APPLY_COPY") {

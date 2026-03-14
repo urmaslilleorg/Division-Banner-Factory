@@ -199,6 +199,18 @@
   var clients = [];
   var campaigns = [];
   var currentPayload = null;
+  var savedClientId;
+  var savedCampaignId;
+  function savePrefs(clientId, campaignId) {
+    if (clientId !== void 0)
+      savedClientId = clientId;
+    if (campaignId !== void 0)
+      savedCampaignId = campaignId;
+    parent.postMessage(
+      { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId } },
+      "*"
+    );
+  }
   function showStatus(msg, type) {
     statusEl.textContent = msg;
     statusEl.className = `status ${type}`;
@@ -245,7 +257,6 @@
         clientSelect.appendChild(opt);
       }
       clientSelect.disabled = false;
-      const savedClientId = localStorage.getItem("dbf_clientId");
       if (savedClientId && clients.find((c) => c.id === savedClientId)) {
         clientSelect.value = savedClientId;
         await loadCampaigns(savedClientId);
@@ -286,7 +297,6 @@
         campaignSelect.appendChild(opt);
       }
       campaignSelect.disabled = false;
-      const savedCampaignId = localStorage.getItem("dbf_campaignId");
       if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
         campaignSelect.value = savedCampaignId;
         btnFetch.disabled = false;
@@ -307,14 +317,14 @@
       btnFetch.disabled = true;
       return;
     }
-    localStorage.setItem("dbf_clientId", clientId);
-    localStorage.removeItem("dbf_campaignId");
+    savePrefs(clientId, "");
+    savedCampaignId = void 0;
     await loadCampaigns(clientId);
   });
   campaignSelect.addEventListener("change", () => {
     const campaignId = campaignSelect.value;
     if (campaignId) {
-      localStorage.setItem("dbf_campaignId", campaignId);
+      savePrefs(void 0, campaignId);
       btnFetch.disabled = false;
     } else {
       btnFetch.disabled = true;
@@ -380,6 +390,10 @@
     if (!msg)
       return;
     if (msg.type === "READY") {
+      if (msg.savedClientId)
+        savedClientId = msg.savedClientId;
+      if (msg.savedCampaignId)
+        savedCampaignId = msg.savedCampaignId;
       hideStatus();
       loadClients();
     }
