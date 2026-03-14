@@ -32,22 +32,36 @@
       margin-bottom: 4px;
     }
 
-    input[type="text"], input[type="url"] {
+    select, input[type="text"], input[type="url"] {
       width: 100%;
       border: 1px solid #e0e0e0;
       border-radius: 6px;
       padding: 7px 10px;
       font-size: 12px;
-      font-family: monospace;
       color: #111;
       background: #fafafa;
       outline: none;
       transition: border-color 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
     }
 
-    input[type="text"]:focus, input[type="url"]:focus {
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+
+    select:focus, input:focus {
       border-color: #6366f1;
       background: #fff;
+    }
+
+    select:disabled {
+      opacity: 0.5;
+      cursor: default;
     }
 
     .field { margin-bottom: 12px; }
@@ -81,16 +95,17 @@
       border-radius: 6px;
       font-size: 12px;
       line-height: 1.4;
+      white-space: pre-wrap;
     }
 
-    .status.info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .status.info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
     .status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-    .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-    .status.loading { background: #fafafa; color: #555; border: 1px solid #e4e4e7; }
+    .status.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .status.loading { background: #fafafa; color: #555;    border: 1px solid #e4e4e7; }
 
     .frame-list {
       margin-top: 12px;
-      max-height: 200px;
+      max-height: 180px;
       overflow-y: auto;
       border: 1px solid #e4e4e7;
       border-radius: 6px;
@@ -106,8 +121,7 @@
     }
 
     .frame-item:last-child { border-bottom: none; }
-
-    .frame-name { font-family: monospace; color: #333; }
+    .frame-name { font-family: monospace; color: #333; font-size: 10px; }
     .frame-type { font-size: 10px; color: #888; background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
 
     .progress-bar-wrap {
@@ -127,36 +141,38 @@
 
     .divider { border: none; border-top: 1px solid #f0f0f0; margin: 14px 0; }
 
-    .spinner {
-      width: 12px; height: 12px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      display: inline-block;
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.2s steps(3, end) infinite;
     }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes dots {
+      0%   { content: ''; }
+      33%  { content: '.'; }
+      66%  { content: '..'; }
+      100% { content: '...'; }
+    }
   </style>
 </head>
 <body>
   <h1>Division Banner Factory</h1>
 
   <div class="field">
-    <label for="apiUrl">Platform URL</label>
-    <input type="url" id="apiUrl" placeholder="https://division-banner-factory.vercel.app" />
+    <label for="clientSelect">Client</label>
+    <select id="clientSelect" disabled>
+      <option value="">Loading clients<span class="loading-dots"></span></option>
+    </select>
   </div>
 
   <div class="field">
-    <label for="campaignUrl">Campaign name</label>
-    <input type="text" id="campaignUrl" placeholder="e.g. Avene_Sprin2026" />
+    <label for="campaignSelect">Campaign</label>
+    <select id="campaignSelect" disabled>
+      <option value="">Select a client first</option>
+    </select>
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-secondary" id="btnFetch">Fetch frames</button>
-    <button class="btn btn-primary" id="btnApply" disabled>
-      Apply copy
-    </button>
+    <button class="btn btn-secondary" id="btnFetch" disabled>Fetch frames</button>
+    <button class="btn btn-primary"   id="btnApply" disabled>Apply copy</button>
   </div>
 
   <div id="status" class="status info" style="display:none"></div>

@@ -1,22 +1,34 @@
 /**
  * Division Banner Factory — Figma Plugin UI
  *
- * Runs in the browser iframe inside Figma.
+ * Flow:
+ *   1. On open → fetch client list from /api/clients/list
+ *   2. Populate Client dropdown (auto-select if only 1)
+ *   3. User selects client → fetch campaign list from /api/campaigns/list?client=<name>
+ *   4. Populate Campaign dropdown (auto-select if only 1)
+ *      Show: "Campaign Name (N formats · Month)"
+ *   5. User selects campaign → Fetch frames becomes active
+ *   6. Click Fetch → GET /api/campaigns/<id>/figma-sync
+ *   7. Click Apply → sends APPLY_COPY to plugin main thread
  *
- * The user enters:
- *   1. Platform URL  — e.g. https://sydameapteek.menteproduction.com
- *   2. Campaign URL  — the full campaign URL (or just the slug after /campaigns/)
- *                      e.g. https://sydameapteek.menteproduction.com/campaigns/avene_sprin2026
- *                      or just: avene_sprin2026
- *
- * On Fetch:
- *   a) Extract the slug from the campaign URL (or use it as-is if it's already a slug/rec ID).
- *   b) Call GET /api/campaigns/lookup?slug=<slug> to resolve it to a rec... ID.
- *   c) Call GET /api/campaigns/<recordId>/figma-sync to get the full frame payload.
- *   d) Render the frame list and enable Apply.
+ * Last selections are saved to localStorage and restored on next open.
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ClientItem {
+  id: string;
+  name: string;
+  subdomain: string;
+}
+
+interface CampaignItem {
+  id: string;
+  name: string;
+  month: string;
+  bannerCount: number;
+  formatCount: number;
+}
 
 interface SlideCopyPayload {
   index: number;
@@ -45,31 +57,27 @@ interface SyncPayload {
   frames: FramePayload[];
 }
 
-interface LookupResponse {
-  recordId: string;
-  campaignName: string;
-}
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+/** Root domain — client list is always fetched from here */
+const ROOT_API = "https://sydameapteek.menteproduction.com";
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
-const apiUrlInput = document.getElementById("apiUrl") as HTMLInputElement;
-const campaignUrlInput = document.getElementById("campaignUrl") as HTMLInputElement;
-const btnFetch = document.getElementById("btnFetch") as HTMLButtonElement;
-const btnApply = document.getElementById("btnApply") as HTMLButtonElement;
-const statusEl = document.getElementById("status") as HTMLDivElement;
-const progressWrap = document.getElementById("progressWrap") as HTMLDivElement;
-const progressBar = document.getElementById("progressBar") as HTMLDivElement;
-const frameListEl = document.getElementById("frameList") as HTMLDivElement;
+const clientSelect   = document.getElementById("clientSelect")   as HTMLSelectElement;
+const campaignSelect = document.getElementById("campaignSelect") as HTMLSelectElement;
+const btnFetch       = document.getElementById("btnFetch")       as HTMLButtonElement;
+const btnApply       = document.getElementById("btnApply")       as HTMLButtonElement;
+const statusEl       = document.getElementById("status")         as HTMLDivElement;
+const progressWrap   = document.getElementById("progressWrap")   as HTMLDivElement;
+const progressBar    = document.getElementById("progressBar")    as HTMLDivElement;
+const frameListEl    = document.getElementById("frameList")      as HTMLDivElement;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
+let clients: ClientItem[] = [];
+let campaigns: CampaignItem[] = [];
 let currentPayload: SyncPayload | null = null;
-
-// Restore saved values
-const savedUrl = localStorage.getItem("dbf_apiUrl");
-const savedCampaignUrl = localStorage.getItem("dbf_campaignUrl");
-if (savedUrl) apiUrlInput.value = savedUrl;
-if (savedCampaignUrl) campaignUrlInput.value = savedCampaignUrl;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,79 +104,152 @@ function renderFrameList(frames: FramePayload[]) {
   frameListEl.style.display = "block";
 }
 
-/**
- * Extract the campaign identifier from user input.
- *
- * Accepts:
- *   - Campaign name:  "Avene_Sprin2026"
- *   - Full URL:       "https://…/campaigns/avene_sprin2026?preview=true"
- *   - Record ID:      "recXeEZWcSvQZekf0"
- *
- * In all cases returns the bare slug/name/ID to pass to the lookup endpoint.
- */
-function extractSlug(input: string): string {
-  const trimmed = input.trim();
-  // If it looks like a URL, extract the segment after /campaigns/
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    try {
-      const url = new URL(trimmed);
-      const parts = url.pathname.split("/").filter(Boolean);
-      const idx = parts.indexOf("campaigns");
-      if (idx !== -1 && parts[idx + 1]) {
-        return parts[idx + 1];
-      }
-    } catch {
-      // fall through
-    }
-  }
-  // Otherwise treat the whole input as the campaign name / slug / rec ID
-  return trimmed;
+function campaignLabel(c: CampaignItem): string {
+  const parts: string[] = [];
+  if (c.formatCount > 0) parts.push(`${c.formatCount} formats`);
+  if (c.month) parts.push(c.month);
+  return parts.length > 0 ? `${c.name}  (${parts.join(" · ")})` : c.name;
 }
 
-// ── Fetch ─────────────────────────────────────────────────────────────────────
+// ── Step 1: Load clients ──────────────────────────────────────────────────────
 
-btnFetch.addEventListener("click", async () => {
-  const baseUrl = apiUrlInput.value.trim().replace(/\/$/, "");
-  const campaignInput = campaignUrlInput.value.trim();
+async function loadClients() {
+  clientSelect.disabled = true;
+  clientSelect.innerHTML = '<option value="">Loading clients…</option>';
 
-  if (!baseUrl || !campaignInput) {
-    showStatus("Please enter both Platform URL and Campaign URL.", "error");
+  try {
+    const res = await fetch(`${ROOT_API}/api/clients/list`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    clients = await res.json();
+
+    if (clients.length === 0) {
+      clientSelect.innerHTML = '<option value="">No active clients found</option>';
+      return;
+    }
+
+    clientSelect.innerHTML = '<option value="">Select client…</option>';
+    for (const c of clients) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+      clientSelect.appendChild(opt);
+    }
+    clientSelect.disabled = false;
+
+    // Restore saved selection
+    const savedClientId = localStorage.getItem("dbf_clientId");
+    if (savedClientId && clients.find((c) => c.id === savedClientId)) {
+      clientSelect.value = savedClientId;
+      await loadCampaigns(savedClientId);
+    } else if (clients.length === 1) {
+      // Auto-select single client
+      clientSelect.value = clients[0].id;
+      await loadCampaigns(clients[0].id);
+    }
+  } catch (err) {
+    clientSelect.innerHTML = `<option value="">Error loading clients</option>`;
+    showStatus(`Failed to load clients: ${String(err)}`, "error");
+  }
+}
+
+// ── Step 2: Load campaigns for selected client ────────────────────────────────
+
+async function loadCampaigns(clientId: string) {
+  const client = clients.find((c) => c.id === clientId);
+  if (!client) return;
+
+  campaignSelect.disabled = true;
+  campaignSelect.innerHTML = '<option value="">Loading campaigns…</option>';
+  btnFetch.disabled = true;
+  currentPayload = null;
+  frameListEl.style.display = "none";
+  hideStatus();
+
+  try {
+    const url = `${ROOT_API}/api/campaigns/list?client=${encodeURIComponent(client.name)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    campaigns = await res.json();
+
+    if (campaigns.length === 0) {
+      campaignSelect.innerHTML = '<option value="">No active campaigns</option>';
+      return;
+    }
+
+    campaignSelect.innerHTML = '<option value="">Select campaign…</option>';
+    for (const c of campaigns) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = campaignLabel(c);
+      campaignSelect.appendChild(opt);
+    }
+    campaignSelect.disabled = false;
+
+    // Restore saved campaign selection (only if it belongs to this client)
+    const savedCampaignId = localStorage.getItem("dbf_campaignId");
+    if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
+      campaignSelect.value = savedCampaignId;
+      btnFetch.disabled = false;
+    } else if (campaigns.length === 1) {
+      // Auto-select single campaign
+      campaignSelect.value = campaigns[0].id;
+      btnFetch.disabled = false;
+    }
+  } catch (err) {
+    campaignSelect.innerHTML = `<option value="">Error loading campaigns</option>`;
+    showStatus(`Failed to load campaigns: ${String(err)}`, "error");
+  }
+}
+
+// ── Event: client selection changes ──────────────────────────────────────────
+
+clientSelect.addEventListener("change", async () => {
+  const clientId = clientSelect.value;
+  if (!clientId) {
+    campaignSelect.innerHTML = '<option value="">Select a client first</option>';
+    campaignSelect.disabled = true;
+    btnFetch.disabled = true;
     return;
   }
+  localStorage.setItem("dbf_clientId", clientId);
+  localStorage.removeItem("dbf_campaignId"); // reset campaign when client changes
+  await loadCampaigns(clientId);
+});
 
-  localStorage.setItem("dbf_apiUrl", baseUrl);
-  localStorage.setItem("dbf_campaignUrl", campaignInput);
+// ── Event: campaign selection changes ────────────────────────────────────────
+
+campaignSelect.addEventListener("change", () => {
+  const campaignId = campaignSelect.value;
+  if (campaignId) {
+    localStorage.setItem("dbf_campaignId", campaignId);
+    btnFetch.disabled = false;
+  } else {
+    btnFetch.disabled = true;
+  }
+  // Reset payload when campaign changes
+  currentPayload = null;
+  btnApply.disabled = true;
+  frameListEl.style.display = "none";
+  hideStatus();
+});
+
+// ── Step 3: Fetch frames ──────────────────────────────────────────────────────
+
+btnFetch.addEventListener("click", async () => {
+  const campaignId = campaignSelect.value;
+  if (!campaignId) return;
 
   btnFetch.disabled = true;
   btnApply.disabled = true;
   currentPayload = null;
   frameListEl.style.display = "none";
 
-  // Step 1: extract slug and resolve to record ID
-  const slug = extractSlug(campaignInput);
-  showStatus(`Looking up campaign "${slug}"…`, "loading");
+  const campaign = campaigns.find((c) => c.id === campaignId);
+  showStatus(`Fetching frames for "${campaign?.name ?? campaignId}"…`, "loading");
 
-  let recordId: string;
   try {
-    const lookupUrl = `${baseUrl}/api/campaigns/lookup?slug=${encodeURIComponent(slug)}`;
-    const lookupRes = await fetch(lookupUrl);
-    if (!lookupRes.ok) {
-      const err = await lookupRes.json().catch(() => ({ error: lookupRes.statusText }));
-      throw new Error(err.error || `HTTP ${lookupRes.status}`);
-    }
-    const lookup: LookupResponse = await lookupRes.json();
-    recordId = lookup.recordId;
-    showStatus(`Found "${lookup.campaignName}" — fetching frames…`, "loading");
-  } catch (err) {
-    showStatus(`Campaign lookup failed: ${String(err)}`, "error");
-    btnFetch.disabled = false;
-    return;
-  }
-
-  // Step 2: fetch the sync payload
-  try {
-    const syncUrl = `${baseUrl}/api/campaigns/${recordId}/figma-sync`;
-    const res = await fetch(syncUrl, { method: "GET" });
+    const url = `${ROOT_API}/api/campaigns/${campaignId}/figma-sync`;
+    const res = await fetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || `HTTP ${res.status}`);
@@ -188,7 +269,7 @@ btnFetch.addEventListener("click", async () => {
   }
 });
 
-// ── Apply ─────────────────────────────────────────────────────────────────────
+// ── Step 4: Apply copy ────────────────────────────────────────────────────────
 
 btnApply.addEventListener("click", () => {
   if (!currentPayload) return;
@@ -210,7 +291,7 @@ btnApply.addEventListener("click", () => {
   );
 });
 
-// ── Messages from plugin code ─────────────────────────────────────────────────
+// ── Messages from plugin main thread ─────────────────────────────────────────
 
 window.onmessage = (event: MessageEvent) => {
   const msg = event.data.pluginMessage;
@@ -218,6 +299,7 @@ window.onmessage = (event: MessageEvent) => {
 
   if (msg.type === "READY") {
     hideStatus();
+    loadClients();
   }
 
   if (msg.type === "PROGRESS") {
@@ -232,7 +314,9 @@ window.onmessage = (event: MessageEvent) => {
     if (msg.created > 0) parts.push(`${msg.created} created`);
     if (msg.updated > 0) parts.push(`${msg.updated} updated`);
     const errorSummary =
-      msg.errors.length > 0 ? `  ⚠ ${msg.errors.length} error(s): ${msg.errors.join("; ")}` : "";
+      msg.errors.length > 0
+        ? `\n⚠ ${msg.errors.length} error(s):\n${msg.errors.join("\n")}`
+        : "";
     showStatus(
       `✓ Done — ${parts.join(", ") || "0 frames"}.${errorSummary}`,
       msg.errors.length > 0 ? "error" : "success"

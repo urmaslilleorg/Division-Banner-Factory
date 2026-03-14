@@ -32,22 +32,36 @@
       margin-bottom: 4px;
     }
 
-    input[type="text"], input[type="url"] {
+    select, input[type="text"], input[type="url"] {
       width: 100%;
       border: 1px solid #e0e0e0;
       border-radius: 6px;
       padding: 7px 10px;
       font-size: 12px;
-      font-family: monospace;
       color: #111;
       background: #fafafa;
       outline: none;
       transition: border-color 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
     }
 
-    input[type="text"]:focus, input[type="url"]:focus {
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+
+    select:focus, input:focus {
       border-color: #6366f1;
       background: #fff;
+    }
+
+    select:disabled {
+      opacity: 0.5;
+      cursor: default;
     }
 
     .field { margin-bottom: 12px; }
@@ -81,16 +95,17 @@
       border-radius: 6px;
       font-size: 12px;
       line-height: 1.4;
+      white-space: pre-wrap;
     }
 
-    .status.info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .status.info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
     .status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-    .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-    .status.loading { background: #fafafa; color: #555; border: 1px solid #e4e4e7; }
+    .status.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .status.loading { background: #fafafa; color: #555;    border: 1px solid #e4e4e7; }
 
     .frame-list {
       margin-top: 12px;
-      max-height: 200px;
+      max-height: 180px;
       overflow-y: auto;
       border: 1px solid #e4e4e7;
       border-radius: 6px;
@@ -106,8 +121,7 @@
     }
 
     .frame-item:last-child { border-bottom: none; }
-
-    .frame-name { font-family: monospace; color: #333; }
+    .frame-name { font-family: monospace; color: #333; font-size: 10px; }
     .frame-type { font-size: 10px; color: #888; background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
 
     .progress-bar-wrap {
@@ -127,36 +141,38 @@
 
     .divider { border: none; border-top: 1px solid #f0f0f0; margin: 14px 0; }
 
-    .spinner {
-      width: 12px; height: 12px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      display: inline-block;
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.2s steps(3, end) infinite;
     }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes dots {
+      0%   { content: ''; }
+      33%  { content: '.'; }
+      66%  { content: '..'; }
+      100% { content: '...'; }
+    }
   </style>
 </head>
 <body>
   <h1>Division Banner Factory</h1>
 
   <div class="field">
-    <label for="apiUrl">Platform URL</label>
-    <input type="url" id="apiUrl" placeholder="https://division-banner-factory.vercel.app" />
+    <label for="clientSelect">Client</label>
+    <select id="clientSelect" disabled>
+      <option value="">Loading clients<span class="loading-dots"></span></option>
+    </select>
   </div>
 
   <div class="field">
-    <label for="campaignUrl">Campaign name</label>
-    <input type="text" id="campaignUrl" placeholder="e.g. Avene_Sprin2026" />
+    <label for="campaignSelect">Campaign</label>
+    <select id="campaignSelect" disabled>
+      <option value="">Select a client first</option>
+    </select>
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-secondary" id="btnFetch">Fetch frames</button>
-    <button class="btn btn-primary" id="btnApply" disabled>
-      Apply copy
-    </button>
+    <button class="btn btn-secondary" id="btnFetch" disabled>Fetch frames</button>
+    <button class="btn btn-primary"   id="btnApply" disabled>Apply copy</button>
   </div>
 
   <div id="status" class="status info" style="display:none"></div>
@@ -171,21 +187,18 @@
 <script>"use strict";
 (() => {
   // src/ui.ts
-  var apiUrlInput = document.getElementById("apiUrl");
-  var campaignUrlInput = document.getElementById("campaignUrl");
+  var ROOT_API = "https://sydameapteek.menteproduction.com";
+  var clientSelect = document.getElementById("clientSelect");
+  var campaignSelect = document.getElementById("campaignSelect");
   var btnFetch = document.getElementById("btnFetch");
   var btnApply = document.getElementById("btnApply");
   var statusEl = document.getElementById("status");
   var progressWrap = document.getElementById("progressWrap");
   var progressBar = document.getElementById("progressBar");
   var frameListEl = document.getElementById("frameList");
+  var clients = [];
+  var campaigns = [];
   var currentPayload = null;
-  var savedUrl = localStorage.getItem("dbf_apiUrl");
-  var savedCampaignUrl = localStorage.getItem("dbf_campaignUrl");
-  if (savedUrl)
-    apiUrlInput.value = savedUrl;
-  if (savedCampaignUrl)
-    campaignUrlInput.value = savedCampaignUrl;
   function showStatus(msg, type) {
     statusEl.textContent = msg;
     statusEl.className = `status ${type}`;
@@ -204,55 +217,127 @@
     ).join("");
     frameListEl.style.display = "block";
   }
-  function extractSlug(input) {
-    const trimmed = input.trim();
-    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-      try {
-        const url = new URL(trimmed);
-        const parts = url.pathname.split("/").filter(Boolean);
-        const idx = parts.indexOf("campaigns");
-        if (idx !== -1 && parts[idx + 1]) {
-          return parts[idx + 1];
-        }
-      } catch (e) {
-      }
-    }
-    return trimmed;
+  function campaignLabel(c) {
+    const parts = [];
+    if (c.formatCount > 0)
+      parts.push(`${c.formatCount} formats`);
+    if (c.month)
+      parts.push(c.month);
+    return parts.length > 0 ? `${c.name}  (${parts.join(" \xB7 ")})` : c.name;
   }
-  btnFetch.addEventListener("click", async () => {
-    const baseUrl = apiUrlInput.value.trim().replace(/\/$/, "");
-    const campaignInput = campaignUrlInput.value.trim();
-    if (!baseUrl || !campaignInput) {
-      showStatus("Please enter both Platform URL and Campaign URL.", "error");
+  async function loadClients() {
+    clientSelect.disabled = true;
+    clientSelect.innerHTML = '<option value="">Loading clients\u2026</option>';
+    try {
+      const res = await fetch(`${ROOT_API}/api/clients/list`);
+      if (!res.ok)
+        throw new Error(`HTTP ${res.status}`);
+      clients = await res.json();
+      if (clients.length === 0) {
+        clientSelect.innerHTML = '<option value="">No active clients found</option>';
+        return;
+      }
+      clientSelect.innerHTML = '<option value="">Select client\u2026</option>';
+      for (const c of clients) {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        clientSelect.appendChild(opt);
+      }
+      clientSelect.disabled = false;
+      const savedClientId = localStorage.getItem("dbf_clientId");
+      if (savedClientId && clients.find((c) => c.id === savedClientId)) {
+        clientSelect.value = savedClientId;
+        await loadCampaigns(savedClientId);
+      } else if (clients.length === 1) {
+        clientSelect.value = clients[0].id;
+        await loadCampaigns(clients[0].id);
+      }
+    } catch (err) {
+      clientSelect.innerHTML = `<option value="">Error loading clients</option>`;
+      showStatus(`Failed to load clients: ${String(err)}`, "error");
+    }
+  }
+  async function loadCampaigns(clientId) {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client)
+      return;
+    campaignSelect.disabled = true;
+    campaignSelect.innerHTML = '<option value="">Loading campaigns\u2026</option>';
+    btnFetch.disabled = true;
+    currentPayload = null;
+    frameListEl.style.display = "none";
+    hideStatus();
+    try {
+      const url = `${ROOT_API}/api/campaigns/list?client=${encodeURIComponent(client.name)}`;
+      const res = await fetch(url);
+      if (!res.ok)
+        throw new Error(`HTTP ${res.status}`);
+      campaigns = await res.json();
+      if (campaigns.length === 0) {
+        campaignSelect.innerHTML = '<option value="">No active campaigns</option>';
+        return;
+      }
+      campaignSelect.innerHTML = '<option value="">Select campaign\u2026</option>';
+      for (const c of campaigns) {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = campaignLabel(c);
+        campaignSelect.appendChild(opt);
+      }
+      campaignSelect.disabled = false;
+      const savedCampaignId = localStorage.getItem("dbf_campaignId");
+      if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
+        campaignSelect.value = savedCampaignId;
+        btnFetch.disabled = false;
+      } else if (campaigns.length === 1) {
+        campaignSelect.value = campaigns[0].id;
+        btnFetch.disabled = false;
+      }
+    } catch (err) {
+      campaignSelect.innerHTML = `<option value="">Error loading campaigns</option>`;
+      showStatus(`Failed to load campaigns: ${String(err)}`, "error");
+    }
+  }
+  clientSelect.addEventListener("change", async () => {
+    const clientId = clientSelect.value;
+    if (!clientId) {
+      campaignSelect.innerHTML = '<option value="">Select a client first</option>';
+      campaignSelect.disabled = true;
+      btnFetch.disabled = true;
       return;
     }
-    localStorage.setItem("dbf_apiUrl", baseUrl);
-    localStorage.setItem("dbf_campaignUrl", campaignInput);
+    localStorage.setItem("dbf_clientId", clientId);
+    localStorage.removeItem("dbf_campaignId");
+    await loadCampaigns(clientId);
+  });
+  campaignSelect.addEventListener("change", () => {
+    const campaignId = campaignSelect.value;
+    if (campaignId) {
+      localStorage.setItem("dbf_campaignId", campaignId);
+      btnFetch.disabled = false;
+    } else {
+      btnFetch.disabled = true;
+    }
+    currentPayload = null;
+    btnApply.disabled = true;
+    frameListEl.style.display = "none";
+    hideStatus();
+  });
+  btnFetch.addEventListener("click", async () => {
+    var _a;
+    const campaignId = campaignSelect.value;
+    if (!campaignId)
+      return;
     btnFetch.disabled = true;
     btnApply.disabled = true;
     currentPayload = null;
     frameListEl.style.display = "none";
-    const slug = extractSlug(campaignInput);
-    showStatus(`Looking up campaign "${slug}"\u2026`, "loading");
-    let recordId;
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    showStatus(`Fetching frames for "${(_a = campaign == null ? void 0 : campaign.name) != null ? _a : campaignId}"\u2026`, "loading");
     try {
-      const lookupUrl = `${baseUrl}/api/campaigns/lookup?slug=${encodeURIComponent(slug)}`;
-      const lookupRes = await fetch(lookupUrl);
-      if (!lookupRes.ok) {
-        const err = await lookupRes.json().catch(() => ({ error: lookupRes.statusText }));
-        throw new Error(err.error || `HTTP ${lookupRes.status}`);
-      }
-      const lookup = await lookupRes.json();
-      recordId = lookup.recordId;
-      showStatus(`Found "${lookup.campaignName}" \u2014 fetching frames\u2026`, "loading");
-    } catch (err) {
-      showStatus(`Campaign lookup failed: ${String(err)}`, "error");
-      btnFetch.disabled = false;
-      return;
-    }
-    try {
-      const syncUrl = `${baseUrl}/api/campaigns/${recordId}/figma-sync`;
-      const res = await fetch(syncUrl, { method: "GET" });
+      const url = `${ROOT_API}/api/campaigns/${campaignId}/figma-sync`;
+      const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -296,6 +381,7 @@
       return;
     if (msg.type === "READY") {
       hideStatus();
+      loadClients();
     }
     if (msg.type === "PROGRESS") {
       const pct = Math.round(msg.current / msg.total * 100);
@@ -309,7 +395,9 @@
         parts.push(`${msg.created} created`);
       if (msg.updated > 0)
         parts.push(`${msg.updated} updated`);
-      const errorSummary = msg.errors.length > 0 ? `  \u26A0 ${msg.errors.length} error(s): ${msg.errors.join("; ")}` : "";
+      const errorSummary = msg.errors.length > 0 ? `
+\u26A0 ${msg.errors.length} error(s):
+${msg.errors.join("\n")}` : "";
       showStatus(
         `\u2713 Done \u2014 ${parts.join(", ") || "0 frames"}.${errorSummary}`,
         msg.errors.length > 0 ? "error" : "success"
