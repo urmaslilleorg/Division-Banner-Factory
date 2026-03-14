@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Division Banner Factory</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #111;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"], input[type="url"] {
+      width: 100%;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: monospace;
+      color: #111;
+      background: #fafafa;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus, input[type="url"]:focus {
+      border-color: #6366f1;
+      background: #fff;
+    }
+
+    .field { margin-bottom: 12px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+
+    .btn-secondary { background: #f4f4f5; color: #111; border: 1px solid #e4e4e7; }
+    .btn-secondary:hover:not(:disabled) { background: #e4e4e7; }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+
+    .status {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .status.info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .status.loading { background: #fafafa; color: #555; border: 1px solid #e4e4e7; }
+
+    .frame-list {
+      margin-top: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .frame-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .frame-item:last-child { border-bottom: none; }
+
+    .frame-name { font-family: monospace; color: #333; }
+    .frame-type { font-size: 10px; color: #888; background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
+
+    .progress-bar-wrap {
+      margin-top: 8px;
+      height: 4px;
+      background: #e4e4e7;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #6366f1;
+      border-radius: 2px;
+      transition: width 0.2s;
+    }
+
+    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 14px 0; }
+
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>Division Banner Factory</h1>
+
+  <div class="field">
+    <label for="apiUrl">Platform URL</label>
+    <input type="url" id="apiUrl" placeholder="https://division-banner-factory.vercel.app" />
+  </div>
+
+  <div class="field">
+    <label for="campaignId">Campaign ID</label>
+    <input type="text" id="campaignId" placeholder="rec..." />
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-secondary" id="btnFetch">Fetch frames</button>
+    <button class="btn btn-primary" id="btnApply" disabled>
+      Apply copy
+    </button>
+  </div>
+
+  <div id="status" class="status info" style="display:none"></div>
+
+  <div id="progressWrap" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="frameList" class="frame-list" style="display:none"></div>
+<script>"use strict";
+(() => {
+  // src/ui.ts
+  var apiUrlInput = document.getElementById("apiUrl");
+  var campaignIdInput = document.getElementById("campaignId");
+  var btnFetch = document.getElementById("btnFetch");
+  var btnApply = document.getElementById("btnApply");
+  var statusEl = document.getElementById("status");
+  var progressWrap = document.getElementById("progressWrap");
+  var progressBar = document.getElementById("progressBar");
+  var frameListEl = document.getElementById("frameList");
+  var currentPayload = null;
+  var savedUrl = localStorage.getItem("dbf_apiUrl");
+  var savedId = localStorage.getItem("dbf_campaignId");
+  if (savedUrl)
+    apiUrlInput.value = savedUrl;
+  if (savedId)
+    campaignIdInput.value = savedId;
+  function showStatus(msg, type) {
+    statusEl.textContent = msg;
+    statusEl.className = `status ${type}`;
+    statusEl.style.display = "block";
+  }
+  function hideStatus() {
+    statusEl.style.display = "none";
+  }
+  function renderFrameList(frames) {
+    frameListEl.innerHTML = frames.map(
+      (f) => `
+      <div class="frame-item">
+        <span class="frame-name">${f.figmaFrame}</span>
+        <span class="frame-type">${f.type}${f.slides ? ` \xB7 ${f.slides.length} slides` : ""}</span>
+      </div>`
+    ).join("");
+    frameListEl.style.display = "block";
+  }
+  btnFetch.addEventListener("click", async () => {
+    const baseUrl = apiUrlInput.value.trim().replace(/\/$/, "");
+    const campaignId = campaignIdInput.value.trim();
+    if (!baseUrl || !campaignId) {
+      showStatus("Please enter both Platform URL and Campaign ID.", "error");
+      return;
+    }
+    localStorage.setItem("dbf_apiUrl", baseUrl);
+    localStorage.setItem("dbf_campaignId", campaignId);
+    btnFetch.disabled = true;
+    btnApply.disabled = true;
+    currentPayload = null;
+    frameListEl.style.display = "none";
+    showStatus("Fetching frames from platform\u2026", "loading");
+    try {
+      const url = `${baseUrl}/api/campaigns/${campaignId}/figma-sync`;
+      const res = await fetch(url, { method: "GET" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      currentPayload = data;
+      showStatus(
+        `\u2713 ${data.frameCount} frame${data.frameCount !== 1 ? "s" : ""} found for "${data.campaignName}"`,
+        "success"
+      );
+      renderFrameList(data.frames);
+      btnApply.disabled = false;
+    } catch (err) {
+      showStatus(`Fetch failed: ${String(err)}`, "error");
+    } finally {
+      btnFetch.disabled = false;
+    }
+  });
+  btnApply.addEventListener("click", () => {
+    if (!currentPayload)
+      return;
+    btnApply.disabled = true;
+    btnFetch.disabled = true;
+    progressWrap.style.display = "block";
+    progressBar.style.width = "0%";
+    showStatus("Applying copy to Figma frames\u2026", "loading");
+    parent.postMessage(
+      {
+        pluginMessage: {
+          type: "APPLY_COPY",
+          campaignName: currentPayload.campaignName,
+          frames: currentPayload.frames
+        }
+      },
+      "*"
+    );
+  });
+  window.onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg)
+      return;
+    if (msg.type === "READY") {
+      hideStatus();
+    }
+    if (msg.type === "PROGRESS") {
+      const pct = Math.round(msg.current / msg.total * 100);
+      progressBar.style.width = `${pct}%`;
+      showStatus(`Applying: ${msg.frameName} (${msg.current}/${msg.total})`, "loading");
+    }
+    if (msg.type === "DONE") {
+      progressBar.style.width = "100%";
+      const parts = [];
+      if (msg.created > 0)
+        parts.push(`${msg.created} created`);
+      if (msg.updated > 0)
+        parts.push(`${msg.updated} updated`);
+      const errorSummary = msg.errors.length > 0 ? `  \u26A0 ${msg.errors.length} error(s): ${msg.errors.join("; ")}` : "";
+      showStatus(
+        `\u2713 Done \u2014 ${parts.join(", ") || "0 frames"}.${errorSummary}`,
+        msg.errors.length > 0 ? "error" : "success"
+      );
+      btnApply.disabled = false;
+      btnFetch.disabled = false;
+    }
+    if (msg.type === "ERROR") {
+      showStatus(`Error: ${msg.message}`, "error");
+      btnApply.disabled = false;
+      btnFetch.disabled = false;
+    }
+  };
+})();
+</script></body>
+</html>
