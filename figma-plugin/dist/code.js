@@ -25,7 +25,6 @@
     PRICE_TAG: "Bold",
     ILLUSTRATION: "Italic"
   };
-  var GRID_GAP = 100;
   figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
   (async () => {
     const clientId = await figma.clientStorage.getAsync("dbf_clientId").catch(() => void 0);
@@ -160,22 +159,30 @@
       frame.appendChild(textNode);
     }
   }
+  var GRID_Y_GAP = 200;
+  var LABEL_CLEARANCE = 40;
   function layoutFramesInGrid(frames) {
-    const ROW_MAX_WIDTH = 4e3;
-    let x = 0;
+    const sorted = [...frames].sort((a, b) => b.height - a.height);
     let y = 0;
-    let rowHeight = 0;
-    for (const frame of frames) {
-      if (x > 0 && x + frame.width > ROW_MAX_WIDTH) {
-        x = 0;
-        y += rowHeight + GRID_GAP;
-        rowHeight = 0;
-      }
-      frame.x = x;
-      frame.y = y;
-      x += frame.width + GRID_GAP;
-      if (frame.height > rowHeight)
-        rowHeight = frame.height;
+    for (const frame of sorted) {
+      addFrameLabel(frame, 0, y);
+      frame.x = 0;
+      frame.y = y + LABEL_CLEARANCE;
+      y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
+    }
+  }
+  function addFrameLabel(frame, frameX, labelY) {
+    try {
+      const label = figma.createText();
+      label.name = `__label__${frame.name}`;
+      label.fontName = { family: "Inter", style: "Regular" };
+      label.fontSize = 16;
+      label.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
+      label.characters = `${frame.name}  ${frame.width}\xD7${frame.height}`;
+      label.x = frameX;
+      label.y = labelY;
+      figma.currentPage.appendChild(label);
+    } catch (e) {
     }
   }
   async function loadRequiredFonts() {

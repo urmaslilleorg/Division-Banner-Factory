@@ -93,7 +93,7 @@ const SLOT_STYLE: Record<string, string> = {
 };
 
 /** Grid gap between auto-created frames (px). */
-const GRID_GAP = 100;
+
 
 // ── Plugin entry ──────────────────────────────────────────────────────────────
 
@@ -282,28 +282,56 @@ async function addTextLayers(
 
 // ── Grid layout ───────────────────────────────────────────────────────────────
 
+/** Gap between frames in the vertical stack. */
+const GRID_Y_GAP = 200;
+/** Space reserved above each frame for the label. */
+const LABEL_CLEARANCE = 40;
+
 /**
- * Arrange an array of frames in a horizontal row starting at x=0, y=0.
- * Each frame is placed to the right of the previous one with GRID_GAP spacing.
- * If total width exceeds ~4000 px, wraps to next row.
+ * Arrange frames in a vertical stack (one below the other).
+ * - All frames aligned to x = 0
+ * - 200 px gap between frames
+ * - A grey label (name + dimensions) sits 40 px above each frame
+ * - Frames sorted by height descending so tallest are at the top
  */
 function layoutFramesInGrid(frames: FrameNode[]): void {
-  const ROW_MAX_WIDTH = 4000;
-  let x = 0;
-  let y = 0;
-  let rowHeight = 0;
+  // Sort tallest first — gives a natural "biggest banner first" reading order
+  const sorted = [...frames].sort((a, b) => b.height - a.height);
 
-  for (const frame of frames) {
-    if (x > 0 && x + frame.width > ROW_MAX_WIDTH) {
-      // Wrap to next row
-      x = 0;
-      y += rowHeight + GRID_GAP;
-      rowHeight = 0;
-    }
-    frame.x = x;
-    frame.y = y;
-    x += frame.width + GRID_GAP;
-    if (frame.height > rowHeight) rowHeight = frame.height;
+  let y = 0;
+
+  for (const frame of sorted) {
+    // Place label above the frame
+    addFrameLabel(frame, 0, y);
+
+    // Place frame below the label
+    frame.x = 0;
+    frame.y = y + LABEL_CLEARANCE;
+
+    // Advance y cursor
+    y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
+  }
+}
+
+/**
+ * Add a grey label text node above a frame.
+ * Label text: "<frameName>  <width>×<height>"
+ * Position: (frameX, labelY) — 30 px above the frame.
+ */
+function addFrameLabel(frame: FrameNode, frameX: number, labelY: number): void {
+  try {
+    const label = figma.createText();
+    label.name = `__label__${frame.name}`;
+    label.fontName = { family: "Inter", style: "Regular" };
+    label.fontSize = 16;
+    label.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
+    label.characters = `${frame.name}  ${frame.width}\u00d7${frame.height}`;
+    label.x = frameX;
+    label.y = labelY;
+    // Place label on the same parent as the frame (current page)
+    figma.currentPage.appendChild(label);
+  } catch {
+    // Non-fatal — label is cosmetic only
   }
 }
 
