@@ -216,7 +216,10 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   }
 
   // Derive user role from Clerk session claims
-  const role = (sessionClaims?.metadata as Record<string, unknown> | undefined)?.role as string | undefined;
+  // Check both metadata and publicMetadata (Clerk stores role in publicMetadata by default)
+  const role =
+    ((sessionClaims?.metadata as Record<string, unknown> | undefined)?.role as string | undefined) ??
+    ((sessionClaims?.publicMetadata as Record<string, unknown> | undefined)?.role as string | undefined);
   const userRole = role ?? "division_admin";
 
   // Fetch banners and client variables in parallel
@@ -303,15 +306,13 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         </p>
       </div>
 
-      {/* Figma Integration — admin/designer only */}
-      {(userRole === "division_admin" || userRole === "division_designer") && (
-        <FigmaIntegrationPanel
-          campaignId={campaignId ?? campaignName}
-          initialFileKey={figmaCampaignFile}
-          initialLastSync={lastFigmaSync}
-          hasFigmaToken={!!process.env.FIGMA_ACCESS_TOKEN}
-        />
-      )}
+      {/* Figma Integration — visible to all platform users (admin, designer, client) */}
+      <FigmaIntegrationPanel
+        campaignId={campaignId ?? campaignName}
+        initialFileKey={figmaCampaignFile}
+        initialLastSync={lastFigmaSync}
+        hasFigmaToken={!!process.env.FIGMA_ACCESS_TOKEN}
+      />
 
       {/* Two-tab layout: Copy & Assets | Preview */}
       <CampaignDetailTabs
