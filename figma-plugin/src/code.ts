@@ -131,7 +131,10 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
     const errors: string[] = [];
 
     try {
-      // ── STEP 0: Ensure campaign page exists ──────────────────────────────────
+      // ── STEP 0: Ensure campaign page exists and switch to it ────────────────
+      // Use a local `page` variable for ALL subsequent operations so we are
+      // always guaranteed to be working on the correct page, regardless of
+      // any async timing around figma.currentPage.
       let page = figma.root.children.find(
         (p) => p.type === "PAGE" && p.name === campaignName
       ) as PageNode | undefined;
@@ -141,6 +144,8 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
         page.name = campaignName;
       }
 
+      // Switch current page synchronously, then await fonts.
+      // All frame creation and findOne calls below use `page` directly.
       figma.currentPage = page;
 
       // Pre-load fonts once before any frame creation
@@ -162,15 +167,17 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 
         try {
           if (frameData.type === "Carousel" && frameData.slides) {
-            // ── CAROUSEL: work with individual slide frames, no parent ────────
-            let anyCreated = false;
+            // ── CAROUSEL: only slide frames, no parent ────────────────────────
             for (const slide of frameData.slides) {
               const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
-              const existingSlide = figma.currentPage.findOne(
+
+              // Search ONLY on the campaign page using the local `page` var
+              const existingSlide = page.findOne(
                 (n) => n.type === "FRAME" && n.name === slideFrameName
               ) as FrameNode | null;
 
               if (existingSlide) {
+                // Smart merge: update text layers only, preserve design
                 await applyCopyToFrame(existingSlide, slide.copy, slide.activeVariables);
                 updated++;
                 applied++;
@@ -179,30 +186,29 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
                   slideFrameName, frameData.width || 800, frameData.height || 600,
                   slide.copy, slide.activeVariables
                 );
-                // Tag first slide with carousel metadata for layout
-                if (slide.index === 1) {
-                  slideFrame.setPluginData("carouselLabel",
-                    `${frameData.figmaFrame}  ${frameData.width || 800}\u00d7${frameData.height || 600} (${frameData.slides!.length} slides)`);
-                  slideFrame.setPluginData("isCarouselFirst", "true");
-                }
+                // Explicitly append to the campaign page
+                page.appendChild(slideFrame);
                 newFrames.push(slideFrame);
-                anyCreated = true;
                 created++;
                 applied++;
               }
             }
           } else {
             // ── STANDARD: single frame ────────────────────────────────────────
-            const existing = figma.currentPage.findOne(
+            // Search ONLY on the campaign page using the local `page` var
+            const existing = page.findOne(
               (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
             ) as FrameNode | null;
 
             if (existing) {
+              // Smart merge: update text layers only, preserve design
               await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
               updated++;
               applied++;
             } else {
               const newFrame = await createStandardFrame(frameData);
+              // Explicitly append to the campaign page
+              page.appendChild(newFrame);
               newFrames.push(newFrame);
               created++;
               applied++;

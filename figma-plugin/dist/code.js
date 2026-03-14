@@ -78,10 +78,9 @@
           });
           try {
             if (frameData.type === "Carousel" && frameData.slides) {
-              let anyCreated = false;
               for (const slide of frameData.slides) {
                 const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
-                const existingSlide = figma.currentPage.findOne(
+                const existingSlide = page.findOne(
                   (n) => n.type === "FRAME" && n.name === slideFrameName
                 );
                 if (existingSlide) {
@@ -96,21 +95,14 @@
                     slide.copy,
                     slide.activeVariables
                   );
-                  if (slide.index === 1) {
-                    slideFrame.setPluginData(
-                      "carouselLabel",
-                      `${frameData.figmaFrame}  ${frameData.width || 800}\xD7${frameData.height || 600} (${frameData.slides.length} slides)`
-                    );
-                    slideFrame.setPluginData("isCarouselFirst", "true");
-                  }
+                  page.appendChild(slideFrame);
                   newFrames.push(slideFrame);
-                  anyCreated = true;
                   created++;
                   applied++;
                 }
               }
             } else {
-              const existing = figma.currentPage.findOne(
+              const existing = page.findOne(
                 (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
               );
               if (existing) {
@@ -119,6 +111,7 @@
                 applied++;
               } else {
                 const newFrame = await createStandardFrame(frameData);
+                page.appendChild(newFrame);
                 newFrames.push(newFrame);
                 created++;
                 applied++;
