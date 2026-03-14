@@ -206,19 +206,25 @@
       const newText = copy[matchingSlot];
       if (newText === void 0 || newText === null)
         continue;
-      const fonts = textNode.getRangeFontName(0, textNode.characters.length);
-      if (typeof fonts !== "symbol") {
-        await figma.loadFontAsync(fonts);
-      } else {
-        const seen = /* @__PURE__ */ new Set();
-        for (let i = 0; i < textNode.characters.length; i++) {
-          const font = textNode.getRangeFontName(i, i + 1);
-          const key = `${font.family}::${font.style}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            await figma.loadFontAsync(font);
+      if (textNode.characters.length > 0) {
+        const fonts = textNode.getRangeFontName(0, textNode.characters.length);
+        if (typeof fonts !== "symbol") {
+          await figma.loadFontAsync(fonts);
+        } else {
+          const seen = /* @__PURE__ */ new Set();
+          for (let i = 0; i < textNode.characters.length; i++) {
+            const font = textNode.getRangeFontName(i, i + 1);
+            const key = `${font.family}::${font.style}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              await figma.loadFontAsync(font);
+            }
           }
         }
+      } else {
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(
+          () => figma.loadFontAsync({ family: "Arial", style: "Regular" })
+        );
       }
       textNode.characters = newText;
     }
