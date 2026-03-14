@@ -1,25 +1,15 @@
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * POST /api/campaigns/[id]/figma-sync
+ * GET /api/campaigns/[id]/figma-sync
  *
- * Prepares the scaffold data payload for the Figma plugin.
- * Does NOT push to Figma directly — the plugin consumes this JSON.
+ * Public endpoint (no auth) — called by the Figma plugin from Figma's sandbox.
+ * Returns the structured copy payload for the plugin to create/update frames.
  *
- * Auth: division_admin or division_designer.
- *
- * Returns:
- * {
- *   fileKey, campaignName, frames: [
- *     { name, figmaFrame, width, height, type, language, copy, activeVariables }
- *     // Carousel frames also include: slideCount, slides[]
- *   ]
- * }
+ * CORS: allows all origins so the Figma plugin iframe can call it.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
 import { fetchBanners } from "@/lib/airtable";
 import type { Banner } from "@/lib/types";
@@ -32,6 +22,20 @@ const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
 // All variable slots in canonical order
 const ALL_VARIABLES = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration"] as const;
 
+// ── CORS helpers ──────────────────────────────────────────────────────────────
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
+}
+
+// ── Copy extraction ───────────────────────────────────────────────────────────
+
 /** Extract copy values for a given language from a banner record */
 function extractCopy(
   banner: Banner,
@@ -39,7 +43,6 @@ function extractCopy(
   activeVariables: string[]
 ): Record<string, string> {
   const copy: Record<string, string> = {};
-
   const langUpper = language.toUpperCase();
 
   for (const slot of activeVariables) {
@@ -86,7 +89,6 @@ function getSlideActiveVariables(
   const cfg = formatConfigs[formatName];
   if (!cfg) return fallbackVariables;
 
-  // Check per-slide config first
   if (cfg.slides && cfg.slides.length > 0) {
     const slideCfg = cfg.slides.find((s) => s.index === slideIndex);
     if (slideCfg && slideCfg.variables && slideCfg.variables.length > 0) {
@@ -94,161 +96,162 @@ function getSlideActiveVariables(
     }
   }
 
-  // Fall back to format-level variables
   return cfg.variables && cfg.variables.length > 0 ? cfg.variables : fallbackVariables;
 }
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    // ── Auth ────────────────────────────────────────────────────────────────
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const user = await currentUser();
-    const role = user?.publicMetadata?.role as string | undefined;
-    if (role !== "division_admin" && role !== "division_designer") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+// ── Main handler ──────────────────────────────────────────────────────────────
 
-    const campaignId = params.id;
+async function handleSync(campaignId: string): Promise<NextResponse> {
+  // ── 1. Fetch campaign ───────────────────────────────────────────────────────
+  const campaign = await fetchCampaignById(campaignId);
+  const fieldConfig = campaign.fieldConfig;
+  const formatConfigs = fieldConfig?.formatConfigs;
+  const fallbackVariables = fieldConfig?.variables || [...ALL_VARIABLES];
 
-    // ── 1. Fetch campaign ───────────────────────────────────────────────────
-    const campaign = await fetchCampaignById(campaignId);
-    const fieldConfig = campaign.fieldConfig;
-    const formatConfigs = fieldConfig?.formatConfigs;
-    const fallbackVariables = fieldConfig?.variables || [...ALL_VARIABLES];
+  // Figma file key — read from raw Airtable record
+  const rawCampaignRes = await fetch(
+    `https://api.airtable.com/v0/${BASE_ID}/${CAMPAIGNS_TABLE}/${campaignId}`,
+    { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
+  );
+  if (!rawCampaignRes.ok) {
+    throw new Error(`Failed to fetch campaign raw record: ${rawCampaignRes.status}`);
+  }
+  const rawCampaign = await rawCampaignRes.json();
+  const figmaCampaignFile =
+    (rawCampaign.fields?.["Figma_Campaign_File"] as string) || "";
 
-    // Figma file key — from Airtable field (fetched raw since Campaign interface
-    // doesn't yet include figmaCampaignFile — we'll read it from the raw record)
-    const rawCampaignRes = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${CAMPAIGNS_TABLE}/${campaignId}`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
+  // ── 2. Fetch all banners ────────────────────────────────────────────────────
+  const allBanners = await fetchBanners(BASE_ID, campaign.name, undefined, true);
+
+  const standardBanners = allBanners.filter((b) => b.bannerType === "Standard");
+  const carouselBanners = allBanners.filter((b) => b.bannerType === "Carousel");
+  const slideBanners = allBanners.filter((b) => b.bannerType === "Slide");
+
+  // ── 3. Build frames array ───────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const frames: any[] = [];
+
+  for (const banner of standardBanners) {
+    const activeVariables = getActiveVariables(
+      banner.formatName,
+      formatConfigs,
+      fallbackVariables
     );
-    if (!rawCampaignRes.ok) {
-      throw new Error(`Failed to fetch campaign raw record: ${rawCampaignRes.status}`);
-    }
-    const rawCampaign = await rawCampaignRes.json();
-    const figmaCampaignFile =
-      (rawCampaign.fields?.["Figma_Campaign_File"] as string) || "";
+    const language = banner.language || "ET";
+    const copy = extractCopy(banner, language, activeVariables);
 
-    // ── 2. Fetch all banners (including Slides) ─────────────────────────────
-    const allBanners = await fetchBanners(BASE_ID, campaign.name, undefined, true);
+    frames.push({
+      recordId: banner.id,
+      name: banner.bannerName,
+      figmaFrame: banner.figmaFrame,
+      width: banner.width,
+      height: banner.height,
+      type: "Standard",
+      language,
+      copy,
+      activeVariables,
+    });
+  }
 
-    // Separate by type
-    const standardBanners = allBanners.filter((b) => b.bannerType === "Standard");
-    const carouselBanners = allBanners.filter((b) => b.bannerType === "Carousel");
-    const slideBanners = allBanners.filter((b) => b.bannerType === "Slide");
+  for (const carousel of carouselBanners) {
+    const activeVariables = getActiveVariables(
+      carousel.formatName,
+      formatConfigs,
+      fallbackVariables
+    );
+    const language = carousel.language || "ET";
 
-    // ── 3. Build frames array ───────────────────────────────────────────────
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const frames: any[] = [];
+    const childSlides = slideBanners
+      .filter((s) => s.parentBannerIds.includes(carousel.id))
+      .sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
 
-    // Standard banners → one frame each
-    for (const banner of standardBanners) {
-      const activeVariables = getActiveVariables(
-        banner.formatName,
-        formatConfigs,
-        fallbackVariables
-      );
-      const language = banner.language || "ET";
-      const copy = extractCopy(banner, language, activeVariables);
-
-      frames.push({
-        recordId: banner.id,
-        name: banner.bannerName,
-        figmaFrame: banner.figmaFrame,
-        width: banner.width,
-        height: banner.height,
-        type: "Standard",
-        language,
-        copy,
-        activeVariables,
-      });
-    }
-
-    // Carousel banners → frame + slides array
-    for (const carousel of carouselBanners) {
-      const activeVariables = getActiveVariables(
+    const slidesPayload = childSlides.map((slide) => {
+      const slideVars = getSlideActiveVariables(
         carousel.formatName,
+        slide.slideIndex ?? 1,
         formatConfigs,
-        fallbackVariables
+        activeVariables
       );
-      const language = carousel.language || "ET";
+      const slideCopy = extractCopy(slide, language, slideVars);
+      return {
+        recordId: slide.id,
+        index: slide.slideIndex ?? 1,
+        name: slide.bannerName,
+        copy: slideCopy,
+        activeVariables: slideVars,
+      };
+    });
 
-      // Find child slides for this carousel
-      const childSlides = slideBanners
-        .filter((s) => s.parentBannerIds.includes(carousel.id))
-        .sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
+    frames.push({
+      recordId: carousel.id,
+      name: carousel.bannerName,
+      figmaFrame: carousel.figmaFrame,
+      width: carousel.width,
+      height: carousel.height,
+      type: "Carousel",
+      language,
+      slideCount: childSlides.length,
+      copy: extractCopy(carousel, language, activeVariables),
+      activeVariables,
+      slides: slidesPayload,
+    });
+  }
 
-      const slidesPayload = childSlides.map((slide) => {
-        const slideVars = getSlideActiveVariables(
-          carousel.formatName,
-          slide.slideIndex ?? 1,
-          formatConfigs,
-          activeVariables
-        );
-        const slideCopy = extractCopy(slide, language, slideVars);
-        return {
-          recordId: slide.id,
-          index: slide.slideIndex ?? 1,
-          name: slide.bannerName,
-          copy: slideCopy,
-          activeVariables: slideVars,
-        };
-      });
-
-      frames.push({
-        recordId: carousel.id,
-        name: carousel.bannerName,
-        figmaFrame: carousel.figmaFrame,
-        width: carousel.width,
-        height: carousel.height,
-        type: "Carousel",
-        language,
-        slideCount: childSlides.length,
-        copy: extractCopy(carousel, language, activeVariables),
-        activeVariables,
-        slides: slidesPayload,
-      });
+  // ── 4. Update Last_Figma_Sync on campaign ───────────────────────────────────
+  const now = new Date().toISOString();
+  await fetch(
+    `https://api.airtable.com/v0/${BASE_ID}/${CAMPAIGNS_TABLE}/${campaignId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ fields: { Last_Figma_Sync: now } }),
     }
+  );
 
-    // ── 4. Update Last_Figma_Sync on campaign ───────────────────────────────
-    const now = new Date().toISOString();
-    await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${CAMPAIGNS_TABLE}/${campaignId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ fields: { Last_Figma_Sync: now } }),
-      }
-    );
-
-    // ── 5. Return payload ───────────────────────────────────────────────────
-    return NextResponse.json({
+  // ── 5. Return payload ───────────────────────────────────────────────────────
+  return NextResponse.json(
+    {
       fileKey: figmaCampaignFile,
       campaignId,
       campaignName: campaign.name,
       syncedAt: now,
       frameCount: frames.length,
       frames,
-    });
+    },
+    { headers: CORS_HEADERS }
+  );
+}
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    return await handleSync(params.id);
   } catch (err) {
-    console.error("POST /api/campaigns/[id]/figma-sync error:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("GET /api/campaigns/[id]/figma-sync error:", err);
+    return NextResponse.json(
+      { error: String(err) },
+      { status: 500, headers: CORS_HEADERS }
+    );
   }
 }
 
-// GET — same payload, for the Figma plugin to poll
-export async function GET(
-  req: NextRequest,
-  context: { params: { id: string } }
+// Keep POST for backward compat (FigmaIntegrationPanel uses it)
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
 ) {
-  return POST(req, context);
+  try {
+    return await handleSync(params.id);
+  } catch (err) {
+    console.error("POST /api/campaigns/[id]/figma-sync error:", err);
+    return NextResponse.json(
+      { error: String(err) },
+      { status: 500, headers: CORS_HEADERS }
+    );
+  }
 }

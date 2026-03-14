@@ -7,6 +7,10 @@
   "editorType": ["figma"],
   "permissions": ["currentuser", "activeusers"],
   "networkAccess": {
-    "allowedDomains": ["https://division-banner-factory.vercel.app", "https://*.vercel.app"]
+    "allowedDomains": [
+      "https://sydameapteek.menteproduction.com",
+      "https://division-banner-factory.vercel.app",
+      "https://*.vercel.app"
+    ]
   }
 }
