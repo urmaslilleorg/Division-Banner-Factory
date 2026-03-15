@@ -1,9 +1,12 @@
 "use client";
 
-import LandingHeader from "@/components/landing-header";
-import { SignInButton } from "@clerk/nextjs";
+import { useClerk, useAuth } from "@clerk/nextjs";
+import Link from "next/link";
 
 export default function LandingPage() {
+  const { openSignIn } = useClerk();
+  const { isSignedIn } = useAuth();
+
   return (
     <div style={{ background: "#0A0A0F", minHeight: "100dvh", overflow: "hidden" }}>
       {/* Animated gradient background */}
@@ -12,8 +15,35 @@ export default function LandingPage() {
       {/* Film grain texture overlay */}
       <div className="mente-grain" />
 
-      {/* Header with auth state — client component */}
-      <LandingHeader />
+      {/* Fixed header — only shows when already signed in */}
+      {isSignedIn && (
+        <header
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            zIndex: 50,
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            padding: "1.5rem 2rem",
+          }}
+        >
+          <Link
+            href="/campaigns?preview=true"
+            style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontWeight: 300,
+              fontSize: "0.75rem",
+              letterSpacing: "0.12em",
+              color: "rgba(245,245,240,0.8)",
+              textDecoration: "none",
+            }}
+          >
+            Go to app →
+          </Link>
+        </header>
+      )}
 
       {/* Page content */}
       <main
@@ -78,10 +108,13 @@ export default function LandingPage() {
           <p style={{ margin: 0 }}>Campaigns delivered.</p>
         </div>
 
-        {/* Sign In button */}
-        <SignInButton mode="modal" forceRedirectUrl="/campaigns">
-          <button className="sign-in-btn">Sign in</button>
-        </SignInButton>
+        {/* Sign In button — always rendered, uses imperative Clerk API on click */}
+        <button
+          className="sign-in-btn"
+          onClick={() => openSignIn({ afterSignInUrl: "/campaigns" })}
+        >
+          Sign in
+        </button>
 
         {/* Footer */}
         <footer
