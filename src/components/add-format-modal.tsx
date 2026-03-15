@@ -54,6 +54,8 @@ interface AddFormatModalProps {
   fieldConfig: FieldConfig;
   /** Client-linked format record IDs — used to filter the picker */
   clientFormatIds: string[];
+  /** Client-specific variable labels — overrides VARIABLE_OPTIONS display labels */
+  clientVariables?: Array<{ slot: string; label: string }>;
   onClose: () => void;
   onSuccess: (newBanners: Banner[], updatedFieldConfig: FieldConfig) => void;
 }
@@ -62,9 +64,14 @@ export default function AddFormatModal({
   campaignId,
   fieldConfig,
   clientFormatIds,
+  clientVariables,
   onClose,
   onSuccess,
 }: AddFormatModalProps) {
+  // Build variable options from clientVariables if provided, else fall back to defaults
+  const variableOptions = (clientVariables && clientVariables.length > 0)
+    ? clientVariables.map((cv) => ({ value: cv.slot, label: cv.label || cv.slot }))
+    : VARIABLE_OPTIONS;
   const [formats, setFormats] = useState<AirtableFormat[]>([]);
   const [loadingFormats, setLoadingFormats] = useState(true);
   const [selectedFormatIds, setSelectedFormatIds] = useState<string[]>([]);
@@ -322,7 +329,7 @@ export default function AddFormatModal({
                 2. Variables
               </h3>
               <div className="flex flex-wrap gap-2">
-                {VARIABLE_OPTIONS.map((v) => (
+                {variableOptions.map((v) => (
                   <button
                     key={v.value}
                     type="button"
@@ -399,7 +406,7 @@ export default function AddFormatModal({
                         )}
                       </p>
                       <div className="flex flex-wrap gap-1">
-                        {VARIABLE_OPTIONS.map((v) => (
+                        {variableOptions.map((v) => (
                           <button
                             key={v.value}
                             type="button"

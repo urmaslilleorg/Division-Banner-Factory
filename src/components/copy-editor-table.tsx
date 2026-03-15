@@ -441,6 +441,7 @@ export default function CopyEditorTable({
           campaignId={campaignId}
           fieldConfig={fieldConfig}
           clientFormatIds={clientFormatIds}
+          clientVariables={clientVariables?.map((cv) => ({ slot: cv.slot, label: cv.label }))}
           onClose={() => setShowAddFormat(false)}
           onSuccess={handleAddFormatSuccess}
         />

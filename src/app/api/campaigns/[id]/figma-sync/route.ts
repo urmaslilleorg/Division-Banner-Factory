@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
 import { fetchBanners } from "@/lib/airtable";
+import { fetchAllClients } from "@/lib/airtable-clients";
 import type { Banner } from "@/lib/types";
 import type { FormatFieldConfig } from "@/lib/airtable-campaigns";
 
@@ -120,6 +121,22 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
   const figmaCampaignFile =
     (rawCampaign.fields?.["Figma_Campaign_File"] as string) || "";
 
+  // ── 1b. Fetch client record for variable labels ────────────────────────────
+  let variableLabels: Record<string, string> = {};
+  try {
+    const clients = await fetchAllClients();
+    const clientRecord = clients.find(
+      (c) => c.name === campaign.clientName
+    );
+    if (clientRecord?.clientVariables && clientRecord.clientVariables.length > 0) {
+      for (const cv of clientRecord.clientVariables) {
+        variableLabels[cv.slot] = cv.label;
+      }
+    }
+  } catch {
+    // Non-fatal — proceed without custom labels
+  }
+
   // ── 2. Fetch all banners ────────────────────────────────────────────────────
   const allBanners = await fetchBanners(BASE_ID, campaign.name, undefined, true);
 
@@ -219,6 +236,7 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
       campaignName: campaign.name,
       syncedAt: now,
       frameCount: frames.length,
+      variableLabels,
       frames,
     },
     { headers: CORS_HEADERS }
