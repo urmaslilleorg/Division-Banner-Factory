@@ -6,12 +6,10 @@
   function fetchImageViaUI(url) {
     return new Promise((resolve) => {
       const requestId = `img_${++_fetchImageCounter}`;
-      console.log(`[DBF] fetchImageViaUI sending FETCH_IMAGE requestId=${requestId} url=${url.substring(0, 80)}`);
       _pendingImageFetches.set(requestId, resolve);
       figma.ui.postMessage({ type: "FETCH_IMAGE", requestId, url });
       setTimeout(() => {
         if (_pendingImageFetches.has(requestId)) {
-          console.log(`[DBF] fetchImageViaUI TIMEOUT for requestId=${requestId}`);
           _pendingImageFetches.delete(requestId);
           resolve(null);
         }
@@ -47,7 +45,7 @@
   };
   var IMAGE_SLOTS = /* @__PURE__ */ new Set(["Illustration", "Image"]);
   var SLIDE_GAP = 100;
-  var PLUGIN_VERSION = "v20";
+  var PLUGIN_VERSION = "v22";
   console.log(`[DBF] Plugin loaded ${PLUGIN_VERSION}`);
   figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factory ${PLUGIN_VERSION}` });
   (async () => {
@@ -62,21 +60,16 @@
       if (resolve) {
         _pendingImageFetches.delete(msg.requestId);
         if (msg.bytes && msg.bytes.length > 0) {
-          console.log(`[DBF] IMAGE_DATA received bytes=${msg.bytes.length} for requestId=${msg.requestId}`);
           resolve(msg.bytes);
         } else if (msg.base64) {
-          console.log(`[DBF] IMAGE_DATA received base64=${msg.base64.length} chars for requestId=${msg.requestId}`);
           const binary = atob(msg.base64);
           const data = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++)
             data[i] = binary.charCodeAt(i);
           resolve(data);
         } else {
-          console.log(`[DBF] IMAGE_DATA null/empty for requestId=${msg.requestId}`);
           resolve(null);
         }
-      } else {
-        console.log(`[DBF] IMAGE_DATA no pending resolve for requestId=${msg.requestId}`);
       }
       return;
     }
@@ -512,7 +505,6 @@
         const data = await fetchImageViaUI(url);
         if (!data || data.length === 0)
           throw new Error("UI fetch returned null/empty");
-        console.log(`[DBF] placeImageInFrame got ${data.length} bytes for ${slotName}`);
         imageData = data;
       }
       const image = figma.createImage(imageData);
@@ -522,7 +514,6 @@
         scaleMode: "FIT"
       }];
     } catch (err) {
-      console.log(`[DBF] placeImageInFrame ERROR for ${slotName}: ${err}`);
       rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
       try {
         const label = figma.createText();

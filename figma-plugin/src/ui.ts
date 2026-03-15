@@ -886,7 +886,6 @@ window.onmessage = async (event: MessageEvent) => {
       if (!response.ok) throw new Error(`Proxy HTTP ${response.status} for ${url}`);
       const buffer = await response.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      console.log(`[DBF] FETCH_IMAGE proxy OK bytes=${bytes.length} for requestId=${requestId}`);
       // Send raw bytes directly — avoids base64 encode/decode overhead and atob() issues.
       // Figma's postMessage supports Uint8Array payloads.
       parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, bytes } }, "*");

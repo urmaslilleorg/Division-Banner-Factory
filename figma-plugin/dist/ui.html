@@ -257,7 +257,7 @@
   </style>
 </head>
 <body>
-  <h1>Division Banner Factory <span style="font-size:11px;font-weight:400;color:#999;vertical-align:middle">v20</span></h1>
+  <h1>Division Banner Factory <span style="font-size:11px;font-weight:400;color:#999;vertical-align:middle">v22</span></h1>
 
   <div class="field">
     <label for="clientSelect">Client</label>
@@ -994,7 +994,6 @@
           throw new Error(`Proxy HTTP ${response.status} for ${url}`);
         const buffer = await response.arrayBuffer();
         const bytes = new Uint8Array(buffer);
-        console.log(`[DBF] FETCH_IMAGE proxy OK bytes=${bytes.length} for requestId=${requestId}`);
         parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, bytes } }, "*");
       } catch (err) {
         console.error("[DBF] FETCH_IMAGE failed:", err);

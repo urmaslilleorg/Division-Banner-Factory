@@ -108,13 +108,11 @@ const _pendingImageFetches = new Map<string, (data: Uint8Array | null) => void>(
 function fetchImageViaUI(url: string): Promise<Uint8Array | null> {
   return new Promise((resolve) => {
     const requestId = `img_${++_fetchImageCounter}`;
-    console.log(`[DBF] fetchImageViaUI sending FETCH_IMAGE requestId=${requestId} url=${url.substring(0, 80)}`);
     _pendingImageFetches.set(requestId, resolve);
     figma.ui.postMessage({ type: "FETCH_IMAGE", requestId, url });
     // Safety timeout: resolve with null after 30s to avoid hanging forever
     setTimeout(() => {
       if (_pendingImageFetches.has(requestId)) {
-        console.log(`[DBF] fetchImageViaUI TIMEOUT for requestId=${requestId}`);
         _pendingImageFetches.delete(requestId);
         resolve(null);
       }
@@ -164,7 +162,7 @@ const SLIDE_GAP = 100;
 
 // ── Plugin entry ───────────────────────────────────────────────────────────────
 
-const PLUGIN_VERSION = "v20";
+const PLUGIN_VERSION = "v22";
 console.log(`[DBF] Plugin loaded ${PLUGIN_VERSION}`);
 figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factory ${PLUGIN_VERSION}` });
 
@@ -184,20 +182,15 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
       _pendingImageFetches.delete(msg.requestId);
       // Prefer raw bytes; fall back to decoding base64 for legacy callers
       if (msg.bytes && msg.bytes.length > 0) {
-        console.log(`[DBF] IMAGE_DATA received bytes=${msg.bytes.length} for requestId=${msg.requestId}`);
         resolve(msg.bytes);
       } else if (msg.base64) {
-        console.log(`[DBF] IMAGE_DATA received base64=${msg.base64.length} chars for requestId=${msg.requestId}`);
         const binary = atob(msg.base64);
         const data = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
         resolve(data);
       } else {
-        console.log(`[DBF] IMAGE_DATA null/empty for requestId=${msg.requestId}`);
         resolve(null);
       }
-    } else {
-      console.log(`[DBF] IMAGE_DATA no pending resolve for requestId=${msg.requestId}`);
     }
     return;
   }
@@ -822,7 +815,6 @@ async function placeImageInFrame(
       // fetchImageViaUI now returns raw Uint8Array bytes directly.
       const data = await fetchImageViaUI(url);
       if (!data || data.length === 0) throw new Error("UI fetch returned null/empty");
-      console.log(`[DBF] placeImageInFrame got ${data.length} bytes for ${slotName}`);
       imageData = data;
     }
 
@@ -833,7 +825,6 @@ async function placeImageInFrame(
       scaleMode: "FIT",
     }];
   } catch (err) {
-    console.log(`[DBF] placeImageInFrame ERROR for ${slotName}: ${err}`);
     // Fallback: grey placeholder with label text
     rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
     try {
