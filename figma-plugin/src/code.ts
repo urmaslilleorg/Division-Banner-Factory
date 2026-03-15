@@ -84,7 +84,33 @@ interface CheckCopyStatusMessage {
   frames: FramePayload[];
 }
 
-type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage | CheckCopyStatusMessage | ExportVideoMessage;
+/** Sent from UI thread back to main thread with fetched image bytes */
+interface ImageDataMessage {
+  type: "IMAGE_DATA";
+  requestId: string;
+  base64: string | null; // null = fetch failed
+}
+
+type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage | CheckCopyStatusMessage | ExportVideoMessage | ImageDataMessage;
+
+// ── Image fetch bridge ────────────────────────────────────────────────────────
+// Figma main thread has no network access. We ask the UI iframe to fetch the
+// image bytes and send them back as base64 via IMAGE_DATA message.
+
+let _fetchImageCounter = 0;
+const _pendingImageFetches = new Map<string, (base64: string | null) => void>();
+
+/**
+ * Request the UI thread to fetch an image URL and return the bytes as base64.
+ * Resolves with the base64 string, or null if the fetch failed.
+ */
+function fetchImageViaUI(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const requestId = `img_${++_fetchImageCounter}`;
+    _pendingImageFetches.set(requestId, resolve);
+    figma.ui.postMessage({ type: "FETCH_IMAGE", requestId, url });
+  });
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -139,6 +165,16 @@ figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factor
 })();
 
 figma.ui.onmessage = async (msg: PluginMessage) => {
+  // ── IMAGE_DATA: resolve a pending fetchImageViaUI() promise ─────────────────
+  if (msg.type === "IMAGE_DATA") {
+    const resolve = _pendingImageFetches.get(msg.requestId);
+    if (resolve) {
+      _pendingImageFetches.delete(msg.requestId);
+      resolve(msg.base64);
+    }
+    return;
+  }
+
   if (msg.type === "RESIZE") {
     figma.ui.resize(msg.width, msg.height);
     return;
@@ -744,6 +780,10 @@ async function addTextLayers(
 /**
  * Fetch an image from a URL (http/https or data URL) and place it as a
  * rectangle with an IMAGE fill inside the given frame.
+ *
+ * Remote URLs are fetched via the UI thread (fetchImageViaUI) because the
+ * Figma main thread has no network access. Data URLs are decoded locally.
+ *
  * Falls back to a grey placeholder rectangle if the fetch fails.
  */
 async function placeImageInFrame(
@@ -762,7 +802,7 @@ async function placeImageInFrame(
     let imageData: Uint8Array;
 
     if (url.startsWith("data:image")) {
-      // Data URL — decode base64 payload
+      // Data URL — decode base64 payload directly in main thread
       const base64 = url.split(",")[1];
       const binary = atob(base64);
       imageData = new Uint8Array(binary.length);
@@ -770,11 +810,14 @@ async function placeImageInFrame(
         imageData[i] = binary.charCodeAt(i);
       }
     } else {
-      // Remote URL — fetch via network
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const buffer = await response.arrayBuffer();
-      imageData = new Uint8Array(buffer);
+      // Remote URL — delegate fetch to UI thread (main thread has no network)
+      const base64 = await fetchImageViaUI(url);
+      if (!base64) throw new Error("UI fetch returned null");
+      const binary = atob(base64);
+      imageData = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        imageData[i] = binary.charCodeAt(i);
+      }
     }
 
     const image = figma.createImage(imageData);
@@ -786,7 +829,6 @@ async function placeImageInFrame(
   } catch {
     // Fallback: grey placeholder with label text
     rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
-    // Add a small label inside the placeholder
     try {
       const label = figma.createText();
       label.name = `${slotName}_placeholder_label`;
@@ -1009,10 +1051,12 @@ async function applyCopyToFrame(
         imageData = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
       } else {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const buffer = await response.arrayBuffer();
-        imageData = new Uint8Array(buffer);
+        // Remote URL — delegate to UI thread (main thread has no network access)
+        const base64 = await fetchImageViaUI(url);
+        if (!base64) throw new Error("UI fetch returned null");
+        const binary = atob(base64);
+        imageData = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
       }
       const image = figma.createImage(imageData);
       rect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];

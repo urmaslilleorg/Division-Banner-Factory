@@ -1,6 +1,15 @@
 "use strict";
 (() => {
   // src/code.ts
+  var _fetchImageCounter = 0;
+  var _pendingImageFetches = /* @__PURE__ */ new Map();
+  function fetchImageViaUI(url) {
+    return new Promise((resolve) => {
+      const requestId = `img_${++_fetchImageCounter}`;
+      _pendingImageFetches.set(requestId, resolve);
+      figma.ui.postMessage({ type: "FETCH_IMAGE", requestId, url });
+    });
+  }
   var SLOT_Y = {
     H1: 40,
     H2: 100,
@@ -38,6 +47,14 @@
     figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId, savedMonth: month });
   })();
   figma.ui.onmessage = async (msg) => {
+    if (msg.type === "IMAGE_DATA") {
+      const resolve = _pendingImageFetches.get(msg.requestId);
+      if (resolve) {
+        _pendingImageFetches.delete(msg.requestId);
+        resolve(msg.base64);
+      }
+      return;
+    }
     if (msg.type === "RESIZE") {
       figma.ui.resize(msg.width, msg.height);
       return;
@@ -486,11 +503,14 @@
           imageData[i] = binary.charCodeAt(i);
         }
       } else {
-        const response = await fetch(url);
-        if (!response.ok)
-          throw new Error(`HTTP ${response.status}`);
-        const buffer = await response.arrayBuffer();
-        imageData = new Uint8Array(buffer);
+        const base64 = await fetchImageViaUI(url);
+        if (!base64)
+          throw new Error("UI fetch returned null");
+        const binary = atob(base64);
+        imageData = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          imageData[i] = binary.charCodeAt(i);
+        }
       }
       const image = figma.createImage(imageData);
       rect.fills = [{
@@ -656,11 +676,13 @@
           for (let i = 0; i < binary.length; i++)
             imageData[i] = binary.charCodeAt(i);
         } else {
-          const response = await fetch(url);
-          if (!response.ok)
-            throw new Error(`HTTP ${response.status}`);
-          const buffer = await response.arrayBuffer();
-          imageData = new Uint8Array(buffer);
+          const base64 = await fetchImageViaUI(url);
+          if (!base64)
+            throw new Error("UI fetch returned null");
+          const binary = atob(base64);
+          imageData = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++)
+            imageData[i] = binary.charCodeAt(i);
         }
         const image = figma.createImage(imageData);
         rect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];

@@ -868,6 +868,29 @@ window.onmessage = async (event: MessageEvent) => {
 
   // ── IMPORT messages ──────────────────────────────────────────────────────
 
+  // ── FETCH_IMAGE: main thread asks UI to fetch image bytes ───────────────────
+  // The Figma main thread (code.ts) has no network access. When it needs to
+  // load a remote image URL, it sends FETCH_IMAGE here. We fetch the bytes,
+  // base64-encode them, and reply with IMAGE_DATA so the main thread can
+  // call figma.createImage().
+  if (msg.type === "FETCH_IMAGE") {
+    const { requestId, url } = msg as unknown as { type: string; requestId: string; url: string };
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      // Convert to base64
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64 } }, "*");
+    } catch {
+      parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64: null } }, "*");
+    }
+    return;
+  }
+
   if (msg.type === "READY") {
     if (msg.savedClientId)   savedClientId   = msg.savedClientId;
     if (msg.savedCampaignId) savedCampaignId = msg.savedCampaignId;

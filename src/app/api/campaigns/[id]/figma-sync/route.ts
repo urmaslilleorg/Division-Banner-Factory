@@ -138,7 +138,13 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
   const campaign = await fetchCampaignById(campaignId);
   const fieldConfig = campaign.fieldConfig;
   const formatConfigs = fieldConfig?.formatConfigs;
-  const fallbackVariables = fieldConfig?.variables || [...ALL_VARIABLES];
+  // Use campaign-level variables as fallback; only fall back to ALL_VARIABLES
+  // if fieldConfig is entirely absent. An empty array means "no campaign default"
+  // has been configured — in that case also use ALL_VARIABLES as the safe default.
+  const fallbackVariables =
+    fieldConfig?.variables && fieldConfig.variables.length > 0
+      ? fieldConfig.variables
+      : [...ALL_VARIABLES];
 
   // Figma file key — read from raw Airtable record
   const rawCampaignRes = await fetch(

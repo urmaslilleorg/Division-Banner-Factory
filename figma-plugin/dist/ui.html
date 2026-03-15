@@ -985,6 +985,24 @@
     const msg = event.data.pluginMessage;
     if (!msg)
       return;
+    if (msg.type === "FETCH_IMAGE") {
+      const { requestId, url } = msg;
+      try {
+        const response = await fetch(url);
+        if (!response.ok)
+          throw new Error(`HTTP ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++)
+          binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
+        parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64 } }, "*");
+      } catch (e) {
+        parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64: null } }, "*");
+      }
+      return;
+    }
     if (msg.type === "READY") {
       if (msg.savedClientId)
         savedClientId = msg.savedClientId;
