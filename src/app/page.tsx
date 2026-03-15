@@ -9,11 +9,19 @@ export default async function LandingPage() {
   const clientId = headersList.get("x-client-id");
   const isClientSubdomain = !!clientId && clientId !== "admin";
 
-  // On client subdomains, signed-in users should go to their campaign calendar
-  if (isClientSubdomain) {
-    const { userId } = await auth();
-    if (userId) {
+  // Auth check — redirect signed-in users to the right place
+  const { userId, sessionClaims } = await auth();
+  if (userId) {
+    if (isClientSubdomain) {
+      // Client subdomain: go to campaign calendar
       redirect("/campaigns?preview=true");
+    } else {
+      // Root domain: division_admin → /admin, everyone else → /campaigns
+      const role =
+        (sessionClaims?.metadata as { role?: string })?.role ??
+        (sessionClaims?.publicMetadata as { role?: string })?.role ??
+        "viewer";
+      redirect(role === "division_admin" ? "/admin" : "/campaigns?preview=true");
     }
   }
 
