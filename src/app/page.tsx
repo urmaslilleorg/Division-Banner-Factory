@@ -1,14 +1,14 @@
 "use client";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function LandingPage() {
+  const router = useRouter();
+
   return (
     <div style={{ background: "#0A0A0F", minHeight: "100dvh", overflow: "hidden" }}>
-      {/* Animated gradient background */}
       <div className="mente-gradient" />
-      {/* Film grain texture overlay */}
       <div className="mente-grain" />
-      {/* Fixed header */}
+
       <header
         style={{
           position: "fixed",
@@ -21,21 +21,24 @@ export default function LandingPage() {
           padding: "1.5rem 2rem",
         }}
       >
-        <Link
-          href="/admin"
+        <button
+          onClick={() => router.push("/admin")}
           style={{
             fontFamily: "'DM Sans', sans-serif",
             fontWeight: 300,
             fontSize: "0.75rem",
             letterSpacing: "0.12em",
             color: "rgba(245,245,240,0.8)",
-            textDecoration: "none",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
           }}
         >
           Go to app →
-        </Link>
+        </button>
       </header>
-      {/* Page content */}
+
       <main
         style={{
           position: "relative",
@@ -50,7 +53,6 @@ export default function LandingPage() {
           textAlign: "center",
         }}
       >
-        {/* Wordmark */}
         <h1
           style={{
             fontFamily: "'Cormorant Garamond', serif",
@@ -65,7 +67,7 @@ export default function LandingPage() {
         >
           MENTE
         </h1>
-        {/* Tagline */}
+
         <p
           style={{
             fontFamily: "'Cormorant Garamond', serif",
@@ -80,7 +82,7 @@ export default function LandingPage() {
         >
           Banner production, elevated.
         </p>
-        {/* Body lines */}
+
         <div
           style={{
             fontFamily: "'DM Sans', sans-serif",
@@ -95,11 +97,11 @@ export default function LandingPage() {
           <p style={{ margin: 0 }}>From brief to Figma. Copy managed.</p>
           <p style={{ margin: 0 }}>Campaigns delivered.</p>
         </div>
-        {/* Enter app button */}
-        <Link href="/admin">
-          <button className="sign-in-btn">Enter app</button>
-        </Link>
-        {/* Footer */}
+
+        <button className="sign-in-btn" onClick={() => router.push("/admin")}>
+          Enter app
+        </button>
+
         <footer
           style={{
             position: "fixed",

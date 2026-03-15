@@ -5,12 +5,10 @@ import { getClientConfig } from "@/config/clients";
 export default function middleware(request: NextRequest) {
   const hostname = request.headers.get("host") || "";
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "localhost:3000";
-
   const hostWithoutPort = hostname.split(":")[0];
   const domainWithoutPort = appDomain.split(":")[0];
 
   let subdomain: string | null = null;
-
   if (hostWithoutPort.endsWith(`.${domainWithoutPort}`)) {
     subdomain = hostWithoutPort.replace(`.${domainWithoutPort}`, "");
   } else if (hostWithoutPort.includes(".localhost")) {
@@ -35,7 +33,6 @@ export default function middleware(request: NextRequest) {
   }
 
   const clientConfig = subdomain ? getClientConfig(subdomain) : null;
-
   if (subdomain && !clientConfig) {
     if (request.nextUrl.pathname.startsWith("/api/")) {
       return NextResponse.next();
@@ -48,7 +45,6 @@ export default function middleware(request: NextRequest) {
     requestHeaders.set("x-client-id", clientConfig.id);
     requestHeaders.set("x-client-config", JSON.stringify(clientConfig));
   }
-
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
