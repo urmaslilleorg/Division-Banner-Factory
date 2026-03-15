@@ -20,6 +20,22 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
+function parseFigmaFiles(raw: string): { key: string; name: string; owner: string; addedAt: string }[] {
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    if (typeof parsed === "string" && parsed.trim()) {
+      return [{ key: parsed.trim(), name: "", owner: "", addedAt: "" }];
+    }
+  } catch {
+    if (raw.trim() && !raw.trim().startsWith("[")) {
+      return [{ key: raw.trim(), name: "", owner: "", addedAt: "" }];
+    }
+  }
+  return [];
+}
+
 export async function GET() {
   try {
     const clients = await fetchAllClients();
@@ -30,6 +46,7 @@ export async function GET() {
         id: c.id,
         name: c.name,
         subdomain: c.subdomain,
+        figmaFiles: parseFigmaFiles(c.figmaAssetFile),
       }));
 
     return NextResponse.json(active, { headers: CORS_HEADERS });

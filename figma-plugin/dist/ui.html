@@ -191,6 +191,40 @@
       66%  { content: '..'; }
       100% { content: '...'; }
     }
+
+    /* ── Copy status list ────────────────────────────────────────── */
+    .copy-status-list {
+      margin-top: 10px;
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .copy-status-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .copy-status-item:last-child { border-bottom: none; }
+    .copy-status-icon { font-size: 12px; min-width: 16px; flex-shrink: 0; }
+    .copy-status-name { font-family: monospace; color: #333; font-size: 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-status-label { font-size: 10px; color: #888; flex-shrink: 0; }
+    .copy-status-changed { font-size: 10px; color: #6366f1; margin-top: 1px; }
+
+    .copy-status-summary {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #555;
+      padding: 0 2px;
+    }
+
+    .btn-apply-updates { background: #6366f1; color: #fff; }
+    .btn-apply-updates:hover:not(:disabled) { background: #4f46e5; }
   </style>
 </head>
 <body>
@@ -217,11 +251,10 @@
     </select>
   </div>
 
-  <!-- ── IMPORT section ──────────────────────────────────────── -->
+  <!-- ── IMPORT section ──────────────────────────────────────────── -->
   <div class="section-label">Import — Mente → Figma</div>
   <div class="btn-row">
     <button class="btn btn-secondary" id="btnFetch" disabled>Fetch frames</button>
-    <button class="btn btn-primary"   id="btnApply" disabled>Apply copy</button>
   </div>
 
   <div id="status" class="status info" style="display:none"></div>
@@ -232,9 +265,20 @@
     </div>
   </div>
 
+  <!-- Copy status list (shown after Fetch + CHECK_COPY_STATUS) -->
+  <div id="copyStatusList" class="copy-status-list" style="display:none"></div>
+  <div id="copyStatusSummary" class="copy-status-summary" style="display:none"></div>
+
+  <!-- Apply buttons (shown after status check) -->
+  <div class="btn-row" id="applyBtnRow" style="display:none; margin-top:8px;">
+    <button class="btn btn-secondary" id="btnApplyAll"     disabled>Apply all</button>
+    <button class="btn btn-apply-updates" id="btnApplyUpdates" disabled>Apply updates only</button>
+  </div>
+
+  <!-- Legacy frame list (hidden when copy status is shown) -->
   <div id="frameList" class="frame-list" style="display:none"></div>
 
-  <!-- ── EXPORT section ──────────────────────────────────────── -->
+  <!-- ── EXPORT section ──────────────────────────────────────────── -->
   <hr class="divider" />
   <div class="section-label">Export — Figma → Mente</div>
 
@@ -253,17 +297,41 @@
   <div id="exportList" class="export-list" style="display:none"></div>
 <script>"use strict";
 (() => {
+  var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+
   // src/ui.ts
   var ROOT_API = "https://sydameapteek.menteproduction.com";
   var clientSelect = document.getElementById("clientSelect");
   var monthSelect = document.getElementById("monthSelect");
   var campaignSelect = document.getElementById("campaignSelect");
   var btnFetch = document.getElementById("btnFetch");
-  var btnApply = document.getElementById("btnApply");
   var statusEl = document.getElementById("status");
   var progressWrap = document.getElementById("progressWrap");
   var progressBar = document.getElementById("progressBar");
   var frameListEl = document.getElementById("frameList");
+  var copyStatusListEl = document.getElementById("copyStatusList");
+  var copyStatusSummaryEl = document.getElementById("copyStatusSummary");
+  var applyBtnRowEl = document.getElementById("applyBtnRow");
+  var btnApplyAll = document.getElementById("btnApplyAll");
+  var btnApplyUpdates = document.getElementById("btnApplyUpdates");
   var btnExport = document.getElementById("btnExport");
   var exportStatusEl = document.getElementById("exportStatus");
   var exportProgressWrap = document.getElementById("exportProgressWrap");
@@ -272,6 +340,7 @@
   var clients = [];
   var campaigns = [];
   var currentPayload = null;
+  var currentStatusResults = [];
   var selectedFrameCount = 0;
   var savedClientId;
   var savedCampaignId;
@@ -303,16 +372,6 @@
     exportStatusEl.textContent = msg;
     exportStatusEl.className = `status ${type}`;
     exportStatusEl.style.display = "block";
-  }
-  function renderFrameList(frames) {
-    frameListEl.innerHTML = frames.map(
-      (f) => `
-      <div class="frame-item">
-        <span class="frame-name">${f.figmaFrame}</span>
-        <span class="frame-type">${f.type}${f.slides ? ` \xB7 ${f.slides.length} slides` : ""}</span>
-      </div>`
-    ).join("");
-    frameListEl.style.display = "block";
   }
   function renderExportList() {
     exportListEl.innerHTML = exportFrames.map((f) => {
@@ -353,6 +412,52 @@
       }
       btnExport.textContent = `Export all (${total})`;
     }
+  }
+  function renderCopyStatus(results) {
+    currentStatusResults = results;
+    const upToDate = results.filter((r) => r.status === "UP_TO_DATE").length;
+    const updated = results.filter((r) => r.status === "UPDATED").length;
+    const isNew = results.filter((r) => r.status === "NEW").length;
+    copyStatusListEl.innerHTML = results.map((r) => {
+      const icon = r.status === "UP_TO_DATE" ? "\u2705" : r.status === "UPDATED" ? "\u{1F504}" : "\u{1F195}";
+      const label = r.status === "UP_TO_DATE" ? "up to date" : r.status === "NEW" ? "new" : "";
+      const changedLine = r.status === "UPDATED" && r.changedFields.length > 0 ? `<div class="copy-status-changed">${r.changedFields.join(", ")} updated</div>` : "";
+      return `
+        <div class="copy-status-item">
+          <span class="copy-status-icon">${icon}</span>
+          <div style="flex:1;min-width:0;">
+            <div class="copy-status-name">${r.name}</div>
+            ${changedLine}
+          </div>
+          ${label ? `<span class="copy-status-label">${label}</span>` : ""}
+        </div>`;
+    }).join("");
+    copyStatusListEl.style.display = "block";
+    const parts = [];
+    if (updated > 0)
+      parts.push(`\u{1F504} ${updated} updated`);
+    if (isNew > 0)
+      parts.push(`\u{1F195} ${isNew} new`);
+    if (upToDate > 0)
+      parts.push(`\u2705 ${upToDate} up to date`);
+    copyStatusSummaryEl.textContent = parts.join(" \xB7 ");
+    copyStatusSummaryEl.style.display = "block";
+    applyBtnRowEl.style.display = "flex";
+    btnApplyAll.disabled = false;
+    btnApplyUpdates.disabled = updated + isNew === 0;
+    if (updated + isNew === 0) {
+      btnApplyUpdates.textContent = "Apply updates only";
+    } else {
+      btnApplyUpdates.textContent = `Apply updates only (${updated + isNew})`;
+    }
+  }
+  function hideCopyStatus() {
+    copyStatusListEl.style.display = "none";
+    copyStatusSummaryEl.style.display = "none";
+    applyBtnRowEl.style.display = "none";
+    btnApplyAll.disabled = true;
+    btnApplyUpdates.disabled = true;
+    currentStatusResults = [];
   }
   function monthSortKey(monthStr) {
     const MONTHS = {
@@ -488,8 +593,10 @@
     btnFetch.disabled = true;
     currentPayload = null;
     frameListEl.style.display = "none";
+    hideCopyStatus();
     hideStatus();
     updateExportButton();
+    renderFigmaFilesInfo(client);
     try {
       const url = `${ROOT_API}/api/campaigns/list?client=${encodeURIComponent(client.name)}`;
       const res = await fetch(url);
@@ -508,6 +615,22 @@
       showStatus(`Failed to load campaigns: ${String(err)}`, "error");
     }
   }
+  function renderFigmaFilesInfo(client) {
+    const existing = document.getElementById("figmaFilesInfo");
+    if (existing)
+      existing.remove();
+    if (!client.figmaFiles || client.figmaFiles.length === 0)
+      return;
+    const names = client.figmaFiles.map((f) => f.name || f.key).join(", ");
+    const infoEl = document.createElement("div");
+    infoEl.id = "figmaFilesInfo";
+    infoEl.style.cssText = "margin-top:6px; font-size:10px; color:#888; padding:0 2px;";
+    infoEl.textContent = `Registered files: ${names}`;
+    const clientField = clientSelect.closest(".field");
+    if (clientField && clientField.parentNode) {
+      clientField.parentNode.insertBefore(infoEl, clientField.nextSibling);
+    }
+  }
   clientSelect.addEventListener("change", async () => {
     const clientId = clientSelect.value;
     if (!clientId) {
@@ -516,6 +639,9 @@
       campaignSelect.innerHTML = '<option value="">Select a client first</option>';
       campaignSelect.disabled = true;
       btnFetch.disabled = true;
+      const existing = document.getElementById("figmaFilesInfo");
+      if (existing)
+        existing.remove();
       return;
     }
     savePrefs(clientId, "", "");
@@ -528,8 +654,7 @@
     savePrefs(void 0, void 0, monthValue);
     savedCampaignId = void 0;
     currentPayload = null;
-    btnApply.disabled = true;
-    frameListEl.style.display = "none";
+    hideCopyStatus();
     hideStatus();
     updateExportButton();
     populateCampaignDropdown(monthValue);
@@ -543,8 +668,7 @@
       btnFetch.disabled = true;
     }
     currentPayload = null;
-    btnApply.disabled = true;
-    frameListEl.style.display = "none";
+    hideCopyStatus();
     hideStatus();
     updateExportButton();
   });
@@ -554,9 +678,9 @@
     if (!campaignId)
       return;
     btnFetch.disabled = true;
-    btnApply.disabled = true;
-    currentPayload = null;
+    hideCopyStatus();
     frameListEl.style.display = "none";
+    currentPayload = null;
     updateExportButton();
     const campaign = campaigns.find((c) => c.id === campaignId);
     showStatus(`Fetching frames for "${(_a = campaign == null ? void 0 : campaign.name) != null ? _a : campaignId}"\u2026`, "loading");
@@ -570,37 +694,73 @@
       const data = await res.json();
       currentPayload = data;
       showStatus(
-        `\u2713 ${data.frameCount} frame${data.frameCount !== 1 ? "s" : ""} found for "${data.campaignName}"`,
-        "success"
+        `\u2713 ${data.frameCount} frame${data.frameCount !== 1 ? "s" : ""} fetched for "${data.campaignName}" \u2014 checking status\u2026`,
+        "info"
       );
-      renderFrameList(data.frames);
-      btnApply.disabled = false;
       updateExportButton();
+      parent.postMessage(
+        {
+          pluginMessage: {
+            type: "CHECK_COPY_STATUS",
+            campaignName: data.campaignName,
+            frames: data.frames
+          }
+        },
+        "*"
+      );
     } catch (err) {
       showStatus(`Fetch failed: ${String(err)}`, "error");
-    } finally {
       btnFetch.disabled = false;
     }
   });
-  btnApply.addEventListener("click", () => {
+  function triggerApply(updatesOnly) {
     if (!currentPayload)
       return;
-    btnApply.disabled = true;
+    let framesToApply = currentPayload.frames;
+    if (updatesOnly && currentStatusResults.length > 0) {
+      const needsUpdate = new Set(
+        currentStatusResults.filter((r) => r.status === "UPDATED" || r.status === "NEW").map((r) => r.name)
+      );
+      framesToApply = currentPayload.frames.map((f) => {
+        if (f.type === "Carousel" && f.slides) {
+          const filteredSlides = f.slides.filter((s) => {
+            const slideName = `${f.figmaFrame}_Slide_${s.index}`;
+            return needsUpdate.has(slideName);
+          });
+          if (filteredSlides.length === 0)
+            return null;
+          return __spreadProps(__spreadValues({}, f), { slides: filteredSlides });
+        } else {
+          return needsUpdate.has(f.figmaFrame) ? f : null;
+        }
+      }).filter((f) => f !== null);
+    }
+    if (framesToApply.length === 0) {
+      showStatus("Nothing to apply \u2014 all frames are up to date.", "success");
+      return;
+    }
+    btnApplyAll.disabled = true;
+    btnApplyUpdates.disabled = true;
     btnFetch.disabled = true;
     progressWrap.style.display = "block";
     progressBar.style.width = "0%";
-    showStatus("Applying copy to Figma frames\u2026", "loading");
+    showStatus(
+      updatesOnly ? `Applying ${framesToApply.length} updated/new frame(s)\u2026` : "Applying copy to all Figma frames\u2026",
+      "loading"
+    );
     parent.postMessage(
       {
         pluginMessage: {
           type: "APPLY_COPY",
           campaignName: currentPayload.campaignName,
-          frames: currentPayload.frames
+          frames: framesToApply
         }
       },
       "*"
     );
-  });
+  }
+  btnApplyAll.addEventListener("click", () => triggerApply(false));
+  btnApplyUpdates.addEventListener("click", () => triggerApply(true));
   btnExport.addEventListener("click", () => {
     if (!currentPayload)
       return;
@@ -613,7 +773,8 @@
     showExportStatus("Exporting frames\u2026", "loading");
     btnExport.disabled = true;
     btnFetch.disabled = true;
-    btnApply.disabled = true;
+    btnApplyAll.disabled = true;
+    btnApplyUpdates.disabled = true;
     parent.postMessage({ pluginMessage: { type: "EXPORT_TO_MENTE" } }, "*");
   });
   function findRecordId(frameName) {
@@ -626,14 +787,14 @@
     if (slideMatch) {
       const parentName = slideMatch[1];
       const slideIndex = parseInt(slideMatch[2], 10);
-      const parent2 = currentPayload.frames.find(
+      const parentFrame = currentPayload.frames.find(
         (f) => f.type === "Carousel" && f.figmaFrame === parentName
       );
-      if (parent2 && parent2.slides) {
-        const slide = parent2.slides.find((s) => s.index === slideIndex);
+      if (parentFrame && parentFrame.slides) {
+        const slide = parentFrame.slides.find((s) => s.index === slideIndex);
         if (slide && slide.recordId)
           return slide.recordId;
-        const byPosition = parent2.slides[slideIndex - 1];
+        const byPosition = parentFrame.slides[slideIndex - 1];
         if (byPosition && byPosition.recordId)
           return byPosition.recordId;
       }
@@ -700,6 +861,12 @@
       hideStatus();
       loadClients();
     }
+    if (msg.type === "COPY_STATUS") {
+      const results = msg.frames;
+      renderCopyStatus(results);
+      hideStatus();
+      btnFetch.disabled = false;
+    }
     if (msg.type === "PROGRESS") {
       const pct = Math.round(msg.current / msg.total * 100);
       progressBar.style.width = `${pct}%`;
@@ -719,12 +886,14 @@ ${msg.errors.join("\n")}` : "";
         `\u2713 Done \u2014 ${parts.join(", ") || "0 frames"}.${errorSummary}`,
         msg.errors.length > 0 ? "error" : "success"
       );
-      btnApply.disabled = false;
+      btnApplyAll.disabled = false;
+      btnApplyUpdates.disabled = currentStatusResults.filter((r) => r.status !== "UP_TO_DATE").length === 0;
       btnFetch.disabled = false;
     }
     if (msg.type === "ERROR") {
       showStatus(`Error: ${msg.message}`, "error");
-      btnApply.disabled = false;
+      btnApplyAll.disabled = false;
+      btnApplyUpdates.disabled = false;
       btnFetch.disabled = false;
     }
     if (msg.type === "SELECTION_CHANGED") {
@@ -777,14 +946,16 @@ ${msg.errors.join("\n")}` : "";
       );
       btnExport.disabled = false;
       btnFetch.disabled = false;
-      btnApply.disabled = false;
+      btnApplyAll.disabled = false;
+      btnApplyUpdates.disabled = false;
       updateExportButton();
     }
     if (msg.type === "EXPORT_ERROR") {
       showExportStatus(`Export error: ${msg.message}`, "error");
       btnExport.disabled = false;
       btnFetch.disabled = false;
-      btnApply.disabled = false;
+      btnApplyAll.disabled = false;
+      btnApplyUpdates.disabled = false;
       updateExportButton();
     }
   };

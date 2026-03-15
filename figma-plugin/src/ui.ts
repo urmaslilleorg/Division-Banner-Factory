@@ -7,9 +7,10 @@
  *   3. User selects client → fetch campaign list from /api/campaigns/list?client=<name>
  *   4. Build Month dropdown from campaigns' month values (most recent first)
  *   5. User selects month → filter Campaign dropdown
- *   6. User selects campaign → Fetch frames becomes active
+ *   6. User selects campaign → Fetch becomes active
  *   7. Click Fetch → GET /api/campaigns/<id>/figma-sync
- *   8. Click Apply → sends APPLY_COPY to plugin main thread
+ *   8. Plugin automatically runs CHECK_COPY_STATUS → shows per-frame status
+ *   9. User clicks "Apply all" or "Apply updates only"
  *
  * EXPORT flow:
  *   1. Fetch must have been run first (needs frame data for record ID matching)
@@ -27,6 +28,14 @@ interface ClientItem {
   id: string;
   name: string;
   subdomain: string;
+  figmaFiles?: FigmaFileEntry[];
+}
+
+interface FigmaFileEntry {
+  key: string;
+  name: string;
+  owner: string;
+  addedAt: string;
 }
 
 interface CampaignItem {
@@ -65,6 +74,14 @@ interface SyncPayload {
   frames: FramePayload[];
 }
 
+type FrameStatus = "UP_TO_DATE" | "UPDATED" | "NEW";
+
+interface FrameStatusResult {
+  name: string;
+  status: FrameStatus;
+  changedFields: string[];
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Root domain — client list is always fetched from here */
@@ -76,11 +93,17 @@ const clientSelect        = document.getElementById("clientSelect")        as HT
 const monthSelect         = document.getElementById("monthSelect")         as HTMLSelectElement;
 const campaignSelect      = document.getElementById("campaignSelect")      as HTMLSelectElement;
 const btnFetch            = document.getElementById("btnFetch")            as HTMLButtonElement;
-const btnApply            = document.getElementById("btnApply")            as HTMLButtonElement;
 const statusEl            = document.getElementById("status")              as HTMLDivElement;
 const progressWrap        = document.getElementById("progressWrap")        as HTMLDivElement;
 const progressBar         = document.getElementById("progressBar")         as HTMLDivElement;
 const frameListEl         = document.getElementById("frameList")           as HTMLDivElement;
+
+// Copy status UI
+const copyStatusListEl    = document.getElementById("copyStatusList")      as HTMLDivElement;
+const copyStatusSummaryEl = document.getElementById("copyStatusSummary")   as HTMLDivElement;
+const applyBtnRowEl       = document.getElementById("applyBtnRow")         as HTMLDivElement;
+const btnApplyAll         = document.getElementById("btnApplyAll")         as HTMLButtonElement;
+const btnApplyUpdates     = document.getElementById("btnApplyUpdates")     as HTMLButtonElement;
 
 const btnExport           = document.getElementById("btnExport")           as HTMLButtonElement;
 const exportStatusEl      = document.getElementById("exportStatus")        as HTMLDivElement;
@@ -93,9 +116,9 @@ const exportListEl        = document.getElementById("exportList")          as HT
 let clients: ClientItem[] = [];
 let campaigns: CampaignItem[] = [];
 let currentPayload: SyncPayload | null = null;
-let selectedFrameCount = 0; // updated via SELECTION_CHANGED from main thread
+let currentStatusResults: FrameStatusResult[] = [];
+let selectedFrameCount = 0;
 
-// In-memory prefs (populated from figma.clientStorage via READY message)
 let savedClientId: string | undefined;
 let savedCampaignId: string | undefined;
 let savedMonth: string | undefined;
@@ -134,19 +157,6 @@ function showExportStatus(msg: string, type: "info" | "success" | "error" | "loa
   exportStatusEl.textContent = msg;
   exportStatusEl.className = `status ${type}`;
   exportStatusEl.style.display = "block";
-}
-
-function renderFrameList(frames: FramePayload[]) {
-  frameListEl.innerHTML = frames
-    .map(
-      (f) => `
-      <div class="frame-item">
-        <span class="frame-name">${f.figmaFrame}</span>
-        <span class="frame-type">${f.type}${f.slides ? ` · ${f.slides.length} slides` : ""}</span>
-      </div>`
-    )
-    .join("");
-  frameListEl.style.display = "block";
 }
 
 function renderExportList() {
@@ -189,7 +199,6 @@ function updateExportButton() {
   if (selectedFrameCount > 0) {
     btnExport.textContent = `Export ${selectedFrameCount} selected`;
   } else {
-    // Count all frames including carousel slides
     let total = 0;
     for (const f of currentPayload.frames) {
       if (f.type === "Carousel" && f.slides) {
@@ -202,12 +211,72 @@ function updateExportButton() {
   }
 }
 
+// ── Copy status rendering ─────────────────────────────────────────────────────
+
+function renderCopyStatus(results: FrameStatusResult[]) {
+  currentStatusResults = results;
+
+  const upToDate = results.filter((r) => r.status === "UP_TO_DATE").length;
+  const updated  = results.filter((r) => r.status === "UPDATED").length;
+  const isNew    = results.filter((r) => r.status === "NEW").length;
+
+  // Render list
+  copyStatusListEl.innerHTML = results
+    .map((r) => {
+      const icon =
+        r.status === "UP_TO_DATE" ? "✅" :
+        r.status === "UPDATED"    ? "🔄" : "🆕";
+      const label =
+        r.status === "UP_TO_DATE" ? "up to date" :
+        r.status === "NEW"        ? "new" : "";
+      const changedLine =
+        r.status === "UPDATED" && r.changedFields.length > 0
+          ? `<div class="copy-status-changed">${r.changedFields.join(", ")} updated</div>`
+          : "";
+      return `
+        <div class="copy-status-item">
+          <span class="copy-status-icon">${icon}</span>
+          <div style="flex:1;min-width:0;">
+            <div class="copy-status-name">${r.name}</div>
+            ${changedLine}
+          </div>
+          ${label ? `<span class="copy-status-label">${label}</span>` : ""}
+        </div>`;
+    })
+    .join("");
+  copyStatusListEl.style.display = "block";
+
+  // Summary line
+  const parts: string[] = [];
+  if (updated  > 0) parts.push(`🔄 ${updated} updated`);
+  if (isNew    > 0) parts.push(`🆕 ${isNew} new`);
+  if (upToDate > 0) parts.push(`✅ ${upToDate} up to date`);
+  copyStatusSummaryEl.textContent = parts.join(" · ");
+  copyStatusSummaryEl.style.display = "block";
+
+  // Show apply buttons
+  applyBtnRowEl.style.display = "flex";
+  btnApplyAll.disabled = false;
+  // "Apply updates only" is only useful if there are UPDATED or NEW frames
+  btnApplyUpdates.disabled = (updated + isNew) === 0;
+  if ((updated + isNew) === 0) {
+    btnApplyUpdates.textContent = "Apply updates only";
+  } else {
+    btnApplyUpdates.textContent = `Apply updates only (${updated + isNew})`;
+  }
+}
+
+function hideCopyStatus() {
+  copyStatusListEl.style.display = "none";
+  copyStatusSummaryEl.style.display = "none";
+  applyBtnRowEl.style.display = "none";
+  btnApplyAll.disabled = true;
+  btnApplyUpdates.disabled = true;
+  currentStatusResults = [];
+}
+
 // ── Month helpers ─────────────────────────────────────────────────────────────
 
-/**
- * Parse a month string like "March 2026" into a sortable number (YYYYMM).
- * Returns 0 for unrecognised strings.
- */
 function monthSortKey(monthStr: string): number {
   const MONTHS: Record<string, number> = {
     january: 1, february: 2, march: 3, april: 4,
@@ -222,31 +291,23 @@ function monthSortKey(monthStr: string): number {
   return year * 100 + monthNum;
 }
 
-/**
- * Build and populate the Month dropdown from the loaded campaigns list.
- * Restores saved month selection if available.
- */
 function buildMonthDropdown() {
-  // Collect unique, non-empty months
   const monthSet = new Set<string>();
   for (const c of campaigns) {
     if (c.month && c.month.trim()) monthSet.add(c.month.trim());
   }
 
-  // Sort most recent first
   const sortedMonths = Array.from(monthSet).sort(
     (a, b) => monthSortKey(b) - monthSortKey(a)
   );
 
   monthSelect.innerHTML = "";
 
-  // "All months" option
   const allOpt = document.createElement("option");
   allOpt.value = "__all__";
   allOpt.textContent = "All months";
   monthSelect.appendChild(allOpt);
 
-  // Separator (disabled option)
   if (sortedMonths.length > 0) {
     const sep = document.createElement("option");
     sep.disabled = true;
@@ -263,21 +324,15 @@ function buildMonthDropdown() {
 
   monthSelect.disabled = false;
 
-  // Restore saved month
   if (savedMonth && (savedMonth === "__all__" || monthSet.has(savedMonth))) {
     monthSelect.value = savedMonth;
   } else {
     monthSelect.value = "__all__";
   }
 
-  // Populate campaign dropdown based on selected month
   populateCampaignDropdown(monthSelect.value);
 }
 
-/**
- * Populate the campaign dropdown filtered by the given month value.
- * Pass "__all__" to show all campaigns.
- */
 function populateCampaignDropdown(monthValue: string) {
   const filtered =
     monthValue === "__all__"
@@ -310,7 +365,6 @@ function populateCampaignDropdown(monthValue: string) {
 
   campaignSelect.disabled = false;
 
-  // Restore saved campaign if it's in the filtered list
   if (savedCampaignId && filtered.find((c) => c.id === savedCampaignId)) {
     campaignSelect.value = savedCampaignId;
     btnFetch.disabled = false;
@@ -347,7 +401,6 @@ async function loadClients() {
     }
     clientSelect.disabled = false;
 
-    // Restore saved selection
     if (savedClientId && clients.find((c) => c.id === savedClientId)) {
       clientSelect.value = savedClientId;
       await loadCampaigns(savedClientId);
@@ -374,8 +427,12 @@ async function loadCampaigns(clientId: string) {
   btnFetch.disabled = true;
   currentPayload = null;
   frameListEl.style.display = "none";
+  hideCopyStatus();
   hideStatus();
   updateExportButton();
+
+  // Show registered Figma files (Task 7)
+  renderFigmaFilesInfo(client);
 
   try {
     const url = `${ROOT_API}/api/campaigns/list?client=${encodeURIComponent(client.name)}`;
@@ -397,6 +454,28 @@ async function loadCampaigns(clientId: string) {
   }
 }
 
+// ── Task 7: Show registered Figma files info ──────────────────────────────────
+
+function renderFigmaFilesInfo(client: ClientItem) {
+  // Remove any existing info element
+  const existing = document.getElementById("figmaFilesInfo");
+  if (existing) existing.remove();
+
+  if (!client.figmaFiles || client.figmaFiles.length === 0) return;
+
+  const names = client.figmaFiles.map((f) => f.name || f.key).join(", ");
+  const infoEl = document.createElement("div");
+  infoEl.id = "figmaFilesInfo";
+  infoEl.style.cssText = "margin-top:6px; font-size:10px; color:#888; padding:0 2px;";
+  infoEl.textContent = `Registered files: ${names}`;
+
+  // Insert after clientSelect's parent .field div
+  const clientField = clientSelect.closest(".field");
+  if (clientField && clientField.parentNode) {
+    clientField.parentNode.insertBefore(infoEl, clientField.nextSibling);
+  }
+}
+
 // ── Event: client selection ───────────────────────────────────────────────────
 
 clientSelect.addEventListener("change", async () => {
@@ -407,6 +486,8 @@ clientSelect.addEventListener("change", async () => {
     campaignSelect.innerHTML = '<option value="">Select a client first</option>';
     campaignSelect.disabled = true;
     btnFetch.disabled = true;
+    const existing = document.getElementById("figmaFilesInfo");
+    if (existing) existing.remove();
     return;
   }
   savePrefs(clientId, "", "");
@@ -422,8 +503,7 @@ monthSelect.addEventListener("change", () => {
   savePrefs(undefined, undefined, monthValue);
   savedCampaignId = undefined;
   currentPayload = null;
-  btnApply.disabled = true;
-  frameListEl.style.display = "none";
+  hideCopyStatus();
   hideStatus();
   updateExportButton();
   populateCampaignDropdown(monthValue);
@@ -440,8 +520,7 @@ campaignSelect.addEventListener("change", () => {
     btnFetch.disabled = true;
   }
   currentPayload = null;
-  btnApply.disabled = true;
-  frameListEl.style.display = "none";
+  hideCopyStatus();
   hideStatus();
   updateExportButton();
 });
@@ -453,9 +532,9 @@ btnFetch.addEventListener("click", async () => {
   if (!campaignId) return;
 
   btnFetch.disabled = true;
-  btnApply.disabled = true;
-  currentPayload = null;
+  hideCopyStatus();
   frameListEl.style.display = "none";
+  currentPayload = null;
   updateExportButton();
 
   const campaign = campaigns.find((c) => c.id === campaignId);
@@ -471,47 +550,99 @@ btnFetch.addEventListener("click", async () => {
     const data: SyncPayload = await res.json();
     currentPayload = data;
     showStatus(
-      `✓ ${data.frameCount} frame${data.frameCount !== 1 ? "s" : ""} found for "${data.campaignName}"`,
-      "success"
+      `✓ ${data.frameCount} frame${data.frameCount !== 1 ? "s" : ""} fetched for "${data.campaignName}" — checking status…`,
+      "info"
     );
-    renderFrameList(data.frames);
-    btnApply.disabled = false;
     updateExportButton();
+
+    // Automatically trigger copy status check
+    parent.postMessage(
+      {
+        pluginMessage: {
+          type: "CHECK_COPY_STATUS",
+          campaignName: data.campaignName,
+          frames: data.frames,
+        },
+      },
+      "*"
+    );
   } catch (err) {
     showStatus(`Fetch failed: ${String(err)}`, "error");
-  } finally {
     btnFetch.disabled = false;
   }
+  // Note: btnFetch re-enabled after COPY_STATUS arrives (or on error above)
 });
 
 // ── Step 4: Apply copy ────────────────────────────────────────────────────────
 
-btnApply.addEventListener("click", () => {
+function triggerApply(updatesOnly: boolean) {
   if (!currentPayload) return;
-  btnApply.disabled = true;
+
+  let framesToApply = currentPayload.frames;
+
+  if (updatesOnly && currentStatusResults.length > 0) {
+    // Filter to only frames/slides that are UPDATED or NEW
+    const needsUpdate = new Set(
+      currentStatusResults
+        .filter((r) => r.status === "UPDATED" || r.status === "NEW")
+        .map((r) => r.name)
+    );
+
+    framesToApply = currentPayload.frames
+      .map((f) => {
+        if (f.type === "Carousel" && f.slides) {
+          // Filter slides
+          const filteredSlides = f.slides.filter((s) => {
+            const slideName = `${f.figmaFrame}_Slide_${s.index}`;
+            return needsUpdate.has(slideName);
+          });
+          if (filteredSlides.length === 0) return null;
+          return { ...f, slides: filteredSlides };
+        } else {
+          // Standard frame
+          return needsUpdate.has(f.figmaFrame) ? f : null;
+        }
+      })
+      .filter((f): f is FramePayload => f !== null);
+  }
+
+  if (framesToApply.length === 0) {
+    showStatus("Nothing to apply — all frames are up to date.", "success");
+    return;
+  }
+
+  btnApplyAll.disabled = true;
+  btnApplyUpdates.disabled = true;
   btnFetch.disabled = true;
   progressWrap.style.display = "block";
   progressBar.style.width = "0%";
-  showStatus("Applying copy to Figma frames…", "loading");
+  showStatus(
+    updatesOnly
+      ? `Applying ${framesToApply.length} updated/new frame(s)…`
+      : "Applying copy to all Figma frames…",
+    "loading"
+  );
 
   parent.postMessage(
     {
       pluginMessage: {
         type: "APPLY_COPY",
         campaignName: currentPayload.campaignName,
-        frames: currentPayload.frames,
+        frames: framesToApply,
       },
     },
     "*"
   );
-});
+}
+
+btnApplyAll.addEventListener("click", () => triggerApply(false));
+btnApplyUpdates.addEventListener("click", () => triggerApply(true));
 
 // ── Step 5: Export to Mente ───────────────────────────────────────────────────
 
 btnExport.addEventListener("click", () => {
   if (!currentPayload) return;
 
-  // Reset export state
   exportFrames = [];
   exportDoneCount = 0;
   exportListEl.style.display = "none";
@@ -522,37 +653,31 @@ btnExport.addEventListener("click", () => {
 
   btnExport.disabled = true;
   btnFetch.disabled = true;
-  btnApply.disabled = true;
+  btnApplyAll.disabled = true;
+  btnApplyUpdates.disabled = true;
 
   parent.postMessage({ pluginMessage: { type: "EXPORT_TO_MENTE" } }, "*");
 });
 
 // ── Upload helper ─────────────────────────────────────────────────────────────
 
-/**
- * Find the Airtable record ID for a given Figma frame name.
- * Handles both standard frames and carousel slides (_Slide_N suffix).
- */
 function findRecordId(frameName: string): string | null {
   if (!currentPayload) return null;
 
-  // Standard frame: exact match on figmaFrame
   const standard = currentPayload.frames.find((f) => f.figmaFrame === frameName);
   if (standard) return standard.recordId;
 
-  // Carousel slide: ..._Slide_N
   const slideMatch = frameName.match(/^(.+)_Slide_(\d+)$/);
   if (slideMatch) {
     const parentName = slideMatch[1];
-    const slideIndex = parseInt(slideMatch[2], 10); // 1-based
-    const parent = currentPayload.frames.find(
+    const slideIndex = parseInt(slideMatch[2], 10);
+    const parentFrame = currentPayload.frames.find(
       (f) => f.type === "Carousel" && f.figmaFrame === parentName
     );
-    if (parent && parent.slides) {
-      const slide = parent.slides.find((s) => s.index === slideIndex);
+    if (parentFrame && parentFrame.slides) {
+      const slide = parentFrame.slides.find((s) => s.index === slideIndex);
       if (slide && slide.recordId) return slide.recordId;
-      // Fallback: use array position
-      const byPosition = parent.slides[slideIndex - 1];
+      const byPosition = parentFrame.slides[slideIndex - 1];
       if (byPosition && byPosition.recordId) return byPosition.recordId;
     }
   }
@@ -560,9 +685,6 @@ function findRecordId(frameName: string): string | null {
   return null;
 }
 
-/**
- * Get the client subdomain for the selected client.
- */
 function getClientSubdomain(): string {
   const clientId = clientSelect.value;
   const client = clients.find((c) => c.id === clientId);
@@ -572,7 +694,6 @@ function getClientSubdomain(): string {
 async function uploadFrame(frameName: string, base64: string): Promise<void> {
   const idx = exportFrames.findIndex((f) => f.frameName === frameName);
 
-  // Find record ID
   const recordId = findRecordId(frameName);
   if (!recordId) {
     if (idx >= 0) exportFrames[idx].status = "skipped";
@@ -588,7 +709,6 @@ async function uploadFrame(frameName: string, base64: string): Promise<void> {
   const imageData = `data:image/png;base64,${base64}`;
 
   try {
-    // 1. Upload image
     const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -600,7 +720,6 @@ async function uploadFrame(frameName: string, base64: string): Promise<void> {
       throw new Error(err.error || `HTTP ${uploadRes.status}`);
     }
 
-    // 2. Update status to Client_Review
     await fetch(`${clientUrl}/api/banners/${recordId}/plugin-update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -634,6 +753,13 @@ window.onmessage = async (event: MessageEvent) => {
     loadClients();
   }
 
+  if (msg.type === "COPY_STATUS") {
+    const results = msg.frames as FrameStatusResult[];
+    renderCopyStatus(results);
+    hideStatus(); // clear the "checking status…" message
+    btnFetch.disabled = false;
+  }
+
   if (msg.type === "PROGRESS") {
     const pct = Math.round((msg.current / msg.total) * 100);
     progressBar.style.width = `${pct}%`;
@@ -653,13 +779,15 @@ window.onmessage = async (event: MessageEvent) => {
       `✓ Done — ${parts.join(", ") || "0 frames"}.${errorSummary}`,
       msg.errors.length > 0 ? "error" : "success"
     );
-    btnApply.disabled = false;
+    btnApplyAll.disabled = false;
+    btnApplyUpdates.disabled = (currentStatusResults.filter((r) => r.status !== "UP_TO_DATE").length) === 0;
     btnFetch.disabled = false;
   }
 
   if (msg.type === "ERROR") {
     showStatus(`Error: ${msg.message}`, "error");
-    btnApply.disabled = false;
+    btnApplyAll.disabled = false;
+    btnApplyUpdates.disabled = false;
     btnFetch.disabled = false;
   }
 
@@ -672,15 +800,13 @@ window.onmessage = async (event: MessageEvent) => {
 
   if (msg.type === "EXPORT_PROGRESS") {
     exportTotal = msg.total as number;
-    const pct = Math.round(((msg.current as number) / exportTotal) * 50); // first 50% = export phase
+    const pct = Math.round(((msg.current as number) / exportTotal) * 50);
     exportProgressBar.style.width = `${pct}%`;
     showExportStatus(`Exporting… ${msg.current}/${exportTotal}: ${msg.frameName}`, "loading");
 
-    // Pre-populate export list with "waiting" entries on first progress message
     if ((msg.current as number) === 1) {
       exportFrames = [];
     }
-    // Add this frame to the list if not already present
     if (!exportFrames.find((f) => f.frameName === msg.frameName)) {
       exportFrames.push({ frameName: msg.frameName as string, status: "waiting" });
       renderExportList();
@@ -688,7 +814,6 @@ window.onmessage = async (event: MessageEvent) => {
   }
 
   if (msg.type === "FRAME_EXPORTED") {
-    // Upload the frame
     await uploadFrame(msg.frameName as string, msg.base64 as string);
     exportDoneCount++;
     const uploadPct = 50 + Math.round((exportDoneCount / exportTotal) * 50);
@@ -722,7 +847,8 @@ window.onmessage = async (event: MessageEvent) => {
     );
     btnExport.disabled = false;
     btnFetch.disabled = false;
-    btnApply.disabled = false;
+    btnApplyAll.disabled = false;
+    btnApplyUpdates.disabled = false;
     updateExportButton();
   }
 
@@ -730,7 +856,8 @@ window.onmessage = async (event: MessageEvent) => {
     showExportStatus(`Export error: ${msg.message}`, "error");
     btnExport.disabled = false;
     btnFetch.disabled = false;
-    btnApply.disabled = false;
+    btnApplyAll.disabled = false;
+    btnApplyUpdates.disabled = false;
     updateExportButton();
   }
 };

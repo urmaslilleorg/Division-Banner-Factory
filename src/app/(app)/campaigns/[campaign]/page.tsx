@@ -227,6 +227,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   let banners;
   let clientVariables: import("@/lib/types").ClientVariable[] = [];
   let clientFormatIds: string[] = [];
+  let clientFigmaAssetFile = "";
 
   try {
     const [fetchedBanners, clientRecord] = await Promise.all([
@@ -254,6 +255,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     banners = fetchedBanners;
     clientVariables = clientRecord?.clientVariables ?? [];
     clientFormatIds = clientRecord?.formatIds ?? [];
+    clientFigmaAssetFile = clientRecord?.figmaAssetFile ?? "";
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return (
@@ -312,6 +314,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         initialFileKey={figmaCampaignFile}
         initialLastSync={lastFigmaSync}
         hasFigmaToken={!!process.env.FIGMA_ACCESS_TOKEN}
+        clientFigmaAssetFile={clientFigmaAssetFile}
+        bannerCount={banners.filter((b) => b.bannerType !== "Slide").length}
       />
 
       {/* Two-tab layout: Copy & Assets | Preview */}

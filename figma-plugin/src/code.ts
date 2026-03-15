@@ -62,7 +62,13 @@ interface ExportToMenteMessage {
   type: "EXPORT_TO_MENTE";
 }
 
-type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage;
+interface CheckCopyStatusMessage {
+  type: "CHECK_COPY_STATUS";
+  campaignName: string;
+  frames: FramePayload[];
+}
+
+type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage | CheckCopyStatusMessage;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -274,6 +280,66 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
     figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
   }
 
+  // ── CHECK_COPY_STATUS: Compare Airtable copy against current Figma text layers ──
+  if (msg.type === "CHECK_COPY_STATUS") {
+    const { campaignName, frames } = msg;
+
+    // Find the campaign page (may not exist yet)
+    const page = figma.root.children.find(
+      (p) => p.type === "PAGE" && p.name === campaignName
+    ) as PageNode | undefined;
+
+    type FrameStatus = "UP_TO_DATE" | "UPDATED" | "NEW";
+    const results: { name: string; status: FrameStatus; changedFields: string[] }[] = [];
+
+    for (const frameData of frames) {
+      if (frameData.type === "Carousel" && frameData.slides) {
+        // ── Carousel: check each slide individually ──────────────────────────
+        for (const slide of frameData.slides) {
+          const slideName = `${frameData.figmaFrame}_Slide_${slide.index}`;
+          const oldSlideName = deriveOldMasterName(slideName);
+
+          const existing = page
+            ? (page.findOne((n) => n.type === "FRAME" && (n.name === slideName || (!!oldSlideName && n.name === oldSlideName))) as FrameNode | null)
+            : null;
+
+          if (!existing) {
+            results.push({ name: slideName, status: "NEW", changedFields: [] });
+            continue;
+          }
+
+          const changedFields = compareFrameCopy(existing, slide.copy, slide.activeVariables);
+          results.push({
+            name: slideName,
+            status: changedFields.length > 0 ? "UPDATED" : "UP_TO_DATE",
+            changedFields,
+          });
+        }
+      } else {
+        // ── Standard frame ───────────────────────────────────────────────────
+        const oldName = deriveOldMasterName(frameData.figmaFrame);
+        const existing = page
+          ? (page.findOne((n) => n.type === "FRAME" && (n.name === frameData.figmaFrame || (!!oldName && n.name === oldName))) as FrameNode | null)
+          : null;
+
+        if (!existing) {
+          results.push({ name: frameData.figmaFrame, status: "NEW", changedFields: [] });
+          continue;
+        }
+
+        const changedFields = compareFrameCopy(existing, frameData.copy, frameData.activeVariables);
+        results.push({
+          name: frameData.figmaFrame,
+          status: changedFields.length > 0 ? "UPDATED" : "UP_TO_DATE",
+          changedFields,
+        });
+      }
+    }
+
+    figma.ui.postMessage({ type: "COPY_STATUS", frames: results });
+    return;
+  }
+
   // ── EXPORT: Export campaign frames as PNG and send to UI for upload ──────────
   if (msg.type === "EXPORT_TO_MENTE") {
     const page = figma.currentPage;
@@ -371,6 +437,65 @@ function deriveOldMasterName(newName: string): string | null {
   if (underscoreIdx < 0) return null;
   const withoutCampaign = newName.slice(underscoreIdx + 1);
   return `_MASTER_${withoutCampaign}`;
+}
+
+/**
+ * Compare Airtable copy values against the current text/image layers in a Figma frame.
+ * Returns the list of slot names that differ (changed or missing in Figma).
+ *
+ * For text slots: compares textNode.characters against copy[slot].
+ * For image slots (Image, Illustration): if copy has a URL but the rect has no
+ *   IMAGE fill (or has a solid grey placeholder fill), it's considered changed.
+ */
+function compareFrameCopy(
+  frame: FrameNode,
+  copy: Record<string, string>,
+  activeVariables: string[]
+): string[] {
+  const changed: string[] = [];
+
+  // Build a map of text layer name → characters
+  const textMap = new Map<string, string>();
+  const textNodes = frame.findAll((n) => n.type === "TEXT") as TextNode[];
+  for (const node of textNodes) {
+    textMap.set(node.name.toUpperCase().replace(/\s+/g, "_"), node.characters);
+  }
+
+  // Build a map of rect name → has real image fill
+  const rectImageMap = new Map<string, boolean>();
+  const rectNodes = frame.findAll((n) => n.type === "RECTANGLE") as RectangleNode[];
+  for (const rect of rectNodes) {
+    const key = rect.name.toUpperCase().replace(/\s+/g, "_");
+    const hasImageFill = rect.fills !== figma.mixed &&
+      (rect.fills as readonly Paint[]).some((f) => f.type === "IMAGE");
+    rectImageMap.set(key, hasImageFill);
+  }
+
+  for (const slot of activeVariables) {
+    const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
+    const copyValue = copy[slot] ?? "";
+
+    if (IMAGE_SLOTS.has(slot)) {
+      // Image slot: check if a rect with an IMAGE fill exists
+      const hasImageFill = rectImageMap.get(slotKey) ?? false;
+      const hasUrl = copyValue.startsWith("http") || copyValue.startsWith("data:image");
+      if (hasUrl && !hasImageFill) {
+        changed.push(slot);
+      }
+      // If copy is empty and there's no rect, that's fine — no change
+    } else {
+      // Text slot
+      const figmaText = textMap.get(slotKey);
+      if (figmaText === undefined) {
+        // Layer doesn't exist in Figma yet — only flag if copy is non-empty
+        if (copyValue.trim() !== "") changed.push(slot);
+      } else if (figmaText !== copyValue) {
+        changed.push(slot);
+      }
+    }
+  }
+
+  return changed;
 }
 
 // ── Frame creation ───────────────────────────────────────────────────────────────

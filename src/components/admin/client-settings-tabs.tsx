@@ -72,10 +72,38 @@ export default function ClientSettingsTabs({
   const [formatsSaving, setFormatsSaving] = useState(false);
   const [formatsFlash, setFormatsFlash] = useState<string | null>(null);
 
-  // ── Figma tab state ────────────────────────────────────────────────────────
-  const [figmaAssetFile, setFigmaAssetFile] = useState(client.figmaAssetFile);
+    // ── Figma tab state ──────────────────────────────────────────
+  interface FigmaFileEntry {
+    key: string;
+    name: string;
+    owner: string;
+    addedAt: string;
+  }
+
+  function parseFigmaFiles(raw: string): FigmaFileEntry[] {
+    if (!raw || !raw.trim()) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as FigmaFileEntry[];
+      // Legacy: single key string
+      if (typeof parsed === "string" && parsed.trim()) {
+        return [{ key: parsed.trim(), name: "", owner: "", addedAt: new Date().toISOString() }];
+      }
+    } catch {
+      // Legacy: raw key string
+      if (raw.trim() && !raw.trim().startsWith("[")) {
+        return [{ key: raw.trim(), name: "", owner: "", addedAt: new Date().toISOString() }];
+      }
+    }
+    return [];
+  }
+
+  const [figmaFiles, setFigmaFiles] = useState<FigmaFileEntry[]>(() => parseFigmaFiles(client.figmaAssetFile));
   const [figmaSaving, setFigmaSaving] = useState(false);
   const [figmaFlash, setFigmaFlash] = useState<string | null>(null);
+  const [newFileKey, setNewFileKey] = useState("");
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileOwner, setNewFileOwner] = useState("");
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const setTab = (id: TabId) => {
@@ -129,14 +157,14 @@ export default function ClientSettingsTabs({
     }
   };
 
-  const saveFigma = async () => {
+  const saveFigma = async (files: FigmaFileEntry[]) => {
     setFigmaSaving(true);
     setFigmaFlash(null);
     try {
       const res = await fetch(`/api/admin/clients/${clientId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ figmaAssetFile }),
+        body: JSON.stringify({ figmaAssetFile: JSON.stringify(files) }),
       });
       if (!res.ok) throw new Error(await res.text());
       setFigmaFlash("Figma settings saved");
@@ -145,6 +173,33 @@ export default function ClientSettingsTabs({
     } finally {
       setFigmaSaving(false);
     }
+  };
+
+  const addFigmaFile = async () => {
+    const key = newFileKey.trim();
+    if (!key) return;
+    if (figmaFiles.some((f) => f.key === key)) {
+      setFigmaFlash("That file key is already registered.");
+      return;
+    }
+    const entry: FigmaFileEntry = {
+      key,
+      name: newFileName.trim(),
+      owner: newFileOwner.trim(),
+      addedAt: new Date().toISOString(),
+    };
+    const updated = [...figmaFiles, entry];
+    setFigmaFiles(updated);
+    setNewFileKey("");
+    setNewFileName("");
+    setNewFileOwner("");
+    await saveFigma(updated);
+  };
+
+  const removeFigmaFile = async (key: string) => {
+    const updated = figmaFiles.filter((f) => f.key !== key);
+    setFigmaFiles(updated);
+    await saveFigma(updated);
   };
 
   // ── Templates data for TemplatesManager ────────────────────────────────────
@@ -375,44 +430,116 @@ export default function ClientSettingsTabs({
         </div>
       )}
 
-      {/* ── Tab: Figma ────────────────────────────────────────────────────── */}
+       {/* ── Tab: Figma ────────────────────────────────────────────────── */}
       {activeTab === "figma" && (
-        <div className="max-w-2xl space-y-5">
+        <div className="max-w-2xl space-y-6">
+
+          {/* Registered Figma files list */}
+          <div>
+            <h2 className="text-base font-medium text-gray-900 mb-1">Registered Figma files</h2>
+            <p className="text-sm text-gray-500 mb-3">
+              Files registered here are shown in the Figma plugin after selecting this client.
+              The plugin uses these to help designers navigate to the correct file.
+            </p>
+
+            {figmaFiles.length === 0 ? (
+              <p className="text-sm text-gray-400 italic">No files registered yet.</p>
+            ) : (
+              <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                {figmaFiles.map((f) => (
+                  <div key={f.key} className="flex items-start gap-3 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {f.name || <span className="text-gray-400 italic">Unnamed file</span>}
+                      </p>
+                      <p className="text-xs font-mono text-gray-500 mt-0.5 truncate">{f.key}</p>
+                      {f.owner && (
+                        <p className="text-xs text-gray-400 mt-0.5">Owner: {f.owner}</p>
+                      )}
+                    </div>
+                    <a
+                      href={`https://www.figma.com/file/${f.key}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex-shrink-0 mt-0.5"
+                    >
+                      Open ↗
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => removeFigmaFile(f.key)}
+                      disabled={figmaSaving}
+                      className="text-xs text-red-500 hover:text-red-700 flex-shrink-0 mt-0.5 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add new file form */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <h3 className="text-sm font-medium text-gray-700">Add a Figma file</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">File key <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newFileKey}
+                  onChange={(e) => setNewFileKey(e.target.value)}
+                  placeholder="abc123XYZ"
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-400"
+                />
+                <p className="mt-0.5 text-xs text-gray-400">From figma.com/file/<strong>[key]</strong>/</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">File name</label>
+                <input
+                  type="text"
+                  value={newFileName}
+                  onChange={(e) => setNewFileName(e.target.value)}
+                  placeholder="e.g. Avene — Banner Designs"
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Owner / designer</label>
+              <input
+                type="text"
+                value={newFileOwner}
+                onChange={(e) => setNewFileOwner(e.target.value)}
+                placeholder="e.g. Mari Tamm"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+              />
+            </div>
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={addFigmaFile}
+                disabled={figmaSaving || !newFileKey.trim()}
+                className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              >
+                {figmaSaving ? "Saving…" : "Add file"}
+              </button>
+              {figmaFlash && (
+                <span className={`text-sm ${figmaFlash.startsWith("Error") || figmaFlash.startsWith("That") ? "text-red-600" : "text-green-600"}`}>
+                  {figmaFlash}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Legacy info box */}
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-            <p className="font-medium mb-1">Figma asset library setup</p>
+            <p className="font-medium mb-1">Figma asset library naming convention</p>
             <p>
-              Create a Figma file named <strong>{client.name} — Asset Library</strong> with
+              Recommended file name: <strong>{client.name} — Asset Library</strong> with
               top-level frames: <code>Backgrounds/</code>, <code>Illustrations/</code>,{" "}
               <code>Logos/</code>, <code>Overlays/</code>, <code>Products/</code>
             </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Figma file key</label>
-            <input
-              type="text"
-              value={figmaAssetFile}
-              onChange={(e) => setFigmaAssetFile(e.target.value)}
-              placeholder="e.g. abc123XYZ"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-            <p className="mt-1 text-xs text-gray-400">
-              Paste the Figma file key from the URL: figma.com/file/<strong>[key]</strong>/...
-            </p>
-          </div>
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={saveFigma}
-              disabled={figmaSaving}
-              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
-            >
-              {figmaSaving ? "Saving…" : "Save Figma settings"}
-            </button>
-            {figmaFlash && (
-              <span className={`text-sm ${figmaFlash.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
-                {figmaFlash}
-              </span>
-            )}
           </div>
         </div>
       )}

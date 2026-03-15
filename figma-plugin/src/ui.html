@@ -191,6 +191,40 @@
       66%  { content: '..'; }
       100% { content: '...'; }
     }
+
+    /* ── Copy status list ────────────────────────────────────────── */
+    .copy-status-list {
+      margin-top: 10px;
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .copy-status-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .copy-status-item:last-child { border-bottom: none; }
+    .copy-status-icon { font-size: 12px; min-width: 16px; flex-shrink: 0; }
+    .copy-status-name { font-family: monospace; color: #333; font-size: 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-status-label { font-size: 10px; color: #888; flex-shrink: 0; }
+    .copy-status-changed { font-size: 10px; color: #6366f1; margin-top: 1px; }
+
+    .copy-status-summary {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #555;
+      padding: 0 2px;
+    }
+
+    .btn-apply-updates { background: #6366f1; color: #fff; }
+    .btn-apply-updates:hover:not(:disabled) { background: #4f46e5; }
   </style>
 </head>
 <body>
@@ -217,11 +251,10 @@
     </select>
   </div>
 
-  <!-- ── IMPORT section ──────────────────────────────────────── -->
+  <!-- ── IMPORT section ──────────────────────────────────────────── -->
   <div class="section-label">Import — Mente → Figma</div>
   <div class="btn-row">
     <button class="btn btn-secondary" id="btnFetch" disabled>Fetch frames</button>
-    <button class="btn btn-primary"   id="btnApply" disabled>Apply copy</button>
   </div>
 
   <div id="status" class="status info" style="display:none"></div>
@@ -232,9 +265,20 @@
     </div>
   </div>
 
+  <!-- Copy status list (shown after Fetch + CHECK_COPY_STATUS) -->
+  <div id="copyStatusList" class="copy-status-list" style="display:none"></div>
+  <div id="copyStatusSummary" class="copy-status-summary" style="display:none"></div>
+
+  <!-- Apply buttons (shown after status check) -->
+  <div class="btn-row" id="applyBtnRow" style="display:none; margin-top:8px;">
+    <button class="btn btn-secondary" id="btnApplyAll"     disabled>Apply all</button>
+    <button class="btn btn-apply-updates" id="btnApplyUpdates" disabled>Apply updates only</button>
+  </div>
+
+  <!-- Legacy frame list (hidden when copy status is shown) -->
   <div id="frameList" class="frame-list" style="display:none"></div>
 
-  <!-- ── EXPORT section ──────────────────────────────────────── -->
+  <!-- ── EXPORT section ──────────────────────────────────────────── -->
   <hr class="divider" />
   <div class="section-label">Export — Figma → Mente</div>
 

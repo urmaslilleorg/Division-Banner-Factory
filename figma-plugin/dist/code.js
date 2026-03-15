@@ -160,6 +160,47 @@
       }
       figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
     }
+    if (msg.type === "CHECK_COPY_STATUS") {
+      const { campaignName, frames } = msg;
+      const page = figma.root.children.find(
+        (p) => p.type === "PAGE" && p.name === campaignName
+      );
+      const results = [];
+      for (const frameData of frames) {
+        if (frameData.type === "Carousel" && frameData.slides) {
+          for (const slide of frameData.slides) {
+            const slideName = `${frameData.figmaFrame}_Slide_${slide.index}`;
+            const oldSlideName = deriveOldMasterName(slideName);
+            const existing = page ? page.findOne((n) => n.type === "FRAME" && (n.name === slideName || !!oldSlideName && n.name === oldSlideName)) : null;
+            if (!existing) {
+              results.push({ name: slideName, status: "NEW", changedFields: [] });
+              continue;
+            }
+            const changedFields = compareFrameCopy(existing, slide.copy, slide.activeVariables);
+            results.push({
+              name: slideName,
+              status: changedFields.length > 0 ? "UPDATED" : "UP_TO_DATE",
+              changedFields
+            });
+          }
+        } else {
+          const oldName = deriveOldMasterName(frameData.figmaFrame);
+          const existing = page ? page.findOne((n) => n.type === "FRAME" && (n.name === frameData.figmaFrame || !!oldName && n.name === oldName)) : null;
+          if (!existing) {
+            results.push({ name: frameData.figmaFrame, status: "NEW", changedFields: [] });
+            continue;
+          }
+          const changedFields = compareFrameCopy(existing, frameData.copy, frameData.activeVariables);
+          results.push({
+            name: frameData.figmaFrame,
+            status: changedFields.length > 0 ? "UPDATED" : "UP_TO_DATE",
+            changedFields
+          });
+        }
+      }
+      figma.ui.postMessage({ type: "COPY_STATUS", frames: results });
+      return;
+    }
     if (msg.type === "EXPORT_TO_MENTE") {
       const page = figma.currentPage;
       const isExportableFrame = (n) => n.type === "FRAME" && !n.name.startsWith("__label__");
@@ -223,6 +264,42 @@
       return null;
     const withoutCampaign = newName.slice(underscoreIdx + 1);
     return `_MASTER_${withoutCampaign}`;
+  }
+  function compareFrameCopy(frame, copy, activeVariables) {
+    var _a, _b;
+    const changed = [];
+    const textMap = /* @__PURE__ */ new Map();
+    const textNodes = frame.findAll((n) => n.type === "TEXT");
+    for (const node of textNodes) {
+      textMap.set(node.name.toUpperCase().replace(/\s+/g, "_"), node.characters);
+    }
+    const rectImageMap = /* @__PURE__ */ new Map();
+    const rectNodes = frame.findAll((n) => n.type === "RECTANGLE");
+    for (const rect of rectNodes) {
+      const key = rect.name.toUpperCase().replace(/\s+/g, "_");
+      const hasImageFill = rect.fills !== figma.mixed && rect.fills.some((f) => f.type === "IMAGE");
+      rectImageMap.set(key, hasImageFill);
+    }
+    for (const slot of activeVariables) {
+      const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
+      const copyValue = (_a = copy[slot]) != null ? _a : "";
+      if (IMAGE_SLOTS.has(slot)) {
+        const hasImageFill = (_b = rectImageMap.get(slotKey)) != null ? _b : false;
+        const hasUrl = copyValue.startsWith("http") || copyValue.startsWith("data:image");
+        if (hasUrl && !hasImageFill) {
+          changed.push(slot);
+        }
+      } else {
+        const figmaText = textMap.get(slotKey);
+        if (figmaText === void 0) {
+          if (copyValue.trim() !== "")
+            changed.push(slot);
+        } else if (figmaText !== copyValue) {
+          changed.push(slot);
+        }
+      }
+    }
+    return changed;
   }
   async function createStandardFrame(frameData) {
     const frame = figma.createFrame();
