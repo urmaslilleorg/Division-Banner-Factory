@@ -47,6 +47,8 @@ export interface ClientRecord {
   clientVariables: ClientVariable[];
   /** Parsed Client_Templates JSON — empty array if not set */
   clientTemplates: CampaignTemplate[];
+  /** Parsed Video_Templates JSON — empty array if not set */
+  videoTemplates: Array<{ id: string; name: string; duration: number; fps?: number; description?: string; keyframes?: unknown[] }>;
 }
 
 /**
@@ -63,6 +65,19 @@ function parseClientVariables(raw: string | undefined): ClientVariable[] {
         typeof v === "object" && v !== null &&
         typeof v.slot === "string" && typeof v.label === "string"
     );
+  } catch {
+    return [];
+  }
+}
+
+type VideoTemplate = { id: string; name: string; duration: number; fps?: number; description?: string; keyframes?: unknown[] };
+
+function parseVideoTemplates(raw: string | undefined): VideoTemplate[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as VideoTemplate[];
   } catch {
     return [];
   }
@@ -98,6 +113,7 @@ function parseClientRecord(record: AirtableRecord): ClientRecord {
     notes: (f["Notes"] as string) || "",
     clientVariables: parseClientVariables(f["Client_Variables"] as string | undefined),
     clientTemplates: parseClientTemplates(f["Client_Templates"] as string | undefined),
+    videoTemplates: parseVideoTemplates(f["Video_Templates"] as string | undefined),
   };
 }
 

@@ -28,6 +28,8 @@ export async function PATCH(
       figmaAssetFile,
       logoUrl,
       clientVariables,
+      clientTemplates,
+      videoTemplates,
     } = body;
 
     const fields: Record<string, unknown> = {};
@@ -46,6 +48,8 @@ export async function PATCH(
     if (figmaAssetFile !== undefined) fields["Figma_Asset_File"] = figmaAssetFile;
     if (logoUrl !== undefined) fields["Logo_URL"] = logoUrl;
     if (clientVariables !== undefined) fields["Client_Variables"] = clientVariables;
+    if (clientTemplates !== undefined) fields["Client_Templates"] = clientTemplates;
+    if (videoTemplates !== undefined) fields["Video_Templates"] = videoTemplates;
 
     const res = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${CLIENTS_TABLE}/${id}`,

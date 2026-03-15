@@ -257,14 +257,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     clientVariables = clientRecord?.clientVariables ?? [];
     clientFormatIds = clientRecord?.formatIds ?? [];
     clientFigmaAssetFile = clientRecord?.figmaAssetFile ?? "";
-    // Parse video templates from client record
-    try {
-      const rawVT = (clientRecord as unknown as Record<string, string> | null)?.["videoTemplates"] ?? "";
-      if (rawVT) {
-        const parsed = JSON.parse(rawVT);
-        if (Array.isArray(parsed)) clientVideoTemplates = parsed;
-      }
-    } catch { /* ignore */ }
+    // videoTemplates is now parsed by airtable-clients.ts — no cast needed
+    clientVideoTemplates = (clientRecord?.videoTemplates ?? []) as Array<{ id: string; name: string; duration: number }>;
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return (

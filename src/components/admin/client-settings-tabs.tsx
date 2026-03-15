@@ -109,15 +109,8 @@ export default function ClientSettingsTabs({
   const [newFileOwner, setNewFileOwner] = useState("");
 
   // ── Video tab state ────────────────────────────────────────────────────────
-  function parseVideoTemplates(raw: string): VideoTemplate[] {
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as VideoTemplate[];
-    } catch { /* ignore */ }
-    return [];
-  }
-  const initialVideoTemplates = parseVideoTemplates((client as unknown as Record<string, string>)["videoTemplates"] || "");
+  // client.videoTemplates is now parsed by airtable-clients.ts — no cast needed
+  const initialVideoTemplates: VideoTemplate[] = (client.videoTemplates as VideoTemplate[] | undefined) ?? [];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const setTab = (id: TabId) => {

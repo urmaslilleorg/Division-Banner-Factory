@@ -217,13 +217,15 @@ export default function BannerGrid({
       byParent[key].sort((a, b) => (a.slideIndex ?? 0) - (b.slideIndex ?? 0));
     }
 
-    // Only show banners that have an image (Standard) or have at least one slide with an image (Carousel)
+    // Show banners that have an image, a video URL, or are flagged as video.
+    // Carousel banners are shown if at least one slide has an image.
     const display = banners.filter((b) => {
       if (b.bannerType === "Slide") return false;
       if (b.bannerType === "Carousel") {
         return (byParent[b.id] ?? []).some((s) => !!s.imageUrl);
       }
-      return !!b.imageUrl;
+      // Standard: show if there is a static image, a video URL, or isVideo flag
+      return !!b.imageUrl || !!b.videoUrl || b.isVideo === true;
     });
 
     return { displayBanners: display, slidesByParentId: byParent };
