@@ -74,23 +74,6 @@ export default clerkMiddleware((auth, request: NextRequest) => {
     return NextResponse.json({ error: "Unknown client" }, { status: 404 });
   }
 
-  // If the user is signed in and hits the landing page ("/"), redirect them
-  // to the right place immediately — before the page renders — to avoid
-  // React hydration mismatches from server/client auth state differences.
-  if (request.nextUrl.pathname === "/") {
-    const { userId, sessionClaims } = auth();
-    if (userId) {
-      const role =
-        (sessionClaims?.metadata as { role?: string } | undefined)?.role ??
-        (sessionClaims?.publicMetadata as { role?: string } | undefined)?.role ??
-        "viewer";
-      const dest = subdomain
-        ? new URL("/campaigns?preview=true", request.url)
-        : new URL(role === "division_admin" ? "/admin" : "/campaigns?preview=true", request.url);
-      return NextResponse.redirect(dest);
-    }
-  }
-
   // Protect non-public routes — redirect unauthenticated users to landing page
   if (!isPublicRoute(request)) {
     auth().protect({ unauthenticatedUrl: new URL("/", request.url).toString() });
