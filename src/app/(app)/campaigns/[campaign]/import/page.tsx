@@ -28,6 +28,7 @@ const BF_FIELDS = [
   { value: "CTA", label: "CTA" },
   { value: "Price_Tag", label: "Price_Tag" },
   { value: "Illustration", label: "Illustration" },
+  { value: "Image", label: "Image" },
   { value: "Product_URL", label: "Product_URL" },
   { value: "Promo_Flag", label: "Promo_Flag" },
   { value: "Import_Source", label: "Import_Source" },

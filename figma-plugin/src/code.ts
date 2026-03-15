@@ -74,6 +74,7 @@ const SLOT_Y: Record<string, number> = {
   CTA: 220,
   PRICE_TAG: 280,
   ILLUSTRATION: 340,
+  IMAGE: 400,
 };
 
 /** Font size for each slot. */
@@ -84,6 +85,7 @@ const SLOT_SIZE: Record<string, number> = {
   CTA: 20,
   PRICE_TAG: 24,
   ILLUSTRATION: 16,
+  IMAGE: 16,
 };
 
 /** Font style for each slot. */
@@ -94,7 +96,11 @@ const SLOT_STYLE: Record<string, string> = {
   CTA: "Bold",
   PRICE_TAG: "Bold",
   ILLUSTRATION: "Italic",
+  IMAGE: "Italic",
 };
+
+/** Slots that should be placed as image fills (not text layers) when value is a URL or data URL. */
+const IMAGE_SLOTS = new Set(["Illustration", "Image"]);
 /** Gap between carousel slides placed horizontally. */
 const SLIDE_GAP = 100;
 
@@ -340,7 +346,9 @@ async function createSlideFrame(
 }
 
 /**
- * Add text nodes to a frame for each active variable slot.
+ * Add nodes to a frame for each active variable slot.
+ * Image/Illustration slots with a URL value → image fill rectangle.
+ * All other slots (or text values for image slots) → text node.
  * Positions are fixed per slot (see SLOT_Y).
  */
 async function addTextLayers(
@@ -350,26 +358,95 @@ async function addTextLayers(
 ): Promise<void> {
   for (const slot of activeVariables) {
     const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
-    const value = copy[slot] ?? `[${slot}]`;
+    const value = copy[slot] ?? "";
+    const y = SLOT_Y[slotKey] ?? 40 + activeVariables.indexOf(slot) * 60;
 
-    const textNode = figma.createText();
-    textNode.name = slot;
+    // Determine whether this slot should be placed as an image
+    const isImageSlot = IMAGE_SLOTS.has(slot);
+    const isUrl = value.startsWith("http") || value.startsWith("data:image");
 
-    // Apply font properties
-    const style = SLOT_STYLE[slotKey] ?? "Regular";
-    const size = SLOT_SIZE[slotKey] ?? 16;
-    textNode.fontName = { family: "Inter", style };
-    textNode.fontSize = size;
+    if (isImageSlot && isUrl && value.trim() !== "") {
+      // ── Image fill rectangle ──────────────────────────────────────────────
+      await placeImageInFrame(frame, slot, value, y);
+    } else {
+      // ── Text node ─────────────────────────────────────────────────────────
+      const displayValue = value.trim() !== "" ? value : `[${slot}]`;
+      const textNode = figma.createText();
+      textNode.name = slot;
 
-    // Set text (must be done after fontName is set)
-    textNode.characters = value;
+      const style = SLOT_STYLE[slotKey] ?? "Regular";
+      const size = SLOT_SIZE[slotKey] ?? 16;
+      textNode.fontName = { family: "Inter", style };
+      textNode.fontSize = size;
+      textNode.characters = displayValue;
+      textNode.x = 40;
+      textNode.y = y;
 
-    // Position
-    textNode.x = 40;
-    textNode.y = SLOT_Y[slotKey] ?? 40 + activeVariables.indexOf(slot) * 60;
-
-    frame.appendChild(textNode);
+      frame.appendChild(textNode);
+    }
   }
+}
+
+/**
+ * Fetch an image from a URL (http/https or data URL) and place it as a
+ * rectangle with an IMAGE fill inside the given frame.
+ * Falls back to a grey placeholder rectangle if the fetch fails.
+ */
+async function placeImageInFrame(
+  frame: FrameNode,
+  slotName: string,
+  url: string,
+  y: number
+): Promise<void> {
+  const rect = figma.createRectangle();
+  rect.name = slotName;
+  rect.x = 40;
+  rect.y = y;
+  rect.resize(200, 200);
+
+  try {
+    let imageData: Uint8Array;
+
+    if (url.startsWith("data:image")) {
+      // Data URL — decode base64 payload
+      const base64 = url.split(",")[1];
+      const binary = atob(base64);
+      imageData = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        imageData[i] = binary.charCodeAt(i);
+      }
+    } else {
+      // Remote URL — fetch via network
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      imageData = new Uint8Array(buffer);
+    }
+
+    const image = figma.createImage(imageData);
+    rect.fills = [{
+      type: "IMAGE",
+      imageHash: image.hash,
+      scaleMode: "FIT",
+    }];
+  } catch {
+    // Fallback: grey placeholder with label text
+    rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
+    // Add a small label inside the placeholder
+    try {
+      const label = figma.createText();
+      label.name = `${slotName}_placeholder_label`;
+      label.fontName = { family: "Inter", style: "Regular" };
+      label.fontSize = 12;
+      label.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+      label.characters = `[${slotName}]`;
+      label.x = 40 + 8;
+      label.y = y + 8;
+      frame.appendChild(label);
+    } catch { /* non-fatal */ }
+  }
+
+  frame.appendChild(rect);
 }
 
 // ── Grid layout ───────────────────────────────────────────────────────────────
@@ -554,5 +631,37 @@ async function applyCopyToFrame(
     }
 
     textNode.characters = newText;
+  }
+
+  // ── Image / Illustration fills on existing rectangle layers ──────────────
+  // If the frame has a RECTANGLE named "Image" or "Illustration" and the
+  // corresponding copy value is a URL/data URL, update its image fill.
+  const rectNodes = frame.findAll((n) => n.type === "RECTANGLE") as RectangleNode[];
+  for (const rect of rectNodes) {
+    const matchingSlot = activeVariables.find(
+      (slot) => IMAGE_SLOTS.has(slot) && slot.toUpperCase().replace(/\s+/g, "_") === rect.name.toUpperCase().replace(/\s+/g, "_")
+    );
+    if (!matchingSlot) continue;
+    const url = copy[matchingSlot];
+    if (!url || url.trim() === "") continue;
+    const isUrl = url.startsWith("http") || url.startsWith("data:image");
+    if (!isUrl) continue;
+
+    try {
+      let imageData: Uint8Array;
+      if (url.startsWith("data:image")) {
+        const base64 = url.split(",")[1];
+        const binary = atob(base64);
+        imageData = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
+      } else {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        imageData = new Uint8Array(buffer);
+      }
+      const image = figma.createImage(imageData);
+      rect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];
+    } catch { /* non-fatal — keep existing fill */ }
   }
 }

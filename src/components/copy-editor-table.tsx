@@ -5,6 +5,7 @@ import { Banner } from "@/lib/types";
 import type { ClientVariable } from "@/lib/types";
 import { FieldConfig, FormatFieldConfig, SlideVariableConfig } from "@/lib/airtable-campaigns";
 import AddFormatModal from "@/components/add-format-modal";
+import AssetCell from "@/components/asset-cell";
 
 interface CopyEditorTableProps {
   campaignId: string;
@@ -33,6 +34,7 @@ const VARIABLE_TO_FIELD: Record<string, Record<string, keyof Banner>> = {
   CTA: { ET: "ctaET", EN: "ctaEN" },
   Price_Tag: { ET: "priceTag", EN: "priceTag" },
   Illustration: { ET: "illustration", EN: "illustration" },
+  Image: { ET: "image", EN: "image" },
 };
 
 // Map Banner field key → Airtable field name
@@ -43,6 +45,7 @@ const FIELD_TO_AIRTABLE: Record<string, string> = {
   ctaET: "CTA_ET", ctaEN: "CTA_EN",
   priceTag: "Price_Tag",
   illustration: "Illustration",
+  image: "Image",
 };
 
 function isBannerRowComplete(
@@ -290,6 +293,66 @@ export default function CopyEditorTable({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ [airtableField]: value }),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        setCellState({ bannerId: slideId, field: String(fieldKey), state: "success" });
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCellState(null), 1500);
+      } catch {
+        setSlidesByParent((prev) => ({
+          ...prev,
+          [parentId]: (prev[parentId] ?? []).map((s) => s.id === slideId ? { ...s, [fieldKey]: originalValue } : s),
+        }));
+        setCellState({ bannerId: slideId, field: String(fieldKey), state: "error" });
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCellState(null), 2000);
+      }
+    },
+    [slidesByParent]
+  );
+
+  /**
+   * Immediate-save handler for AssetCell (Image / Illustration).
+   * Called on upload, URL confirm, or remove — no blur needed.
+   */
+  const handleAssetSave = useCallback(
+    async (bannerId: string, fieldKey: keyof Banner, airtableField: string, url: string) => {
+      const originalValue = (banners.find((b) => b.id === bannerId)?.[fieldKey] as string) || "";
+      setBanners((prev) => prev.map((b) => b.id === bannerId ? { ...b, [fieldKey]: url } : b));
+      setCellState({ bannerId, field: String(fieldKey), state: "saving" });
+      try {
+        const res = await fetch(`/api/banners/${bannerId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [airtableField]: url }),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        setCellState({ bannerId, field: String(fieldKey), state: "success" });
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCellState(null), 1500);
+      } catch {
+        setBanners((prev) => prev.map((b) => b.id === bannerId ? { ...b, [fieldKey]: originalValue } : b));
+        setCellState({ bannerId, field: String(fieldKey), state: "error" });
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCellState(null), 2000);
+      }
+    },
+    [banners]
+  );
+
+  const handleSlideAssetSave = useCallback(
+    async (parentId: string, slideId: string, fieldKey: keyof Banner, airtableField: string, url: string) => {
+      const originalValue = (slidesByParent[parentId]?.find((s) => s.id === slideId)?.[fieldKey] as string) || "";
+      setSlidesByParent((prev) => ({
+        ...prev,
+        [parentId]: (prev[parentId] ?? []).map((s) => s.id === slideId ? { ...s, [fieldKey]: url } : s),
+      }));
+      setCellState({ bannerId: slideId, field: String(fieldKey), state: "saving" });
+      try {
+        const res = await fetch(`/api/banners/${slideId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [airtableField]: url }),
         });
         if (!res.ok) throw new Error("Save failed");
         setCellState({ bannerId: slideId, field: String(fieldKey), state: "success" });
@@ -777,6 +840,8 @@ export default function CopyEditorTable({
                         cellState?.bannerId === banner.id &&
                         cellState.field === String(col.fieldKey) &&
                         cellState.state === "error";
+                      // Asset columns (Image, Illustration) get AssetCell instead of text input
+                      const isAssetCol = col.variable === "Image" || col.variable === "Illustration";
                       return (
                         <td
                           key={`${banner.id}-${col.variable}-${col.language}`}
@@ -784,7 +849,22 @@ export default function CopyEditorTable({
                             col.variable === "H1" && isEmpty && !isReadOnly ? "bg-amber-50" : ""
                           } ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
                         >
-                          {isReadOnly ? (
+                          {isAssetCol ? (
+                            <AssetCell
+                              value={value}
+                              disabled={isSaving}
+                              readOnly={isReadOnly}
+                              accent="gray"
+                              onSave={(url) =>
+                                handleAssetSave(
+                                  banner.id,
+                                  col.fieldKey,
+                                  FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
+                                  url
+                                )
+                              }
+                            />
+                          ) : isReadOnly ? (
                             <span className="block min-h-[28px] text-sm text-gray-700">{value}</span>
                           ) : (
                             <input
@@ -949,12 +1029,30 @@ export default function CopyEditorTable({
                           cellState?.bannerId === slide.id &&
                           cellState.field === String(col.fieldKey) &&
                           cellState.state === "error";
+                        // Asset columns (Image, Illustration) get AssetCell
+                        const isSlideAssetCol = col.variable === "Image" || col.variable === "Illustration";
                         return (
                           <td
                             key={`${slide.id}-${col.variable}-${col.language}`}
                             className={`px-2 py-1.5 transition-colors ${isSuccess ? "bg-emerald-50" : ""} ${isError ? "bg-red-50" : ""}`}
                           >
-                            {isReadOnly ? (
+                            {isSlideAssetCol ? (
+                              <AssetCell
+                                value={value}
+                                disabled={isSaving}
+                                readOnly={isReadOnly}
+                                accent="purple"
+                                onSave={(url) =>
+                                  handleSlideAssetSave(
+                                    banner.id,
+                                    slide.id,
+                                    col.fieldKey,
+                                    FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey),
+                                    url
+                                  )
+                                }
+                              />
+                            ) : isReadOnly ? (
                               <span className="block min-h-[28px] text-sm text-gray-700">{value}</span>
                             ) : (
                               <input
@@ -1039,6 +1137,7 @@ const VARIABLE_OPTIONS_EDIT = [
   { value: "CTA", label: "CTA" },
   { value: "Price_Tag", label: "Price Tag" },
   { value: "Illustration", label: "Illustration" },
+  { value: "Image", label: "Image" },
 ];
 
 type EditFormatMode = "default" | "specific" | "carousel";

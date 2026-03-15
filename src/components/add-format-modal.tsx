@@ -26,6 +26,7 @@ const VARIABLE_OPTIONS = [
   { value: "CTA", label: "CTA" },
   { value: "Price_Tag", label: "Price Tag" },
   { value: "Illustration", label: "Illustration" },
+  { value: "Image", label: "Image" },
 ];
 
 type FormatMode = "default" | "specific" | "carousel";

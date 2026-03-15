@@ -21,7 +21,7 @@ const CAMPAIGNS_TABLE = "tblSU3bV6StfuFQ2e";
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
 
 // All variable slots in canonical order
-const ALL_VARIABLES = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration"] as const;
+const ALL_VARIABLES = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration", "Image"] as const;
 
 // ── CORS helpers ──────────────────────────────────────────────────────────────
 
@@ -60,6 +60,8 @@ function extractCopy(
       value = banner.priceTag;
     } else if (slot === "Illustration") {
       value = banner.illustration;
+    } else if (slot === "Image") {
+      value = banner.image;
     }
     copy[slot] = value;
   }

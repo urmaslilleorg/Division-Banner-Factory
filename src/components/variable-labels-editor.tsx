@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ClientVariable } from "@/lib/types";
 
-const DEFAULT_SLOTS = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration"];
+const DEFAULT_SLOTS = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration", "Image"];
 
 interface Props {
   clientId: string;

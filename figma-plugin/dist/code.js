@@ -7,7 +7,8 @@
     H3: 160,
     CTA: 220,
     PRICE_TAG: 280,
-    ILLUSTRATION: 340
+    ILLUSTRATION: 340,
+    IMAGE: 400
   };
   var SLOT_SIZE = {
     H1: 32,
@@ -15,7 +16,8 @@
     H3: 18,
     CTA: 20,
     PRICE_TAG: 24,
-    ILLUSTRATION: 16
+    ILLUSTRATION: 16,
+    IMAGE: 16
   };
   var SLOT_STYLE = {
     H1: "Bold",
@@ -23,8 +25,10 @@
     H3: "Regular",
     CTA: "Bold",
     PRICE_TAG: "Bold",
-    ILLUSTRATION: "Italic"
+    ILLUSTRATION: "Italic",
+    IMAGE: "Italic"
   };
+  var IMAGE_SLOTS = /* @__PURE__ */ new Set(["Illustration", "Image"]);
   var SLIDE_GAP = 100;
   figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
   (async () => {
@@ -206,18 +210,71 @@
     var _a, _b, _c, _d;
     for (const slot of activeVariables) {
       const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
-      const value = (_a = copy[slot]) != null ? _a : `[${slot}]`;
-      const textNode = figma.createText();
-      textNode.name = slot;
-      const style = (_b = SLOT_STYLE[slotKey]) != null ? _b : "Regular";
-      const size = (_c = SLOT_SIZE[slotKey]) != null ? _c : 16;
-      textNode.fontName = { family: "Inter", style };
-      textNode.fontSize = size;
-      textNode.characters = value;
-      textNode.x = 40;
-      textNode.y = (_d = SLOT_Y[slotKey]) != null ? _d : 40 + activeVariables.indexOf(slot) * 60;
-      frame.appendChild(textNode);
+      const value = (_a = copy[slot]) != null ? _a : "";
+      const y = (_b = SLOT_Y[slotKey]) != null ? _b : 40 + activeVariables.indexOf(slot) * 60;
+      const isImageSlot = IMAGE_SLOTS.has(slot);
+      const isUrl = value.startsWith("http") || value.startsWith("data:image");
+      if (isImageSlot && isUrl && value.trim() !== "") {
+        await placeImageInFrame(frame, slot, value, y);
+      } else {
+        const displayValue = value.trim() !== "" ? value : `[${slot}]`;
+        const textNode = figma.createText();
+        textNode.name = slot;
+        const style = (_c = SLOT_STYLE[slotKey]) != null ? _c : "Regular";
+        const size = (_d = SLOT_SIZE[slotKey]) != null ? _d : 16;
+        textNode.fontName = { family: "Inter", style };
+        textNode.fontSize = size;
+        textNode.characters = displayValue;
+        textNode.x = 40;
+        textNode.y = y;
+        frame.appendChild(textNode);
+      }
     }
+  }
+  async function placeImageInFrame(frame, slotName, url, y) {
+    const rect = figma.createRectangle();
+    rect.name = slotName;
+    rect.x = 40;
+    rect.y = y;
+    rect.resize(200, 200);
+    try {
+      let imageData;
+      if (url.startsWith("data:image")) {
+        const base64 = url.split(",")[1];
+        const binary = atob(base64);
+        imageData = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          imageData[i] = binary.charCodeAt(i);
+        }
+      } else {
+        const response = await fetch(url);
+        if (!response.ok)
+          throw new Error(`HTTP ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        imageData = new Uint8Array(buffer);
+      }
+      const image = figma.createImage(imageData);
+      rect.fills = [{
+        type: "IMAGE",
+        imageHash: image.hash,
+        scaleMode: "FIT"
+      }];
+    } catch (e) {
+      rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
+      try {
+        const label = figma.createText();
+        label.name = `${slotName}_placeholder_label`;
+        label.fontName = { family: "Inter", style: "Regular" };
+        label.fontSize = 12;
+        label.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+        label.characters = `[${slotName}]`;
+        label.x = 40 + 8;
+        label.y = y + 8;
+        frame.appendChild(label);
+      } catch (e2) {
+      }
+    }
+    frame.appendChild(rect);
   }
   var GRID_Y_GAP = 200;
   var LABEL_CLEARANCE = 40;
@@ -337,6 +394,39 @@
         );
       }
       textNode.characters = newText;
+    }
+    const rectNodes = frame.findAll((n) => n.type === "RECTANGLE");
+    for (const rect of rectNodes) {
+      const matchingSlot = activeVariables.find(
+        (slot) => IMAGE_SLOTS.has(slot) && slot.toUpperCase().replace(/\s+/g, "_") === rect.name.toUpperCase().replace(/\s+/g, "_")
+      );
+      if (!matchingSlot)
+        continue;
+      const url = copy[matchingSlot];
+      if (!url || url.trim() === "")
+        continue;
+      const isUrl = url.startsWith("http") || url.startsWith("data:image");
+      if (!isUrl)
+        continue;
+      try {
+        let imageData;
+        if (url.startsWith("data:image")) {
+          const base64 = url.split(",")[1];
+          const binary = atob(base64);
+          imageData = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++)
+            imageData[i] = binary.charCodeAt(i);
+        } else {
+          const response = await fetch(url);
+          if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.arrayBuffer();
+          imageData = new Uint8Array(buffer);
+        }
+        const image = figma.createImage(imageData);
+        rect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];
+      } catch (e) {
+      }
     }
   }
 })();

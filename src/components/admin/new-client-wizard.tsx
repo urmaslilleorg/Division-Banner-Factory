@@ -32,7 +32,7 @@ interface WizardData {
 
 const LANGUAGE_OPTIONS = ["ET", "EN", "RU", "LV", "LT"];
 
-const DEFAULT_VARIABLE_SLOTS = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration"];
+const DEFAULT_VARIABLE_SLOTS = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration", "Image"];
 
 function slugify(name: string): string {
   return name

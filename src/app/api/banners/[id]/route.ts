@@ -9,7 +9,7 @@ const BANNERS_TABLE = "tblE3Np8VIaKJsqoW";
 // Allowlist of fields that can be updated via PATCH
 const ALLOWED_FIELDS = new Set([
   "H1_ET", "H1_EN", "H2_ET", "H2_EN", "H3_ET", "H3_EN",
-  "CTA_ET", "CTA_EN", "Price_Tag", "Illustration",
+  "CTA_ET", "CTA_EN", "Price_Tag", "Illustration", "Image",
   "Status", "Approval_Status", "Client_Approved", "Comment",
   "Product_Image_URL",
 ]);

@@ -96,6 +96,8 @@ export interface Banner {
   priceTag: string;
   /** Illustration variant */
   illustration: string;
+  /** Image asset URL */
+  image: string;
   /** Safe area dimensions (e.g. "2800x840") */
   safeArea: string;
   /** Output format */
@@ -157,6 +159,7 @@ export function parseBannerRecord(record: {
     device: (f["Device"] as Device) || null,
     priceTag: (f["Price_Tag"] as string) || "",
     illustration: (f["Illustration"] as string) || "",
+    image: (f["Image"] as string) || "",
     safeArea: (f["Safe_Area"] as string) || "",
     outputFormat: (f["Output_Format"] as string) || "PNG",
     bannerType: (f["Banner_Type"] as BannerType) || "Standard",
