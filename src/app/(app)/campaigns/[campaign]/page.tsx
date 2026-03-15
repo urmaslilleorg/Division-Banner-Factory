@@ -314,7 +314,6 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         initialLastSync={lastFigmaSync}
         hasFigmaToken={!!process.env.FIGMA_ACCESS_TOKEN}
         clientFigmaAssetFile={clientFigmaAssetFile}
-        bannerCount={banners.filter((b) => b.bannerType !== "Slide").length}
       />
 
       {/* Two-tab layout: Copy & Assets | Preview */}
