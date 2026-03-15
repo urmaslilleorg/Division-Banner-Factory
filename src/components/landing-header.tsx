@@ -1,30 +1,12 @@
 "use client";
 
-import { useAuth, SignOutButton, useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useAuth, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function LandingHeader() {
   // isSignedIn defaults to false when Clerk hasn't loaded (e.g. domain not whitelisted).
   // We always render the appropriate button regardless of Clerk load state.
-  const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
-  const router = useRouter();
-
-  // After Clerk loads and the user is signed in, redirect them to the right place.
-  // This handles the post-sign-in case where Clerk redirects back to '/' instead
-  // of following forceRedirectUrl (happens when NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL
-  // is set to '/' in Vercel env vars, overriding the component-level redirect).
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    const role =
-      (user?.publicMetadata as { role?: string } | undefined)?.role ??
-      (user?.unsafeMetadata as { role?: string } | undefined)?.role ??
-      "viewer";
-    const dest = role === "division_admin" ? "/admin" : "/campaigns?preview=true";
-    router.replace(dest);
-  }, [isLoaded, isSignedIn, user, router]);
+  const { isSignedIn } = useAuth();
 
   return (
     <header
