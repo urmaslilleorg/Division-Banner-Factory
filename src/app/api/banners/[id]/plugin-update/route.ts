@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
 const BASE_ID = "appIqinespXjbIERp";
@@ -61,6 +62,9 @@ export async function POST(
       const err = await res.text();
       throw new Error(`Airtable PATCH error ${res.status}: ${err}`);
     }
+
+    // Bust Next.js cache so the campaign page shows the new Product_Image_URL immediately
+    revalidatePath("/", "layout");
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {

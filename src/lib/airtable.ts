@@ -30,6 +30,7 @@ async function airtableRequest<T>(
   const url = `${AIRTABLE_BASE_URL}/${baseId}/${tablePath}`;
   const response = await fetch(url, {
     ...options,
+    cache: "no-store",
     headers: {
       Authorization: `Bearer ${AIRTABLE_API_KEY}`,
       "Content-Type": "application/json",
