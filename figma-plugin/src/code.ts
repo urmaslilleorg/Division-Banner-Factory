@@ -154,7 +154,9 @@ const SLIDE_GAP = 100;
 
 // ── Plugin entry ───────────────────────────────────────────────────────────────
 
-figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factory" });
+const PLUGIN_VERSION = "v20";
+console.log(`[DBF] Plugin loaded ${PLUGIN_VERSION}`);
+figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factory ${PLUGIN_VERSION}` });
 
 // Send READY with any saved preferences
 (async () => {
