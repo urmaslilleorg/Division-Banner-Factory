@@ -111,7 +111,7 @@ export default function LandingPage() {
         {/* Sign In button — always rendered, uses imperative Clerk API on click */}
         <button
           className="sign-in-btn"
-          onClick={() => openSignIn({ afterSignInUrl: "/campaigns" })}
+          onClick={() => openSignIn({ forceRedirectUrl: "/admin" })}
         >
           Sign in
         </button>
