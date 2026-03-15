@@ -876,13 +876,17 @@ window.onmessage = async (event: MessageEvent) => {
   if (msg.type === "FETCH_IMAGE") {
     const { requestId, url } = msg as unknown as { type: string; requestId: string; url: string };
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Route ALL image fetches through the server-side proxy.
+      // The Figma plugin iframe cannot fetch Vercel Blob URLs directly because
+      // the CDN returns a Content-Security-Policy header that the browser
+      // enforces inside the sandboxed iframe, causing the fetch to fail silently.
+      // The proxy strips the CSP and returns the raw bytes.
+      const proxyUrl = `${ROOT_API}/api/image-proxy?url=${encodeURIComponent(url)}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error(`Proxy HTTP ${response.status} for ${url}`);
       const buffer = await response.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       // Convert to base64 in chunks to avoid call-stack overflow on large images.
-      // String.fromCharCode(...bytes) spreads the entire array onto the stack and
-      // crashes for images > ~500 KB. Chunking avoids this.
       const CHUNK = 8192;
       let binary = "";
       for (let i = 0; i < bytes.length; i += CHUNK) {
