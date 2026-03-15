@@ -107,8 +107,17 @@ const _pendingImageFetches = new Map<string, (base64: string | null) => void>();
 function fetchImageViaUI(url: string): Promise<string | null> {
   return new Promise((resolve) => {
     const requestId = `img_${++_fetchImageCounter}`;
+    console.log(`[DBF] fetchImageViaUI sending FETCH_IMAGE requestId=${requestId} url=${url.substring(0, 80)}`);
     _pendingImageFetches.set(requestId, resolve);
     figma.ui.postMessage({ type: "FETCH_IMAGE", requestId, url });
+    // Safety timeout: resolve with null after 30s to avoid hanging forever
+    setTimeout(() => {
+      if (_pendingImageFetches.has(requestId)) {
+        console.log(`[DBF] fetchImageViaUI TIMEOUT for requestId=${requestId}`);
+        _pendingImageFetches.delete(requestId);
+        resolve(null);
+      }
+    }, 30000);
   });
 }
 
@@ -167,12 +176,15 @@ figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factor
 })();
 
 figma.ui.onmessage = async (msg: PluginMessage) => {
-  // ── IMAGE_DATA: resolve a pending fetchImageViaUI() promise ─────────────────
+  // ── IMAGE_DATA: resolve a pending fetchImageViaUI() promise ─────────────────────
   if (msg.type === "IMAGE_DATA") {
+    console.log(`[DBF] IMAGE_DATA received requestId=${msg.requestId} base64=${msg.base64 ? msg.base64.length + ' chars' : 'null'}`);
     const resolve = _pendingImageFetches.get(msg.requestId);
     if (resolve) {
       _pendingImageFetches.delete(msg.requestId);
       resolve(msg.base64);
+    } else {
+      console.log(`[DBF] IMAGE_DATA no pending resolve for requestId=${msg.requestId}`);
     }
     return;
   }

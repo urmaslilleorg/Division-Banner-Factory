@@ -6,8 +6,16 @@
   function fetchImageViaUI(url) {
     return new Promise((resolve) => {
       const requestId = `img_${++_fetchImageCounter}`;
+      console.log(`[DBF] fetchImageViaUI sending FETCH_IMAGE requestId=${requestId} url=${url.substring(0, 80)}`);
       _pendingImageFetches.set(requestId, resolve);
       figma.ui.postMessage({ type: "FETCH_IMAGE", requestId, url });
+      setTimeout(() => {
+        if (_pendingImageFetches.has(requestId)) {
+          console.log(`[DBF] fetchImageViaUI TIMEOUT for requestId=${requestId}`);
+          _pendingImageFetches.delete(requestId);
+          resolve(null);
+        }
+      }, 3e4);
     });
   }
   var SLOT_Y = {
@@ -50,10 +58,13 @@
   })();
   figma.ui.onmessage = async (msg) => {
     if (msg.type === "IMAGE_DATA") {
+      console.log(`[DBF] IMAGE_DATA received requestId=${msg.requestId} base64=${msg.base64 ? msg.base64.length + " chars" : "null"}`);
       const resolve = _pendingImageFetches.get(msg.requestId);
       if (resolve) {
         _pendingImageFetches.delete(msg.requestId);
         resolve(msg.base64);
+      } else {
+        console.log(`[DBF] IMAGE_DATA no pending resolve for requestId=${msg.requestId}`);
       }
       return;
     }
