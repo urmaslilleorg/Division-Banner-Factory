@@ -737,27 +737,9 @@ async function addTextLayers(
       // ── Image fill rectangle (URL present) ───────────────────────────────
       await placeImageInFrame(frame, slot, value, y);
     } else if (isImageSlot) {
-      // ── Grey placeholder rectangle (IMAGE_SLOT but no URL yet) ───────────
-      // Never create a text node for image slots — use a grey rectangle
-      // with a label so the designer can see where the image will go.
-      const rect = figma.createRectangle();
-      rect.name = slot;
-      rect.x = 40;
-      rect.y = y;
-      rect.resize(200, 200);
-      rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
-      frame.appendChild(rect);
-      try {
-        const label = figma.createText();
-        label.name = `${slot}_placeholder_label`;
-        label.fontName = { family: "Inter", style: "Regular" };
-        label.fontSize = 12;
-        label.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
-        label.characters = `[${slot}]`;
-        label.x = 40 + 8;
-        label.y = y + 8;
-        frame.appendChild(label);
-      } catch { /* non-fatal */ }
+      // ── No URL for this image slot → skip entirely (no placeholder) ───────
+      // The designer does not need placeholder boxes. If the image has not
+      // been uploaded yet, simply omit the layer from the frame.
     } else {
       // ── Text node (non-image slot) ────────────────────────────────────────
       const displayValue = value.trim() !== "" ? value : `[${slot}]`;

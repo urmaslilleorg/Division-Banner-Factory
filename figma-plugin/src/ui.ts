@@ -880,12 +880,18 @@ window.onmessage = async (event: MessageEvent) => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const buffer = await response.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      // Convert to base64
+      // Convert to base64 in chunks to avoid call-stack overflow on large images.
+      // String.fromCharCode(...bytes) spreads the entire array onto the stack and
+      // crashes for images > ~500 KB. Chunking avoids this.
+      const CHUNK = 8192;
       let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)));
+      }
       const base64 = btoa(binary);
       parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64 } }, "*");
-    } catch {
+    } catch (err) {
+      console.error("[DBF] FETCH_IMAGE failed:", err);
       parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64: null } }, "*");
     }
     return;
