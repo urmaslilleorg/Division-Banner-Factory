@@ -106,10 +106,10 @@ export default function ClientCard({ client }: ClientCardProps) {
           );
         })()}
         <Link
-          href={`/admin/${client.id}/edit`}
+          href={`/admin/${client.id}/settings`}
           className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
-          Edit
+          Settings
         </Link>
         <button
           onClick={handleArchive}

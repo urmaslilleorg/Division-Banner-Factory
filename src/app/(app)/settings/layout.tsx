@@ -1,7 +1,12 @@
-import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
+
+/**
+ * Layout for /settings on client subdomains.
+ * The new settings page is a self-contained tabbed component; this layout
+ * only handles auth-gating and the outer page wrapper.
+ */
 export default async function SettingsLayout({
   children,
 }: {
@@ -20,49 +25,15 @@ export default async function SettingsLayout({
     clientConfig.id !== "demo" &&
     clientConfig.id !== "admin";
 
-  // Client subdomain users can only access /settings/templates
-  // Root domain non-admin users are redirected away
+  // Root domain non-admin users have nothing to see here
   if (!isAdmin && !isClientSubdomain) {
     redirect("/");
   }
 
-  // Admin sees all tabs; Formats and Variables link to /admin/* (where the real pages live)
-  // Client users see Templates only
-  const tabs = [
-    ...(isAdmin ? [
-      { href: "/admin/formats", label: "Formats" },
-      { href: "/settings/variables", label: "Variables" },
-    ] : []),
-    { href: "/settings/templates", label: "Templates" },
-  ];
+  // On the root domain, admin should go to /admin (no global settings page yet)
+  if (!isClientSubdomain && isAdmin) {
+    redirect("/admin");
+  }
 
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-light text-gray-900">Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {isAdmin
-            ? "Manage formats, variables, and platform configuration."
-            : "Manage your saved campaign templates."}
-        </p>
-      </div>
-
-      {/* Tab navigation */}
-      <nav className="mb-6 flex gap-1 border-b border-gray-200">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className="relative px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors
-              [&.active]:text-gray-900 [&.active]:after:absolute [&.active]:after:bottom-0 [&.active]:after:left-0
-              [&.active]:after:right-0 [&.active]:after:h-0.5 [&.active]:after:bg-gray-900"
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
-
-      {children}
-    </main>
-  );
+  return <>{children}</>;
 }

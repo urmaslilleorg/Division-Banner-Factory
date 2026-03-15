@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 
 /**
- * /settings/formats is now superseded by /admin/formats.
- * Redirect division_admin users to the new location.
+ * /settings/formats → /admin/formats (Master Formats library).
  * Kept for backward compatibility.
  */
 export default function FormatsSettingsPage() {

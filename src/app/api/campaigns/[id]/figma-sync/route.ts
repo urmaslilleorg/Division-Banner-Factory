@@ -122,7 +122,7 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
     (rawCampaign.fields?.["Figma_Campaign_File"] as string) || "";
 
   // ── 1b. Fetch client record for variable labels ────────────────────────────
-  let variableLabels: Record<string, string> = {};
+  const variableLabels: Record<string, string> = {};
   try {
     const clients = await fetchAllClients();
     const clientRecord = clients.find(
