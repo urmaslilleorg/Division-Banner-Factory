@@ -58,11 +58,23 @@
   })();
   figma.ui.onmessage = async (msg) => {
     if (msg.type === "IMAGE_DATA") {
-      console.log(`[DBF] IMAGE_DATA received requestId=${msg.requestId} base64=${msg.base64 ? msg.base64.length + " chars" : "null"}`);
       const resolve = _pendingImageFetches.get(msg.requestId);
       if (resolve) {
         _pendingImageFetches.delete(msg.requestId);
-        resolve(msg.base64);
+        if (msg.bytes && msg.bytes.length > 0) {
+          console.log(`[DBF] IMAGE_DATA received bytes=${msg.bytes.length} for requestId=${msg.requestId}`);
+          resolve(msg.bytes);
+        } else if (msg.base64) {
+          console.log(`[DBF] IMAGE_DATA received base64=${msg.base64.length} chars for requestId=${msg.requestId}`);
+          const binary = atob(msg.base64);
+          const data = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++)
+            data[i] = binary.charCodeAt(i);
+          resolve(data);
+        } else {
+          console.log(`[DBF] IMAGE_DATA null/empty for requestId=${msg.requestId}`);
+          resolve(null);
+        }
       } else {
         console.log(`[DBF] IMAGE_DATA no pending resolve for requestId=${msg.requestId}`);
       }
@@ -497,14 +509,11 @@
           imageData[i] = binary.charCodeAt(i);
         }
       } else {
-        const base64 = await fetchImageViaUI(url);
-        if (!base64)
-          throw new Error("UI fetch returned null");
-        const binary = atob(base64);
-        imageData = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          imageData[i] = binary.charCodeAt(i);
-        }
+        const data = await fetchImageViaUI(url);
+        if (!data || data.length === 0)
+          throw new Error("UI fetch returned null/empty");
+        console.log(`[DBF] placeImageInFrame got ${data.length} bytes for ${slotName}`);
+        imageData = data;
       }
       const image = figma.createImage(imageData);
       rect.fills = [{
@@ -512,7 +521,8 @@
         imageHash: image.hash,
         scaleMode: "FIT"
       }];
-    } catch (e) {
+    } catch (err) {
+      console.log(`[DBF] placeImageInFrame ERROR for ${slotName}: ${err}`);
       rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
       try {
         const label = figma.createText();
@@ -524,7 +534,7 @@
         label.x = 40 + 8;
         label.y = y + 8;
         frame.appendChild(label);
-      } catch (e2) {
+      } catch (e) {
       }
     }
     frame.appendChild(rect);

@@ -88,7 +88,8 @@ interface CheckCopyStatusMessage {
 interface ImageDataMessage {
   type: "IMAGE_DATA";
   requestId: string;
-  base64: string | null; // null = fetch failed
+  bytes?: Uint8Array;     // raw image bytes (preferred)
+  base64?: string | null; // legacy base64 fallback (null = fetch failed)
 }
 
 type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage | CheckCopyStatusMessage | ExportVideoMessage | ImageDataMessage;
@@ -98,13 +99,13 @@ type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToM
 // image bytes and send them back as base64 via IMAGE_DATA message.
 
 let _fetchImageCounter = 0;
-const _pendingImageFetches = new Map<string, (base64: string | null) => void>();
+const _pendingImageFetches = new Map<string, (data: Uint8Array | null) => void>();
 
 /**
- * Request the UI thread to fetch an image URL and return the bytes as base64.
- * Resolves with the base64 string, or null if the fetch failed.
+ * Request the UI thread to fetch an image URL and return the raw bytes.
+ * Resolves with a Uint8Array, or null if the fetch failed.
  */
-function fetchImageViaUI(url: string): Promise<string | null> {
+function fetchImageViaUI(url: string): Promise<Uint8Array | null> {
   return new Promise((resolve) => {
     const requestId = `img_${++_fetchImageCounter}`;
     console.log(`[DBF] fetchImageViaUI sending FETCH_IMAGE requestId=${requestId} url=${url.substring(0, 80)}`);
@@ -176,19 +177,30 @@ figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factor
 })();
 
 figma.ui.onmessage = async (msg: PluginMessage) => {
-  // ── IMAGE_DATA: resolve a pending fetchImageViaUI() promise ─────────────────────
+  // ── IMAGE_DATA: resolve a pending fetchImageViaUI() promise ───────────────────────
   if (msg.type === "IMAGE_DATA") {
-    console.log(`[DBF] IMAGE_DATA received requestId=${msg.requestId} base64=${msg.base64 ? msg.base64.length + ' chars' : 'null'}`);
     const resolve = _pendingImageFetches.get(msg.requestId);
     if (resolve) {
       _pendingImageFetches.delete(msg.requestId);
-      resolve(msg.base64);
+      // Prefer raw bytes; fall back to decoding base64 for legacy callers
+      if (msg.bytes && msg.bytes.length > 0) {
+        console.log(`[DBF] IMAGE_DATA received bytes=${msg.bytes.length} for requestId=${msg.requestId}`);
+        resolve(msg.bytes);
+      } else if (msg.base64) {
+        console.log(`[DBF] IMAGE_DATA received base64=${msg.base64.length} chars for requestId=${msg.requestId}`);
+        const binary = atob(msg.base64);
+        const data = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+        resolve(data);
+      } else {
+        console.log(`[DBF] IMAGE_DATA null/empty for requestId=${msg.requestId}`);
+        resolve(null);
+      }
     } else {
       console.log(`[DBF] IMAGE_DATA no pending resolve for requestId=${msg.requestId}`);
     }
     return;
   }
-
   if (msg.type === "RESIZE") {
     figma.ui.resize(msg.width, msg.height);
     return;
@@ -806,14 +818,12 @@ async function placeImageInFrame(
         imageData[i] = binary.charCodeAt(i);
       }
     } else {
-      // Remote URL — delegate fetch to UI thread (main thread has no network)
-      const base64 = await fetchImageViaUI(url);
-      if (!base64) throw new Error("UI fetch returned null");
-      const binary = atob(base64);
-      imageData = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        imageData[i] = binary.charCodeAt(i);
-      }
+      // Remote URL — delegate fetch to UI thread (main thread has no network).
+      // fetchImageViaUI now returns raw Uint8Array bytes directly.
+      const data = await fetchImageViaUI(url);
+      if (!data || data.length === 0) throw new Error("UI fetch returned null/empty");
+      console.log(`[DBF] placeImageInFrame got ${data.length} bytes for ${slotName}`);
+      imageData = data;
     }
 
     const image = figma.createImage(imageData);
@@ -822,7 +832,8 @@ async function placeImageInFrame(
       imageHash: image.hash,
       scaleMode: "FIT",
     }];
-  } catch {
+  } catch (err) {
+    console.log(`[DBF] placeImageInFrame ERROR for ${slotName}: ${err}`);
     // Fallback: grey placeholder with label text
     rect.fills = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
     try {

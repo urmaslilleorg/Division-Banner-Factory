@@ -994,13 +994,8 @@
           throw new Error(`Proxy HTTP ${response.status} for ${url}`);
         const buffer = await response.arrayBuffer();
         const bytes = new Uint8Array(buffer);
-        const CHUNK = 8192;
-        let binary = "";
-        for (let i = 0; i < bytes.length; i += CHUNK) {
-          binary += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)));
-        }
-        const base64 = btoa(binary);
-        parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64 } }, "*");
+        console.log(`[DBF] FETCH_IMAGE proxy OK bytes=${bytes.length} for requestId=${requestId}`);
+        parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, bytes } }, "*");
       } catch (err) {
         console.error("[DBF] FETCH_IMAGE failed:", err);
         parent.postMessage({ pluginMessage: { type: "IMAGE_DATA", requestId, base64: null } }, "*");
