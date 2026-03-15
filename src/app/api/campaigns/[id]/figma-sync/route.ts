@@ -102,6 +102,35 @@ function getSlideActiveVariables(
   return cfg.variables && cfg.variables.length > 0 ? cfg.variables : fallbackVariables;
 }
 
+// ── Frame name normalisation ─────────────────────────────────────────────────
+
+/**
+ * Ensure a Figma frame name uses the campaign-prefixed convention.
+ *
+ * Legacy records stored names like: _MASTER_Google_Display_Horizontal_1200x628
+ * Current convention is:            Avene_Google_Display_Horizontal_1200x628
+ *
+ * If the stored name already starts with the campaign prefix (normalised),
+ * it is returned unchanged. If it starts with _MASTER_, the prefix is replaced
+ * with the normalised campaign name.
+ *
+ * This is a server-side safety net. The Airtable data migration will also
+ * update the stored values directly.
+ */
+function normaliseFigmaFrame(storedName: string, campaignName: string): string {
+  if (!storedName) return storedName;
+  if (!storedName.startsWith("_MASTER_")) return storedName; // already correct
+  const campaignNorm = campaignName
+    .replace(/ä/g, "a").replace(/Ä/g, "A")
+    .replace(/ö/g, "o").replace(/Ö/g, "O")
+    .replace(/ü/g, "u").replace(/Ü/g, "U")
+    .replace(/õ/g, "o").replace(/Õ/g, "O")
+    .replace(/\s+/g, "_");
+  // Strip "_MASTER_" prefix and prepend campaign name
+  const withoutMaster = storedName.slice("_MASTER_".length);
+  return `${campaignNorm}_${withoutMaster}`;
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 async function handleSync(campaignId: string): Promise<NextResponse> {
@@ -162,7 +191,7 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
     frames.push({
       recordId: banner.id,
       name: banner.bannerName,
-      figmaFrame: banner.figmaFrame,
+      figmaFrame: normaliseFigmaFrame(banner.figmaFrame, campaign.name),
       width: banner.width,
       height: banner.height,
       type: "Standard",
@@ -207,7 +236,7 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
     frames.push({
       recordId: carousel.id,
       name: carousel.bannerName,
-      figmaFrame: carousel.figmaFrame,
+      figmaFrame: normaliseFigmaFrame(carousel.figmaFrame, campaign.name),
       width: carousel.width,
       height: carousel.height,
       type: "Carousel",
