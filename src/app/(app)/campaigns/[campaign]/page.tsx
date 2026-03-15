@@ -228,6 +228,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   let clientVariables: import("@/lib/types").ClientVariable[] = [];
   let clientFormatIds: string[] = [];
   let clientFigmaAssetFile = "";
+  let clientVideoTemplates: Array<{ id: string; name: string; duration: number }> = [];
 
   try {
     const [fetchedBanners, clientRecord] = await Promise.all([
@@ -256,6 +257,14 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     clientVariables = clientRecord?.clientVariables ?? [];
     clientFormatIds = clientRecord?.formatIds ?? [];
     clientFigmaAssetFile = clientRecord?.figmaAssetFile ?? "";
+    // Parse video templates from client record
+    try {
+      const rawVT = (clientRecord as unknown as Record<string, string> | null)?.["videoTemplates"] ?? "";
+      if (rawVT) {
+        const parsed = JSON.parse(rawVT);
+        if (Array.isArray(parsed)) clientVideoTemplates = parsed;
+      }
+    } catch { /* ignore */ }
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return (
@@ -325,6 +334,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         fieldConfig={resolvedFieldConfig}
         clientVariables={clientVariables}
         clientFormatIds={clientFormatIds}
+        clientVideoTemplates={clientVideoTemplates}
         userRole={userRole}
         defaultTab={defaultTab}
         copySheetUrl={copySheetUrl}

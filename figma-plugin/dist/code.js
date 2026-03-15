@@ -201,6 +201,114 @@
       figma.ui.postMessage({ type: "COPY_STATUS", frames: results });
       return;
     }
+    if (msg.type === "EXPORT_VIDEO") {
+      const { frames: videoFrames, campaignName: vidCampaignName } = msg;
+      const vidPage = figma.root.children.find(
+        (p) => p.type === "PAGE" && p.name === vidCampaignName
+      );
+      if (!vidPage) {
+        figma.ui.postMessage({
+          type: "VIDEO_EXPORT_ERROR",
+          message: `Campaign page "${vidCampaignName}" not found. Apply copy first.`
+        });
+        return;
+      }
+      const results = [];
+      for (let i = 0; i < videoFrames.length; i++) {
+        const vf = videoFrames[i];
+        figma.ui.postMessage({
+          type: "VIDEO_EXPORT_PROGRESS",
+          current: i + 1,
+          total: videoFrames.length,
+          frameName: vf.figmaFrame
+        });
+        const frame = vidPage.findOne(
+          (n) => n.type === "FRAME" && (n.name === vf.figmaFrame || n.name === deriveOldMasterName(vf.figmaFrame))
+        );
+        if (!frame) {
+          figma.ui.postMessage({
+            type: "VIDEO_EXPORT_FRAME_ERROR",
+            frameName: vf.figmaFrame,
+            error: "Frame not found on page"
+          });
+          continue;
+        }
+        const layers = [];
+        const allNodes = frame.findAll(() => true);
+        for (const node of allNodes) {
+          if (node.type === "TEXT") {
+            const textNode = node;
+            layers.push({
+              name: textNode.name,
+              type: "TEXT",
+              x: textNode.x,
+              y: textNode.y,
+              w: textNode.width,
+              h: textNode.height,
+              text: textNode.characters,
+              fontSize: typeof textNode.fontSize === "number" ? textNode.fontSize : 16,
+              fontStyle: typeof textNode.fontName !== "symbol" ? textNode.fontName.style : "Regular"
+            });
+          } else if (node.type === "RECTANGLE") {
+            const rectNode = node;
+            const imageFill = rectNode.fills !== figma.mixed ? rectNode.fills.find((f) => f.type === "IMAGE") : void 0;
+            let imageBase64;
+            if (imageFill == null ? void 0 : imageFill.imageHash) {
+              try {
+                const img = figma.getImageByHash(imageFill.imageHash);
+                if (img) {
+                  const bytes = await img.getBytesAsync();
+                  imageBase64 = figma.base64Encode(bytes);
+                }
+              } catch (e) {
+              }
+            }
+            const solidFills = rectNode.fills !== figma.mixed ? rectNode.fills.filter((f) => f.type === "SOLID").map((f) => {
+              var _a;
+              const sf = f;
+              return { type: "SOLID", r: sf.color.r, g: sf.color.g, b: sf.color.b, a: (_a = sf.opacity) != null ? _a : 1 };
+            }) : [];
+            layers.push({
+              name: rectNode.name,
+              type: "RECTANGLE",
+              x: rectNode.x,
+              y: rectNode.y,
+              w: rectNode.width,
+              h: rectNode.height,
+              imageBase64,
+              fills: solidFills
+            });
+          } else if (node.type === "FRAME" || node.type === "GROUP") {
+            try {
+              const pngBytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+              layers.push({
+                name: node.name,
+                type: "IMAGE",
+                x: node.x,
+                y: node.y,
+                w: node.width,
+                h: node.height,
+                imageBase64: figma.base64Encode(pngBytes)
+              });
+            } catch (e) {
+            }
+          }
+        }
+        results.push({
+          recordId: vf.recordId,
+          frameName: vf.figmaFrame,
+          animationTemplateId: vf.animationTemplateId,
+          width: frame.width,
+          height: frame.height,
+          layers
+        });
+      }
+      figma.ui.postMessage({
+        type: "VIDEO_EXPORT_DONE",
+        frames: results
+      });
+      return;
+    }
     if (msg.type === "EXPORT_TO_MENTE") {
       const page = figma.currentPage;
       const isExportableFrame = (n) => n.type === "FRAME" && !n.name.startsWith("__label__");

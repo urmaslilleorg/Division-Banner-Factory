@@ -57,6 +57,8 @@ interface AddFormatModalProps {
   clientFormatIds: string[];
   /** Client-specific variable labels — overrides VARIABLE_OPTIONS display labels */
   clientVariables?: Array<{ slot: string; label: string }>;
+  /** Client animation templates for video formats */
+  clientVideoTemplates?: Array<{ id: string; name: string; duration: number }>;
   onClose: () => void;
   onSuccess: (newBanners: Banner[], updatedFieldConfig: FieldConfig) => void;
 }
@@ -66,6 +68,7 @@ export default function AddFormatModal({
   fieldConfig,
   clientFormatIds,
   clientVariables,
+  clientVideoTemplates,
   onClose,
   onSuccess,
 }: AddFormatModalProps) {
@@ -85,6 +88,7 @@ export default function AddFormatModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [selectedAnimationTemplateId, setSelectedAnimationTemplateId] = useState<string>("");
 
   // Fetch available formats (client-linked)
   useEffect(() => {
@@ -105,6 +109,7 @@ export default function AddFormatModal({
           safeArea: (r.fields["Safe_Area"] as string) || "",
           outputFormat: (r.fields["Output_Format"] as string) || "PNG",
           active: (r.fields["Active"] as boolean) || false,
+          isVideo: (r.fields["Is_Video"] as boolean) || false,
         }));
         // Filter to client-linked formats only (if clientFormatIds provided)
         const filtered =
@@ -187,6 +192,7 @@ export default function AddFormatModal({
   };
 
   const selectedFormat = formats.find((f) => selectedFormatIds.includes(f.id));
+  const isVideoFormat = selectedFormat?.isVideo ?? false;
 
   const handleSubmit = async () => {
     if (!selectedFormat) return;
@@ -345,6 +351,39 @@ export default function AddFormatModal({
                   </button>
                 ))}
               </div>
+            </section>
+          )}
+
+          {/* Step 2b — Animation template (video formats only) */}
+          {selectedFormat && isVideoFormat && (
+            <section>
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                2b. Animation Template
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                  ▶ VIDEO
+                </span>
+                <span className="text-xs text-gray-500">This is a video format.</span>
+              </div>
+              {clientVideoTemplates && clientVideoTemplates.length > 0 ? (
+                <select
+                  value={selectedAnimationTemplateId}
+                  onChange={(e) => setSelectedAnimationTemplateId(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                >
+                  <option value="">— No animation template —</option>
+                  {clientVideoTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.duration}s)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="mt-2 text-xs text-amber-600 italic">
+                  No animation templates configured. Add them in Client Settings → Video tab.
+                </p>
+              )}
             </section>
           )}
 

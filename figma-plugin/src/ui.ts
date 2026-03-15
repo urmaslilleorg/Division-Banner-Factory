@@ -111,6 +111,22 @@ const exportProgressWrap  = document.getElementById("exportProgressWrap")  as HT
 const exportProgressBar   = document.getElementById("exportProgressBar")   as HTMLDivElement;
 const exportListEl        = document.getElementById("exportList")          as HTMLDivElement;
 
+// Video-specific frame payload extension
+interface VideoFramePayload extends FramePayload {
+  isVideo?: boolean;
+  animationTemplateId?: string;
+  videoUrl?: string;
+}
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+
+const btnExportVideo      = document.getElementById("btnExportVideo")      as HTMLButtonElement;
+const videoExportStatusEl = document.getElementById("videoExportStatus")   as HTMLDivElement;
+const videoProgressWrap   = document.getElementById("videoProgressWrap")   as HTMLDivElement;
+const videoProgressBar    = document.getElementById("videoProgressBar")    as HTMLDivElement;
+const videoFrameListEl    = document.getElementById("videoFrameList")      as HTMLDivElement;
+const videoFrameInfoEl    = document.getElementById("videoFrameInfo")      as HTMLDivElement;
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let clients: ClientItem[] = [];
@@ -132,6 +148,18 @@ interface ExportFrameState {
 let exportFrames: ExportFrameState[] = [];
 let exportTotal = 0;
 let exportDoneCount = 0;
+
+// Video export state
+interface VideoExportFrameState {
+  recordId: string;
+  frameName: string;
+  animationTemplateId: string;
+  status: "waiting" | "rendering" | "done" | "failed";
+  error?: string;
+}
+let videoExportFrames: VideoExportFrameState[] = [];
+let videoExportTotal = 0;
+let videoExportDone = 0;
 
 function savePrefs(clientId?: string, campaignId?: string, month?: string) {
   if (clientId !== undefined)   savedClientId   = clientId;
@@ -157,6 +185,52 @@ function showExportStatus(msg: string, type: "info" | "success" | "error" | "loa
   exportStatusEl.textContent = msg;
   exportStatusEl.className = `status ${type}`;
   exportStatusEl.style.display = "block";
+}
+
+function showVideoExportStatus(msg: string, type: "info" | "success" | "error" | "loading") {
+  videoExportStatusEl.textContent = msg;
+  videoExportStatusEl.className = `status ${type}`;
+  videoExportStatusEl.style.display = "block";
+}
+
+function renderVideoFrameList() {
+  videoFrameListEl.innerHTML = videoExportFrames
+    .map((f) => {
+      const icon =
+        f.status === "done"      ? "✅" :
+        f.status === "failed"    ? "⚠" :
+        f.status === "rendering" ? "🎬" : "⏳";
+      const stateLabel =
+        f.status === "done"      ? "sent to renderer" :
+        f.status === "failed"    ? `failed${f.error ? `: ${f.error.substring(0, 40)}` : ""}` :
+        f.status === "rendering" ? "rendering…" : "waiting";
+      const tmpl = f.animationTemplateId ? ` [${f.animationTemplateId}]` : "";
+      return `
+        <div class="video-frame-item">
+          <span class="video-frame-icon">${icon}</span>
+          <span class="video-frame-name">${f.frameName}</span>
+          <span class="video-frame-template">${tmpl}</span>
+          <span class="video-frame-state">${stateLabel}</span>
+        </div>`;
+    })
+    .join("");
+  videoFrameListEl.style.display = "block";
+}
+
+function updateVideoExportButton() {
+  if (!currentPayload) {
+    btnExportVideo.disabled = true;
+    videoFrameInfoEl.textContent = "Select a campaign with video formats to export.";
+    return;
+  }
+  const videoFrames = (currentPayload.frames as VideoFramePayload[]).filter((f) => f.isVideo);
+  if (videoFrames.length === 0) {
+    btnExportVideo.disabled = true;
+    videoFrameInfoEl.textContent = "No video formats in this campaign.";
+  } else {
+    btnExportVideo.disabled = false;
+    videoFrameInfoEl.textContent = `${videoFrames.length} video frame${videoFrames.length !== 1 ? "s" : ""} ready for export.`;
+  }
 }
 
 function renderExportList() {
@@ -188,6 +262,42 @@ function campaignLabel(c: CampaignItem): string {
   if (c.formatCount > 0) parts.push(`${c.formatCount} formats`);
   return parts.length > 0 ? `${c.name}  (${parts.join(" · ")})` : c.name;
 }
+
+// ── Video export button click ─────────────────────────────────────────────────
+
+btnExportVideo.addEventListener("click", () => {
+  if (!currentPayload) return;
+
+  const videoFrames = (currentPayload.frames as VideoFramePayload[]).filter((f) => f.isVideo);
+  if (videoFrames.length === 0) return;
+
+  videoExportFrames = videoFrames.map((f) => ({
+    recordId: f.recordId,
+    frameName: f.figmaFrame,
+    animationTemplateId: f.animationTemplateId ?? "",
+    status: "waiting" as const,
+  }));
+  videoExportTotal = videoFrames.length;
+  videoExportDone = 0;
+
+  videoFrameListEl.style.display = "none";
+  videoFrameListEl.innerHTML = "";
+  videoProgressWrap.style.display = "block";
+  videoProgressBar.style.width = "0%";
+  showVideoExportStatus("Extracting video frame layers from Figma…", "loading");
+  btnExportVideo.disabled = true;
+
+  parent.postMessage(
+    {
+      pluginMessage: {
+        type: "EXPORT_VIDEO",
+        campaignName: currentPayload.campaignName,
+        frames: videoFrames,
+      },
+    },
+    "*"
+  );
+});
 
 function updateExportButton() {
   if (!currentPayload) {
@@ -554,6 +664,7 @@ btnFetch.addEventListener("click", async () => {
       "info"
     );
     updateExportButton();
+    updateVideoExportButton();
 
     // Automatically trigger copy status check
     parent.postMessage(
@@ -859,5 +970,85 @@ window.onmessage = async (event: MessageEvent) => {
     btnApplyAll.disabled = false;
     btnApplyUpdates.disabled = false;
     updateExportButton();
+  }
+
+  // ── VIDEO EXPORT messages ──────────────────────────────────────────
+
+  if (msg.type === "VIDEO_EXPORT_PROGRESS") {
+    const pct = Math.round(((msg.current as number) / (msg.total as number)) * 100);
+    videoProgressBar.style.width = `${pct}%`;
+    showVideoExportStatus(`Extracting layers… ${msg.current}/${msg.total}: ${msg.frameName}`, "loading");
+    const idx = videoExportFrames.findIndex((f) => f.frameName === msg.frameName);
+    if (idx >= 0) videoExportFrames[idx].status = "rendering";
+    renderVideoFrameList();
+  }
+
+  if (msg.type === "VIDEO_EXPORT_DONE") {
+    // Received all layer data — send to server-side render API
+    const subdomain = getClientSubdomain();
+    const clientUrl = `https://${subdomain}.menteproduction.com`;
+    const frames = msg.frames as Array<{
+      recordId: string;
+      frameName: string;
+      animationTemplateId: string;
+      width: number;
+      height: number;
+      layers: unknown[];
+    }>;
+
+    videoProgressBar.style.width = "100%";
+    showVideoExportStatus(`Sending ${frames.length} frame(s) to video renderer…`, "loading");
+
+    let doneCount = 0;
+    let failCount = 0;
+
+    for (const frame of frames) {
+      const idx = videoExportFrames.findIndex((f) => f.frameName === frame.frameName);
+      try {
+        const res = await fetch(`${clientUrl}/api/banners/${frame.recordId}/render-video`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            animationTemplateId: frame.animationTemplateId,
+            width: frame.width,
+            height: frame.height,
+            layers: frame.layers,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        if (idx >= 0) videoExportFrames[idx].status = "done";
+        doneCount++;
+      } catch (err) {
+        if (idx >= 0) {
+          videoExportFrames[idx].status = "failed";
+          videoExportFrames[idx].error = String(err);
+        }
+        failCount++;
+      }
+      renderVideoFrameList();
+    }
+
+    showVideoExportStatus(
+      `✅ ${doneCount} sent · ${failCount > 0 ? `⚠ ${failCount} failed` : "all done"}`,
+      failCount > 0 ? "error" : "success"
+    );
+    updateVideoExportButton();
+  }
+
+  if (msg.type === "VIDEO_EXPORT_ERROR") {
+    showVideoExportStatus(`Video export error: ${msg.message}`, "error");
+    updateVideoExportButton();
+  }
+
+  if (msg.type === "VIDEO_EXPORT_FRAME_ERROR") {
+    const idx = videoExportFrames.findIndex((f) => f.frameName === msg.frameName);
+    if (idx >= 0) {
+      videoExportFrames[idx].status = "failed";
+      videoExportFrames[idx].error = msg.error as string;
+    }
+    renderVideoFrameList();
   }
 };

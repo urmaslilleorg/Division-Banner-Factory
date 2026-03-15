@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import FormatPicker from "@/components/format-picker";
 import VariableLabelsEditor from "@/components/variable-labels-editor";
 import TemplatesManager from "@/components/templates-manager";
+import VideoTemplatesManager from "@/components/video-templates-manager";
+import type { VideoTemplate } from "@/components/video-templates-manager";
 import type { ClientRecord } from "@/lib/airtable-clients";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
 import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
@@ -15,6 +17,7 @@ const TABS = [
   { id: "variables", label: "Variables" },
   { id: "templates", label: "Templates" },
   { id: "figma", label: "Figma" },
+  { id: "video", label: "Video" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -104,6 +107,17 @@ export default function ClientSettingsTabs({
   const [newFileKey, setNewFileKey] = useState("");
   const [newFileName, setNewFileName] = useState("");
   const [newFileOwner, setNewFileOwner] = useState("");
+
+  // ── Video tab state ────────────────────────────────────────────────────────
+  function parseVideoTemplates(raw: string): VideoTemplate[] {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as VideoTemplate[];
+    } catch { /* ignore */ }
+    return [];
+  }
+  const initialVideoTemplates = parseVideoTemplates((client as unknown as Record<string, string>)["videoTemplates"] || "");
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const setTab = (id: TabId) => {
@@ -540,6 +554,34 @@ export default function ClientSettingsTabs({
               top-level frames: <code>Backgrounds/</code>, <code>Illustrations/</code>,{" "}
               <code>Logos/</code>, <code>Overlays/</code>, <code>Products/</code>
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────── VIDEO TAB ──────────────────── */}
+      {activeTab === "video" && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Animation templates</h3>
+            <p className="text-xs text-gray-500">
+              Define reusable animation timelines for video banner exports. Each template controls
+              which variable layers animate, their effect, and timing.
+            </p>
+          </div>
+
+          <VideoTemplatesManager
+            clientId={clientId}
+            initialTemplates={initialVideoTemplates}
+          />
+
+          <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
+            <p className="font-medium mb-1">How video export works</p>
+            <ol className="list-decimal list-inside space-y-1 text-xs">
+              <li>Mark a format as <strong>Is Video</strong> in the Formats table in Airtable.</li>
+              <li>When adding that format to a campaign, select an animation template.</li>
+              <li>In the Figma plugin, use <strong>Export video</strong> to send layer data to the platform.</li>
+              <li>The platform renders a WebM video per banner and stores the URL in <code>Video_URL</code>.</li>
+            </ol>
           </div>
         </div>
       )}

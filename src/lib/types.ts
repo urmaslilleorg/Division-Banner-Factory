@@ -112,6 +112,12 @@ export interface Banner {
   bannerName: string;
   /** Format_Name from the Formats table (e.g. "Display_Horizontal") — used for variable locking */
   formatName: string;
+  /** Whether this banner is a video format */
+  isVideo: boolean;
+  /** URL to the rendered WebM video */
+  videoUrl: string;
+  /** ID of the animation template used for video rendering */
+  animationTemplateId: string;
 }
 
 /**
@@ -167,5 +173,8 @@ export function parseBannerRecord(record: {
     parentBannerIds: Array.isArray(f["Parent_Banner"]) ? (f["Parent_Banner"] as string[]) : [],
     bannerName: (f["Banner_Name"] as string) || "",
     formatName: (f["Format_Name"] as string) || "",
+    isVideo: (f["Is_Video"] as boolean) || false,
+    videoUrl: (f["Video_URL"] as string) || "",
+    animationTemplateId: (f["Animation_Template_Id"] as string) || "",
   };
 }

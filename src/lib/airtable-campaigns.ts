@@ -90,6 +90,7 @@ export interface AirtableFormat {
   safeArea: string;
   outputFormat: string;
   active: boolean;
+  isVideo: boolean;
 }
 
 export interface BannerSummary {
@@ -222,6 +223,7 @@ export async function fetchFormats(): Promise<AirtableFormat[]> {
     safeArea: (r.fields["Safe_Area"] as string) || "",
     outputFormat: (r.fields["Output_Format"] as string) || "PNG",
     active: (r.fields["Active"] as boolean) || false,
+    isVideo: (r.fields["Is_Video"] as boolean) || false,
   }));
 }
 
@@ -263,6 +265,7 @@ export async function fetchFormatsByIds(ids: string[]): Promise<AirtableFormat[]
     safeArea: (r.fields["Safe_Area"] as string) || "",
     outputFormat: (r.fields["Output_Format"] as string) || "PNG",
     active: (r.fields["Active"] as boolean) || false,
+    isVideo: (r.fields["Is_Video"] as boolean) || false,
   }));
 }
 

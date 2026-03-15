@@ -16,6 +16,8 @@ interface CopyEditorTableProps {
   clientVariables?: ClientVariable[];
   /** Client-linked format record IDs — used to filter the Add Format picker */
   clientFormatIds?: string[];
+  /** Client animation templates for video format assignment */
+  clientVideoTemplates?: Array<{ id: string; name: string; duration: number }>;
 }
 
 type SaveState = "idle" | "saving" | "success" | "error";
@@ -71,6 +73,7 @@ export default function CopyEditorTable({
   userRole,
   clientVariables,
   clientFormatIds = [],
+  clientVideoTemplates,
 }: CopyEditorTableProps) {
   /** Resolve display label for a variable slot, using client-specific label if available */
   const resolveLabel = (slot: string) => {
@@ -505,6 +508,7 @@ export default function CopyEditorTable({
           fieldConfig={fieldConfig}
           clientFormatIds={clientFormatIds}
           clientVariables={clientVariables?.map((cv) => ({ slot: cv.slot, label: cv.label }))}
+          clientVideoTemplates={clientVideoTemplates}
           onClose={() => setShowAddFormat(false)}
           onSuccess={handleAddFormatSuccess}
         />
@@ -790,6 +794,11 @@ export default function CopyEditorTable({
                         {banner.bannerName && (
                           <span className="font-mono text-[10px] text-gray-400 max-w-[220px] truncate" title={banner.bannerName}>
                             {banner.bannerName}
+                          </span>
+                        )}
+                        {banner.isVideo && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-semibold text-rose-700">
+                            &#9654; VIDEO
                           </span>
                         )}
                       </div>

@@ -12,6 +12,7 @@ const ALLOWED_FIELDS = new Set([
   "CTA_ET", "CTA_EN", "Price_Tag", "Illustration", "Image",
   "Status", "Approval_Status", "Client_Approved", "Comment",
   "Product_Image_URL",
+  "Is_Video", "Video_URL", "Animation_Template_Id",
 ]);
 
 export async function PATCH(

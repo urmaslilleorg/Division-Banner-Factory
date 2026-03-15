@@ -608,6 +608,11 @@ export default function BannerDetailModal({
                 ▤ Carousel
               </span>
             )}
+            {!isCarousel && banner.isVideo && (
+              <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                ▶ Video
+              </span>
+            )}
             {isCarousel && carouselTotal > 0 && (
               <span
                 className={`text-sm font-normal ${
@@ -667,9 +672,66 @@ export default function BannerDetailModal({
         {/* ── Standard banner ── */}
         {!isCarousel && (
           <>
-            {/* Image preview */}
+            {/* Image / Video preview */}
             <div className="relative overflow-hidden rounded-lg border border-gray-100 bg-gray-50">
-              {resolvedImageUrl ? (
+              {/* Video player — shown when banner is a video type with a video URL */}
+              {banner.isVideo && banner.videoUrl && (banner.videoUrl.startsWith("data:video") || banner.videoUrl.startsWith("http")) ? (
+                <video
+                  src={banner.videoUrl}
+                  className="mx-auto block"
+                  style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
+                  controls
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              ) : banner.isVideo && banner.videoUrl && banner.videoUrl.startsWith("data:image") ? (
+                /* Preview PNG from render job — show with video overlay */
+                <div className="relative">
+                  <img
+                    src={banner.videoUrl}
+                    alt={`Banner ${banner.bannerId} video preview`}
+                    className="mx-auto block opacity-80"
+                    style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
+                  />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <span className="rounded-full bg-black/60 px-3 py-1.5 text-sm text-white">
+                      ▶ Video preview frame
+                    </span>
+                    {banner.animationTemplateId && (
+                      <span className="rounded bg-black/40 px-2 py-0.5 text-xs text-white/80">
+                        Template: {banner.animationTemplateId}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : banner.isVideo ? (
+                /* Video banner with no preview yet */
+                <div
+                  className="mx-auto flex items-center justify-center bg-gray-900 text-gray-400 text-sm"
+                  style={{ width: "100%", aspectRatio: `${banner.width}/${banner.height}`, maxHeight: "50vh" }}
+                >
+                  <div className="text-center">
+                    <svg className="mx-auto mb-2 h-10 w-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    <p className="text-sm font-light text-gray-300">{banner.format}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {banner.width}×{banner.height}px — Video not yet rendered
+                    </p>
+                    {banner.animationTemplateId && (
+                      <p className="mt-0.5 text-xs text-red-400">
+                        Template: {banner.animationTemplateId}
+                      </p>
+                    )}
+                    <p className="mt-2 text-xs text-gray-600">
+                      Export from Figma plugin to generate preview
+                    </p>
+                  </div>
+                </div>
+              ) : resolvedImageUrl ? (
                 <img
                   src={resolvedImageUrl}
                   alt={`Banner ${banner.bannerId}`}

@@ -225,6 +225,35 @@
 
     .btn-apply-updates { background: #6366f1; color: #fff; }
     .btn-apply-updates:hover:not(:disabled) { background: #4f46e5; }
+
+    /* ── Video export section ───────────────────────────────────── */
+    .btn-video { background: #dc2626; color: #fff; }
+    .btn-video:hover:not(:disabled) { background: #b91c1c; }
+
+    .progress-bar.video { background: #dc2626; }
+
+    .video-frame-list {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .video-frame-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .video-frame-item:last-child { border-bottom: none; }
+    .video-frame-icon { font-size: 12px; min-width: 16px; flex-shrink: 0; }
+    .video-frame-name { font-family: monospace; color: #333; font-size: 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .video-frame-template { font-size: 10px; color: #888; flex-shrink: 0; }
+    .video-frame-state { font-size: 10px; color: #888; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -295,6 +324,26 @@
   </div>
 
   <div id="exportList" class="export-list" style="display:none"></div>
+
+  <!-- ── VIDEO EXPORT section ──────────────────────────────────────── -->
+  <hr class="divider" />
+  <div class="section-label">&#9654; Video Export — Figma → WebM</div>
+
+  <div id="videoFrameInfo" style="font-size:11px; color:#888; margin-bottom:8px;">Select a campaign with video formats to export.</div>
+
+  <div class="btn-row">
+    <button class="btn btn-video" id="btnExportVideo" disabled>Export video frames</button>
+  </div>
+
+  <div id="videoExportStatus" class="status info" style="display:none"></div>
+
+  <div id="videoProgressWrap" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar video" id="videoProgressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="videoFrameList" class="video-frame-list" style="display:none"></div>
 <script>"use strict";
 (() => {
   var __defProp = Object.defineProperty;
@@ -337,6 +386,12 @@
   var exportProgressWrap = document.getElementById("exportProgressWrap");
   var exportProgressBar = document.getElementById("exportProgressBar");
   var exportListEl = document.getElementById("exportList");
+  var btnExportVideo = document.getElementById("btnExportVideo");
+  var videoExportStatusEl = document.getElementById("videoExportStatus");
+  var videoProgressWrap = document.getElementById("videoProgressWrap");
+  var videoProgressBar = document.getElementById("videoProgressBar");
+  var videoFrameListEl = document.getElementById("videoFrameList");
+  var videoFrameInfoEl = document.getElementById("videoFrameInfo");
   var clients = [];
   var campaigns = [];
   var currentPayload = null;
@@ -348,6 +403,9 @@
   var exportFrames = [];
   var exportTotal = 0;
   var exportDoneCount = 0;
+  var videoExportFrames = [];
+  var videoExportTotal = 0;
+  var videoExportDone = 0;
   function savePrefs(clientId, campaignId, month) {
     if (clientId !== void 0)
       savedClientId = clientId;
@@ -373,6 +431,41 @@
     exportStatusEl.className = `status ${type}`;
     exportStatusEl.style.display = "block";
   }
+  function showVideoExportStatus(msg, type) {
+    videoExportStatusEl.textContent = msg;
+    videoExportStatusEl.className = `status ${type}`;
+    videoExportStatusEl.style.display = "block";
+  }
+  function renderVideoFrameList() {
+    videoFrameListEl.innerHTML = videoExportFrames.map((f) => {
+      const icon = f.status === "done" ? "\u2705" : f.status === "failed" ? "\u26A0" : f.status === "rendering" ? "\u{1F3AC}" : "\u23F3";
+      const stateLabel = f.status === "done" ? "sent to renderer" : f.status === "failed" ? `failed${f.error ? `: ${f.error.substring(0, 40)}` : ""}` : f.status === "rendering" ? "rendering\u2026" : "waiting";
+      const tmpl = f.animationTemplateId ? ` [${f.animationTemplateId}]` : "";
+      return `
+        <div class="video-frame-item">
+          <span class="video-frame-icon">${icon}</span>
+          <span class="video-frame-name">${f.frameName}</span>
+          <span class="video-frame-template">${tmpl}</span>
+          <span class="video-frame-state">${stateLabel}</span>
+        </div>`;
+    }).join("");
+    videoFrameListEl.style.display = "block";
+  }
+  function updateVideoExportButton() {
+    if (!currentPayload) {
+      btnExportVideo.disabled = true;
+      videoFrameInfoEl.textContent = "Select a campaign with video formats to export.";
+      return;
+    }
+    const videoFrames = currentPayload.frames.filter((f) => f.isVideo);
+    if (videoFrames.length === 0) {
+      btnExportVideo.disabled = true;
+      videoFrameInfoEl.textContent = "No video formats in this campaign.";
+    } else {
+      btnExportVideo.disabled = false;
+      videoFrameInfoEl.textContent = `${videoFrames.length} video frame${videoFrames.length !== 1 ? "s" : ""} ready for export.`;
+    }
+  }
   function renderExportList() {
     exportListEl.innerHTML = exportFrames.map((f) => {
       const icon = f.status === "done" ? "\u2705" : f.status === "failed" ? "\u26A0" : f.status === "skipped" ? "\u23ED" : f.status === "uploading" ? "\u{1F504}" : "\u23F3";
@@ -392,6 +485,40 @@
       parts.push(`${c.formatCount} formats`);
     return parts.length > 0 ? `${c.name}  (${parts.join(" \xB7 ")})` : c.name;
   }
+  btnExportVideo.addEventListener("click", () => {
+    if (!currentPayload)
+      return;
+    const videoFrames = currentPayload.frames.filter((f) => f.isVideo);
+    if (videoFrames.length === 0)
+      return;
+    videoExportFrames = videoFrames.map((f) => {
+      var _a;
+      return {
+        recordId: f.recordId,
+        frameName: f.figmaFrame,
+        animationTemplateId: (_a = f.animationTemplateId) != null ? _a : "",
+        status: "waiting"
+      };
+    });
+    videoExportTotal = videoFrames.length;
+    videoExportDone = 0;
+    videoFrameListEl.style.display = "none";
+    videoFrameListEl.innerHTML = "";
+    videoProgressWrap.style.display = "block";
+    videoProgressBar.style.width = "0%";
+    showVideoExportStatus("Extracting video frame layers from Figma\u2026", "loading");
+    btnExportVideo.disabled = true;
+    parent.postMessage(
+      {
+        pluginMessage: {
+          type: "EXPORT_VIDEO",
+          campaignName: currentPayload.campaignName,
+          frames: videoFrames
+        }
+      },
+      "*"
+    );
+  });
   function updateExportButton() {
     if (!currentPayload) {
       btnExport.disabled = true;
@@ -698,6 +825,7 @@
         "info"
       );
       updateExportButton();
+      updateVideoExportButton();
       parent.postMessage(
         {
           pluginMessage: {
@@ -957,6 +1085,70 @@ ${msg.errors.join("\n")}` : "";
       btnApplyAll.disabled = false;
       btnApplyUpdates.disabled = false;
       updateExportButton();
+    }
+    if (msg.type === "VIDEO_EXPORT_PROGRESS") {
+      const pct = Math.round(msg.current / msg.total * 100);
+      videoProgressBar.style.width = `${pct}%`;
+      showVideoExportStatus(`Extracting layers\u2026 ${msg.current}/${msg.total}: ${msg.frameName}`, "loading");
+      const idx = videoExportFrames.findIndex((f) => f.frameName === msg.frameName);
+      if (idx >= 0)
+        videoExportFrames[idx].status = "rendering";
+      renderVideoFrameList();
+    }
+    if (msg.type === "VIDEO_EXPORT_DONE") {
+      const subdomain = getClientSubdomain();
+      const clientUrl = `https://${subdomain}.menteproduction.com`;
+      const frames = msg.frames;
+      videoProgressBar.style.width = "100%";
+      showVideoExportStatus(`Sending ${frames.length} frame(s) to video renderer\u2026`, "loading");
+      let doneCount = 0;
+      let failCount = 0;
+      for (const frame of frames) {
+        const idx = videoExportFrames.findIndex((f) => f.frameName === frame.frameName);
+        try {
+          const res = await fetch(`${clientUrl}/api/banners/${frame.recordId}/render-video`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              animationTemplateId: frame.animationTemplateId,
+              width: frame.width,
+              height: frame.height,
+              layers: frame.layers
+            })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            throw new Error(err.error || `HTTP ${res.status}`);
+          }
+          if (idx >= 0)
+            videoExportFrames[idx].status = "done";
+          doneCount++;
+        } catch (err) {
+          if (idx >= 0) {
+            videoExportFrames[idx].status = "failed";
+            videoExportFrames[idx].error = String(err);
+          }
+          failCount++;
+        }
+        renderVideoFrameList();
+      }
+      showVideoExportStatus(
+        `\u2705 ${doneCount} sent \xB7 ${failCount > 0 ? `\u26A0 ${failCount} failed` : "all done"}`,
+        failCount > 0 ? "error" : "success"
+      );
+      updateVideoExportButton();
+    }
+    if (msg.type === "VIDEO_EXPORT_ERROR") {
+      showVideoExportStatus(`Video export error: ${msg.message}`, "error");
+      updateVideoExportButton();
+    }
+    if (msg.type === "VIDEO_EXPORT_FRAME_ERROR") {
+      const idx = videoExportFrames.findIndex((f) => f.frameName === msg.frameName);
+      if (idx >= 0) {
+        videoExportFrames[idx].status = "failed";
+        videoExportFrames[idx].error = msg.error;
+      }
+      renderVideoFrameList();
     }
   };
 })();

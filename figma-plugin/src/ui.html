@@ -225,6 +225,35 @@
 
     .btn-apply-updates { background: #6366f1; color: #fff; }
     .btn-apply-updates:hover:not(:disabled) { background: #4f46e5; }
+
+    /* ── Video export section ───────────────────────────────────── */
+    .btn-video { background: #dc2626; color: #fff; }
+    .btn-video:hover:not(:disabled) { background: #b91c1c; }
+
+    .progress-bar.video { background: #dc2626; }
+
+    .video-frame-list {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+    }
+
+    .video-frame-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+
+    .video-frame-item:last-child { border-bottom: none; }
+    .video-frame-icon { font-size: 12px; min-width: 16px; flex-shrink: 0; }
+    .video-frame-name { font-family: monospace; color: #333; font-size: 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .video-frame-template { font-size: 10px; color: #888; flex-shrink: 0; }
+    .video-frame-state { font-size: 10px; color: #888; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -295,5 +324,25 @@
   </div>
 
   <div id="exportList" class="export-list" style="display:none"></div>
+
+  <!-- ── VIDEO EXPORT section ──────────────────────────────────────── -->
+  <hr class="divider" />
+  <div class="section-label">&#9654; Video Export — Figma → WebM</div>
+
+  <div id="videoFrameInfo" style="font-size:11px; color:#888; margin-bottom:8px;">Select a campaign with video formats to export.</div>
+
+  <div class="btn-row">
+    <button class="btn btn-video" id="btnExportVideo" disabled>Export video frames</button>
+  </div>
+
+  <div id="videoExportStatus" class="status info" style="display:none"></div>
+
+  <div id="videoProgressWrap" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar video" id="videoProgressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="videoFrameList" class="video-frame-list" style="display:none"></div>
 </body>
 </html>

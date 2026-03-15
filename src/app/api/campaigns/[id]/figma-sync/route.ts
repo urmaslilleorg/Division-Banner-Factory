@@ -169,6 +169,9 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
       language,
       copy,
       activeVariables,
+      isVideo: banner.isVideo || false,
+      animationTemplateId: banner.animationTemplateId || "",
+      videoUrl: banner.videoUrl || "",
     });
   }
 
@@ -213,6 +216,9 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
       copy: extractCopy(carousel, language, activeVariables),
       activeVariables,
       slides: slidesPayload,
+      isVideo: carousel.isVideo || false,
+      animationTemplateId: carousel.animationTemplateId || "",
+      videoUrl: carousel.videoUrl || "",
     });
   }
 

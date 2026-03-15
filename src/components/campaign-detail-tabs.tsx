@@ -16,6 +16,7 @@ interface CampaignDetailTabsProps {
   fieldConfig: FieldConfig;
   clientVariables: ClientVariable[];
   clientFormatIds?: string[];
+  clientVideoTemplates?: Array<{ id: string; name: string; duration: number }>;
   userRole: string;
   defaultTab?: Tab;
   copySheetUrl?: string | null;
@@ -29,6 +30,7 @@ export default function CampaignDetailTabs({
   fieldConfig,
   clientVariables,
   clientFormatIds = [],
+  clientVideoTemplates,
   userRole,
   defaultTab = "copy",
   copySheetUrl = null,
@@ -169,6 +171,7 @@ export default function CampaignDetailTabs({
               userRole={userRole}
               clientVariables={clientVariables}
               clientFormatIds={clientFormatIds}
+              clientVideoTemplates={clientVideoTemplates}
             />
           )}
         </div>

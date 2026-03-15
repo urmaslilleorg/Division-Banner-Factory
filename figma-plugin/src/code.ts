@@ -62,13 +62,29 @@ interface ExportToMenteMessage {
   type: "EXPORT_TO_MENTE";
 }
 
+interface ExportVideoMessage {
+  type: "EXPORT_VIDEO";
+  frames: Array<{
+    recordId: string;
+    name: string;
+    figmaFrame: string;
+    width: number;
+    height: number;
+    animationTemplateId: string;
+    videoUrl: string;
+    copy: Record<string, string>;
+    activeVariables: string[];
+  }>;
+  campaignName: string;
+}
+
 interface CheckCopyStatusMessage {
   type: "CHECK_COPY_STATUS";
   campaignName: string;
   frames: FramePayload[];
 }
 
-type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage | CheckCopyStatusMessage;
+type PluginMessage = ApplyCopyMessage | ResizeMessage | CloseMessage | ExportToMenteMessage | CheckCopyStatusMessage | ExportVideoMessage;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -337,6 +353,141 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
     }
 
     figma.ui.postMessage({ type: "COPY_STATUS", frames: results });
+    return;
+  }
+
+  // ── EXPORT_VIDEO: Export video frame layers for server-side rendering ──────────
+  if (msg.type === "EXPORT_VIDEO") {
+    const { frames: videoFrames, campaignName: vidCampaignName } = msg;
+
+    // Find the campaign page
+    const vidPage = figma.root.children.find(
+      (p) => p.type === "PAGE" && p.name === vidCampaignName
+    ) as PageNode | undefined;
+
+    if (!vidPage) {
+      figma.ui.postMessage({
+        type: "VIDEO_EXPORT_ERROR",
+        message: `Campaign page "${vidCampaignName}" not found. Apply copy first.`,
+      });
+      return;
+    }
+
+    const results: Array<{
+      recordId: string;
+      frameName: string;
+      animationTemplateId: string;
+      width: number;
+      height: number;
+      layers: Array<{ name: string; type: string; x: number; y: number; w: number; h: number; text?: string; imageBase64?: string; fontSize?: number; fontStyle?: string; fills?: Array<{ type: string; r?: number; g?: number; b?: number; a?: number }> }>;
+    }> = [];
+
+    for (let i = 0; i < videoFrames.length; i++) {
+      const vf = videoFrames[i];
+
+      figma.ui.postMessage({
+        type: "VIDEO_EXPORT_PROGRESS",
+        current: i + 1,
+        total: videoFrames.length,
+        frameName: vf.figmaFrame,
+      });
+
+      // Find the frame on the page
+      const frame = vidPage.findOne(
+        (n) => n.type === "FRAME" && (n.name === vf.figmaFrame || n.name === deriveOldMasterName(vf.figmaFrame))
+      ) as FrameNode | null;
+
+      if (!frame) {
+        figma.ui.postMessage({
+          type: "VIDEO_EXPORT_FRAME_ERROR",
+          frameName: vf.figmaFrame,
+          error: "Frame not found on page",
+        });
+        continue;
+      }
+
+      // Extract all layers from the frame
+      const layers: typeof results[0]["layers"] = [];
+
+      const allNodes = frame.findAll(() => true);
+      for (const node of allNodes) {
+        if (node.type === "TEXT") {
+          const textNode = node as TextNode;
+          layers.push({
+            name: textNode.name,
+            type: "TEXT",
+            x: textNode.x,
+            y: textNode.y,
+            w: textNode.width,
+            h: textNode.height,
+            text: textNode.characters,
+            fontSize: typeof textNode.fontSize === "number" ? textNode.fontSize : 16,
+            fontStyle: typeof textNode.fontName !== "symbol" ? (textNode.fontName as FontName).style : "Regular",
+          });
+        } else if (node.type === "RECTANGLE") {
+          const rectNode = node as RectangleNode;
+          const imageFill = rectNode.fills !== figma.mixed
+            ? (rectNode.fills as readonly Paint[]).find((f) => f.type === "IMAGE") as ImagePaint | undefined
+            : undefined;
+
+          let imageBase64: string | undefined;
+          if (imageFill?.imageHash) {
+            try {
+              const img = figma.getImageByHash(imageFill.imageHash);
+              if (img) {
+                const bytes = await img.getBytesAsync();
+                imageBase64 = figma.base64Encode(bytes);
+              }
+            } catch { /* non-fatal */ }
+          }
+
+          const solidFills = rectNode.fills !== figma.mixed
+            ? (rectNode.fills as readonly Paint[])
+                .filter((f) => f.type === "SOLID")
+                .map((f) => { const sf = f as SolidPaint; return { type: "SOLID", r: sf.color.r, g: sf.color.g, b: sf.color.b, a: sf.opacity ?? 1 }; })
+            : [];
+
+          layers.push({
+            name: rectNode.name,
+            type: "RECTANGLE",
+            x: rectNode.x,
+            y: rectNode.y,
+            w: rectNode.width,
+            h: rectNode.height,
+            imageBase64,
+            fills: solidFills,
+          });
+        } else if (node.type === "FRAME" || node.type === "GROUP") {
+          // Export nested frames/groups as PNG
+          try {
+            const pngBytes = await (node as FrameNode).exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+            layers.push({
+              name: node.name,
+              type: "IMAGE",
+              x: (node as FrameNode).x,
+              y: (node as FrameNode).y,
+              w: (node as FrameNode).width,
+              h: (node as FrameNode).height,
+              imageBase64: figma.base64Encode(pngBytes),
+            });
+          } catch { /* non-fatal */ }
+        }
+      }
+
+      results.push({
+        recordId: vf.recordId,
+        frameName: vf.figmaFrame,
+        animationTemplateId: vf.animationTemplateId,
+        width: frame.width,
+        height: frame.height,
+        layers,
+      });
+    }
+
+    figma.ui.postMessage({
+      type: "VIDEO_EXPORT_DONE",
+      frames: results,
+    });
     return;
   }
 
