@@ -320,9 +320,9 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
         }
       }
 
-      // ── STEP 2: Grid-layout newly created frames ─────────────────────────────
+      // ── STEP 2: Grid-layout newly created frames ──────────────────────────────────────────────
       if (newFrames.length > 0) {
-        layoutFramesInGrid(newFrames);
+        layoutFramesInGrid(newFrames, page);
       }
     } catch (err) {
       figma.ui.postMessage({ type: "ERROR", message: String(err) });
@@ -846,7 +846,7 @@ const LABEL_CLEARANCE = 40;
  * A grey label sits LABEL_CLEARANCE px above each row's first frame.
  * Rows sorted tallest-first.
  */
-function layoutFramesInGrid(frames: FrameNode[]): void {
+function layoutFramesInGrid(frames: FrameNode[], page: PageNode): void {
   // Separate standard frames from carousel slide groups
   // Group carousel slides by their base name (everything before _Slide_)
   const carouselGroups = new Map<string, FrameNode[]>();
@@ -893,7 +893,7 @@ function layoutFramesInGrid(frames: FrameNode[]): void {
     if (row.type === "standard") {
       const frame = row.frame;
       // Label: "FrameName  WxH"
-      addFrameLabelText(`${frame.name}  ${frame.width}\u00d7${frame.height}`, 0, y);
+      addFrameLabelText(page, `${frame.name}  ${frame.width}×${frame.height}`, 0, y);
       frame.x = 0;
       frame.y = y + LABEL_CLEARANCE;
       y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
@@ -902,7 +902,7 @@ function layoutFramesInGrid(frames: FrameNode[]): void {
       const w = slides[0].width;
       const h = slides[0].height;
       // Label: "BaseName  WxH (N slides)"
-      addFrameLabelText(`${baseName}  ${w}\u00d7${h} (${slides.length} slides)`, 0, y);
+      addFrameLabelText(page, `${baseName}  ${w}×${h} (${slides.length} slides)`, 0, y);
       let slideX = 0;
       for (const slide of slides) {
         slide.x = slideX;
@@ -915,12 +915,17 @@ function layoutFramesInGrid(frames: FrameNode[]): void {
 }
 
 /**
- * Add a grey label text node at the given position.
+ * Add a grey label text node at the given position on the specified page.
+ * @param page  The page node to append the label to (must be the campaign page)
  * @param text  Full label string, e.g. "FrameName  960×1200 (3 slides)"
  * @param x     Left edge of the label
  * @param y     Top edge of the label (should be LABEL_CLEARANCE px above the frame)
+ *
+ * IMPORTANT: Always pass the campaign page explicitly. Never use figma.currentPage
+ * here because figma.currentPage can point to Page 1 if the user switched pages
+ * or if Figma re-focused the original page after an async operation.
  */
-function addFrameLabelText(text: string, x: number, y: number): void {
+function addFrameLabelText(page: PageNode, text: string, x: number, y: number): void {
   try {
     const label = figma.createText();
     label.name = `__label__${text}`;
@@ -930,7 +935,8 @@ function addFrameLabelText(text: string, x: number, y: number): void {
     label.characters = text;
     label.x = x;
     label.y = y;
-    figma.currentPage.appendChild(label);
+    // Append to the explicit campaign page, NOT figma.currentPage
+    page.appendChild(label);
   } catch {
     // Non-fatal — label is cosmetic only
   }

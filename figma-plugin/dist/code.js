@@ -169,7 +169,7 @@
           }
         }
         if (newFrames.length > 0) {
-          layoutFramesInGrid(newFrames);
+          layoutFramesInGrid(newFrames, page);
         }
       } catch (err) {
         figma.ui.postMessage({ type: "ERROR", message: String(err) });
@@ -518,7 +518,7 @@
   }
   var GRID_Y_GAP = 200;
   var LABEL_CLEARANCE = 40;
-  function layoutFramesInGrid(frames) {
+  function layoutFramesInGrid(frames, page) {
     const carouselGroups = /* @__PURE__ */ new Map();
     const standardFrames = [];
     for (const frame of frames) {
@@ -552,7 +552,7 @@
     for (const row of rows) {
       if (row.type === "standard") {
         const frame = row.frame;
-        addFrameLabelText(`${frame.name}  ${frame.width}\xD7${frame.height}`, 0, y);
+        addFrameLabelText(page, `${frame.name}  ${frame.width}\xD7${frame.height}`, 0, y);
         frame.x = 0;
         frame.y = y + LABEL_CLEARANCE;
         y += LABEL_CLEARANCE + frame.height + GRID_Y_GAP;
@@ -560,7 +560,7 @@
         const { slides, baseName } = row;
         const w = slides[0].width;
         const h = slides[0].height;
-        addFrameLabelText(`${baseName}  ${w}\xD7${h} (${slides.length} slides)`, 0, y);
+        addFrameLabelText(page, `${baseName}  ${w}\xD7${h} (${slides.length} slides)`, 0, y);
         let slideX = 0;
         for (const slide of slides) {
           slide.x = slideX;
@@ -571,7 +571,7 @@
       }
     }
   }
-  function addFrameLabelText(text, x, y) {
+  function addFrameLabelText(page, text, x, y) {
     try {
       const label = figma.createText();
       label.name = `__label__${text}`;
@@ -581,7 +581,7 @@
       label.characters = text;
       label.x = x;
       label.y = y;
-      figma.currentPage.appendChild(label);
+      page.appendChild(label);
     } catch (e) {
     }
   }
