@@ -949,12 +949,18 @@
     renderExportList();
     const subdomain = getClientSubdomain();
     const clientUrl = `https://${subdomain}.menteproduction.com`;
-    const imageData = `data:image/png;base64,${base64}`;
     try {
-      const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-image`, {
+      const binaryStr = atob(base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++)
+        bytes[i] = binaryStr.charCodeAt(i);
+      const pngBlob = new Blob([bytes], { type: "image/png" });
+      const formData = new FormData();
+      formData.append("file", pngBlob, `${frameName}.png`);
+      formData.append("field", "Product_Image_URL");
+      const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-asset`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imageData, fileName: `${frameName}.png` })
+        body: formData
       });
       if (!uploadRes.ok) {
         const err = await uploadRes.json().catch(() => ({ error: uploadRes.statusText }));

@@ -6,25 +6,40 @@ const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
 const BASE_ID = "appIqinespXjbIERp";
 const BANNERS_TABLE = "tblE3Np8VIaKJsqoW";
 
-// Fields that accept a URL string
-const ALLOWED_ASSET_FIELDS = new Set(["Image", "Illustration"]);
+// CORS headers — required for Figma plugin (cross-origin fetch from plugin sandbox)
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// Fields that accept a URL string:
+//   Image, Illustration — used by the web app AssetCell component
+//   Product_Image_URL   — used by the Figma plugin export flow
+const ALLOWED_ASSET_FIELDS = new Set(["Image", "Illustration", "Product_Image_URL"]);
 
 /**
  * POST /api/banners/[id]/upload-asset
  *
  * Accepts multipart/form-data with:
- *   - file: the image file (PNG, JPG, WebP, SVG)
- *   - field: the Airtable field name ("Image" or "Illustration")
+ *   - file: the image file (PNG, JPG, WebP, SVG; max 10 MB)
+ *   - field: the Airtable field name ("Image", "Illustration", or "Product_Image_URL")
  *
  * Flow:
  *   1. Validate file type and size
- *   2. Upload to Vercel Blob → get a permanent public URL
+ *   2. Upload to Vercel Blob (Stockholm ARN1) → permanent public URL
  *   3. PATCH the Airtable banner record with { [field]: url }
  *   4. Return { url }
  *
  * This avoids storing base64 data URLs in Airtable (which hit the
- * character limit and cause the thumbnail-vanish bug).
+ * 100k-character limit and cause the thumbnail-vanish bug).
+ * Also used by the Figma plugin export flow instead of the legacy
+ * /upload-image route that stored base64 in Product_Image_URL.
  */
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -35,12 +50,12 @@ export async function POST(
     const field = formData.get("field") as string | null;
 
     if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400, headers: CORS_HEADERS });
     }
     if (!field || !ALLOWED_ASSET_FIELDS.has(field)) {
       return NextResponse.json(
         { error: `Invalid field. Must be one of: ${Array.from(ALLOWED_ASSET_FIELDS).join(", ")}` },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
@@ -48,7 +63,7 @@ export async function POST(
     if (!ACCEPTED_TYPES.includes(file.type)) {
       return NextResponse.json(
         { error: "Unsupported file type. Use PNG, JPG, WebP, or SVG." },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
@@ -56,7 +71,7 @@ export async function POST(
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
         { error: "File too large. Maximum size is 10 MB." },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
@@ -89,12 +104,12 @@ export async function POST(
       throw new Error(`Airtable PATCH error ${airtableRes.status}: ${err}`);
     }
 
-    return NextResponse.json({ url: blob.url });
+    return NextResponse.json({ url: blob.url }, { headers: CORS_HEADERS });
   } catch (error) {
     console.error("upload-asset failed:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Upload failed" },
-      { status: 500 }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }

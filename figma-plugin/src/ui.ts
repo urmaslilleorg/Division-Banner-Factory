@@ -17,7 +17,7 @@
  *   2. Button shows "Export all (N)" or "Export N selected" based on selection
  *   3. Click Export → sends EXPORT_TO_MENTE to main thread
  *   4. Main thread exports each frame as PNG, sends FRAME_EXPORTED per frame
- *   5. UI uploads each PNG to /api/banners/[id]/upload-image
+ *   5. UI uploads each PNG to /api/banners/[id]/upload-asset (multipart, Vercel Blob)
  *   6. UI updates status to Client_Review via /api/banners/[id]/plugin-update
  *   7. Shows per-frame result: ✅ uploaded / ⚠ failed / ⏭ skipped (no match)
  */
@@ -817,13 +817,25 @@ async function uploadFrame(frameName: string, base64: string): Promise<void> {
 
   const subdomain = getClientSubdomain();
   const clientUrl = `https://${subdomain}.menteproduction.com`;
-  const imageData = `data:image/png;base64,${base64}`;
 
   try {
-    const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-image`, {
+    // ── Vercel Blob path: multipart/form-data → upload-asset ──────────────
+    // Convert base64 PNG to a Blob, then POST as multipart to upload-asset.
+    // This avoids the Airtable 100k-character truncation that affected the
+    // old base64-to-upload-image path. Figma's plugin sandbox supports fetch
+    // with FormData natively (confirmed: no sandbox restriction).
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    const pngBlob = new Blob([bytes], { type: "image/png" });
+
+    const formData = new FormData();
+    formData.append("file", pngBlob, `${frameName}.png`);
+    formData.append("field", "Product_Image_URL");
+
+    const uploadRes = await fetch(`${clientUrl}/api/banners/${recordId}/upload-asset`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: imageData, fileName: `${frameName}.png` }),
+      body: formData,
     });
 
     if (!uploadRes.ok) {

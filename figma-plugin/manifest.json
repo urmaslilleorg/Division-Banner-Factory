@@ -14,7 +14,8 @@
       "https://maxima.menteproduction.com",
       "https://avene.menteproduction.com",
       "https://division-banner-factory.vercel.app",
-      "https://*.vercel.app"
+      "https://*.vercel.app",
+      "https://*.public.blob.vercel-storage.com"
     ],
     "devAllowedDomains": ["http://localhost:3000"]
   }
