@@ -46,7 +46,9 @@ export async function PATCH(
           Authorization: `Bearer ${AIRTABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ fields }),
+        // typecast:true allows Airtable to accept string values for singleSelect
+        // fields (e.g. Price_Tag) without requiring an exact option ID match.
+        body: JSON.stringify({ fields, typecast: true }),
       }
     );
 

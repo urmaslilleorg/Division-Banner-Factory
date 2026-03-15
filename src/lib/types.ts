@@ -163,7 +163,10 @@ export function parseBannerRecord(record: {
     comment: (f["Comment"] as string) || "",
     channel: (f["Channel"] as Channel) || null,
     device: (f["Device"] as Device) || null,
-    priceTag: (f["Price_Tag"] as string) || "",
+    // Price_Tag is a singleSelect field — Airtable returns {name, id} not a plain string.
+    priceTag: (typeof f["Price_Tag"] === "object" && f["Price_Tag"] !== null
+      ? (f["Price_Tag"] as { name: string }).name
+      : (f["Price_Tag"] as string)) || "",
     illustration: (f["Illustration"] as string) || "",
     image: (f["Image"] as string) || "",
     safeArea: (f["Safe_Area"] as string) || "",
