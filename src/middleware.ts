@@ -20,11 +20,14 @@ const isPublicRoute = createRouteMatcher([
 // /admin/* routes require division_admin role
 const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
 
+// Root sign-in URL — always on menteproduction.com, never on accounts subdomain
+const ROOT_SIGN_IN = "https://menteproduction.com/sign-in";
+
 export default clerkMiddleware((auth, request: NextRequest) => {
   // /admin routes: protect with Clerk auth, inject admin client config
   if (isAdminRoute(request)) {
     if (!isPublicRoute(request)) {
-      auth().protect();
+      auth().protect({ unauthenticatedUrl: ROOT_SIGN_IN });
     }
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-client-id", "admin");
@@ -74,9 +77,13 @@ export default clerkMiddleware((auth, request: NextRequest) => {
     return NextResponse.json({ error: "Unknown client" }, { status: 404 });
   }
 
-  // Protect non-public routes — redirect unauthenticated users to landing page
+  // Protect non-public routes — redirect unauthenticated users to sign-in page
+  // Always use the root domain sign-in URL to avoid accounts.menteproduction.com
   if (!isPublicRoute(request)) {
-    auth().protect({ unauthenticatedUrl: new URL("/", request.url).toString() });
+    const signInUrl = subdomain
+      ? `https://${subdomain}.${domainWithoutPort}/sign-in`
+      : ROOT_SIGN_IN;
+    auth().protect({ unauthenticatedUrl: signInUrl });
   }
 
   // Attach client config to request headers for downstream use
