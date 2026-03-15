@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { getUserRole } from "@/lib/auth-role";
 import { redirect } from "next/navigation";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
@@ -14,8 +15,7 @@ export default async function SettingsPage({
 }: {
   searchParams: { tab?: string };
 }) {
-  const { sessionClaims } = await auth();
-  const role = (sessionClaims?.metadata as Record<string, string> | undefined)?.role;
+  const role = await getUserRole();
   const isAdmin = role === "division_admin";
 
   const clientConfig = getClientConfigFromHeaders();

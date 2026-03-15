@@ -1,3 +1,4 @@
+import { getUserRole } from "@/lib/auth-role";
 export const dynamic = "force-dynamic";
 /**
  * POST /api/campaigns/[id]/generate-banners
@@ -189,8 +190,7 @@ export async function POST(
 ) {
   try {
     // Auth check
-    const { sessionClaims } = await auth();
-    const role = (sessionClaims?.metadata as Record<string, unknown> | undefined)?.role as string | undefined;
+    const role = await getUserRole();
     if (!role || !["division_admin", "division_designer"].includes(role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

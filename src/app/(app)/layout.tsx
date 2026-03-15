@@ -1,20 +1,16 @@
-import { auth } from "@clerk/nextjs/server";
 import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
+import { getUserRole } from "@/lib/auth-role";
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Get Clerk session — treat missing role as least-privilege viewer, never crash
-  const { sessionClaims } = await auth();
-  // Check metadata (Clerk custom claim) first, fall back to publicMetadata, then 'viewer'
-  const role =
-    (sessionClaims?.metadata as { role?: string })?.role ??
-    (sessionClaims?.publicMetadata as { role?: string })?.role ??
-    "viewer";
+  // Read role from publicMetadata via currentUser() — sessionClaims.metadata
+  // is undefined without a Clerk JWT template, so we use currentUser() directly.
+  const role = await getUserRole();
 
   // Client config may be null on root domain (Division admin context)
   const clientConfig = getClientConfigFromHeaders();

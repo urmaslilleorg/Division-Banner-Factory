@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
+import { getUserRole } from "@/lib/auth-role";
 import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
 import CalendarGrid from "@/components/calendar-grid";
 import Link from "next/link";
@@ -12,14 +13,9 @@ export default async function CampaignsPage({
 }: {
   searchParams: { preview?: string };
 }) {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   if (!userId) redirect("/");
-
-  // Check metadata (Clerk custom claim) first, fall back to publicMetadata, then 'viewer'
-  const role =
-    (sessionClaims?.metadata as { role?: string })?.role ??
-    (sessionClaims?.publicMetadata as { role?: string })?.role ??
-    "viewer";
+  const role = await getUserRole();
 
   // Detect whether we are on a client subdomain or the root domain.
   // Middleware sets x-client-id only when a real client config exists (subdomain).

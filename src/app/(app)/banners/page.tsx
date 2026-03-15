@@ -1,15 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
+import { getUserRole } from "@/lib/auth-role";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 
 export default async function BannersPage() {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   if (!userId) redirect("/sign-in");
-
-  const role =
-    (sessionClaims?.metadata as { role?: string })?.role ??
-    (sessionClaims?.publicMetadata as { role?: string })?.role ??
-    "viewer";
+  const role = await getUserRole();
 
   // Detect root domain vs client subdomain (same pattern as campaigns/page.tsx)
   const headersList = headers();

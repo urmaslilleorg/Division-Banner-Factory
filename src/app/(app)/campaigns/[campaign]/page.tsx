@@ -1,3 +1,4 @@
+import { getUserRole } from "@/lib/auth-role";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -128,7 +129,7 @@ interface CampaignPageProps {
 }
 
 export default async function CampaignPage({ params, searchParams }: CampaignPageProps) {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
   const clientConfig = getClientConfigFromHeaders();
@@ -215,12 +216,8 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
     );
   }
 
-  // Derive user role from Clerk session claims
-  // Check both metadata and publicMetadata (Clerk stores role in publicMetadata by default)
-  const role =
-    ((sessionClaims?.metadata as Record<string, unknown> | undefined)?.role as string | undefined) ??
-    ((sessionClaims?.publicMetadata as Record<string, unknown> | undefined)?.role as string | undefined);
-  const userRole = role ?? "division_admin";
+  const role = await getUserRole();
+  const userRole = role;
 
   // Fetch banners and client variables in parallel
   const clientSubdomain = clientConfig.subdomain || clientConfig.id;

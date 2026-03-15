@@ -1,3 +1,4 @@
+import { getUserRole } from "@/lib/auth-role";
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -46,10 +47,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { clientId: string; templateId: string } }
 ) {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const role = (sessionClaims?.metadata as Record<string, string> | undefined)?.role;
+  const { userId } = await auth();
+  const role = await getUserRole();
   if (role !== "division_admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
