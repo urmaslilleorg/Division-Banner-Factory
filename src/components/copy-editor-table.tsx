@@ -50,12 +50,23 @@ const FIELD_TO_AIRTABLE: Record<string, string> = {
   image: "Image",
 };
 
+/**
+ * Determines whether all ACTIVE variables for a banner row have values.
+ *
+ * Bug fixed: previously used the campaign-level `variables` list (all 7 slots)
+ * instead of the format-specific active variables. An inactive/greyed slot
+ * (e.g. Illustration) with no value would cause Ready to flash then revert
+ * even though the user cannot fill that slot.
+ *
+ * Now receives only the active variables for this banner's format
+ * (already resolved by getFormatVariables before this call).
+ */
 function isBannerRowComplete(
   banner: Banner,
-  variables: string[],
+  activeVariables: string[],
   languages: string[]
 ): boolean {
-  for (const variable of variables) {
+  for (const variable of activeVariables) {
     for (const lang of languages) {
       const fieldKey = VARIABLE_TO_FIELD[variable]?.[lang];
       if (!fieldKey) continue;
