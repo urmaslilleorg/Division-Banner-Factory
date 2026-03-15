@@ -137,7 +137,15 @@ async function handleSync(campaignId: string): Promise<NextResponse> {
   // ── 1. Fetch campaign ───────────────────────────────────────────────────────
   const campaign = await fetchCampaignById(campaignId);
   const fieldConfig = campaign.fieldConfig;
-  const formatConfigs = fieldConfig?.formatConfigs;
+  // Read per-format config from EITHER fieldConfig.formatConfigs (new schema)
+  // OR fieldConfig.formats when it is an object (old schema used by Avene digi/ekraanid).
+  // fieldConfig.formats is an array of format names in the new schema — ignore it when it is an array.
+  const formatConfigs: Record<string, FormatFieldConfig> | undefined =
+    fieldConfig?.formatConfigs ??
+    (fieldConfig?.formats && !Array.isArray(fieldConfig.formats)
+      ? (fieldConfig.formats as unknown as Record<string, FormatFieldConfig>)
+      : undefined);
+
   // Use campaign-level variables as fallback; only fall back to ALL_VARIABLES
   // if fieldConfig is entirely absent. An empty array means "no campaign default"
   // has been configured — in that case also use ALL_VARIABLES as the safe default.
