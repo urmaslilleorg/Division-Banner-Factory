@@ -26,10 +26,11 @@ export default async function SettingsLayout({
     redirect("/");
   }
 
-  // Admin sees all tabs; client users see Templates only
+  // Admin sees all tabs; Formats and Variables link to /admin/* (where the real pages live)
+  // Client users see Templates only
   const tabs = [
     ...(isAdmin ? [
-      { href: "/settings/formats", label: "Formats" },
+      { href: "/admin/formats", label: "Formats" },
       { href: "/settings/variables", label: "Variables" },
     ] : []),
     { href: "/settings/templates", label: "Templates" },
