@@ -1,10 +1,9 @@
 "use client";
 
-import { useClerk, useAuth } from "@clerk/nextjs";
+import { SignInButton, useAuth, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function LandingPage() {
-  const { openSignIn } = useClerk();
   const { isSignedIn } = useAuth();
 
   return (
@@ -30,7 +29,7 @@ export default function LandingPage() {
           }}
         >
           <Link
-            href="/campaigns?preview=true"
+            href="/admin"
             style={{
               fontFamily: "'DM Sans', sans-serif",
               fontWeight: 300,
@@ -42,6 +41,21 @@ export default function LandingPage() {
           >
             Go to app →
           </Link>
+          <SignOutButton redirectUrl="/">
+            <button
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "rgba(245,245,240,0.4)",
+                fontSize: "0.75rem",
+                cursor: "pointer",
+                letterSpacing: "0.1em",
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              Sign out
+            </button>
+          </SignOutButton>
         </header>
       )}
 
@@ -108,13 +122,12 @@ export default function LandingPage() {
           <p style={{ margin: 0 }}>Campaigns delivered.</p>
         </div>
 
-        {/* Sign In button — always rendered, uses imperative Clerk API on click */}
-        <button
-          className="sign-in-btn"
-          onClick={() => openSignIn({ forceRedirectUrl: "/admin" })}
-        >
-          Sign in
-        </button>
+        {/* Sign In button — modal mode keeps everything on menteproduction.com */}
+        {!isSignedIn && (
+          <SignInButton mode="modal" forceRedirectUrl="/admin">
+            <button className="sign-in-btn">Sign in</button>
+          </SignInButton>
+        )}
 
         {/* Footer */}
         <footer
