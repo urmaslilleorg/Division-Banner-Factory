@@ -1,29 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import LandingHeader from "@/components/landing-header";
 import { SignInButton } from "@clerk/nextjs";
 
-export default async function LandingPage() {
-  const headersList = headers();
-  const clientId = headersList.get("x-client-id");
-  const isClientSubdomain = !!clientId && clientId !== "admin";
-
-  // Auth check — redirect signed-in users to the right place
-  const { userId, sessionClaims } = await auth();
-  if (userId) {
-    if (isClientSubdomain) {
-      // Client subdomain: go to campaign calendar
-      redirect("/campaigns?preview=true");
-    } else {
-      // Root domain: division_admin → /admin, everyone else → /campaigns
-      const role =
-        (sessionClaims?.metadata as { role?: string })?.role ??
-        (sessionClaims?.publicMetadata as { role?: string })?.role ??
-        "viewer";
-      redirect(role === "division_admin" ? "/admin" : "/campaigns?preview=true");
-    }
-  }
+// Static landing page — auth redirects are handled by middleware.
+// Signed-in users are redirected before this page ever renders.
+export default function LandingPage() {
 
   return (
     <>
