@@ -602,6 +602,7 @@
     }
   }
   async function applyCopyToFrame(frame, copy, activeVariables) {
+    var _a, _b;
     const textNodes = frame.findAll((n) => n.type === "TEXT");
     for (const textNode of textNodes) {
       const layerKey = textNode.name.toUpperCase().replace(/\s+/g, "_");
@@ -635,39 +636,52 @@
       }
       textNode.characters = newText;
     }
-    const rectNodes = frame.findAll((n) => n.type === "RECTANGLE");
-    for (const rect of rectNodes) {
-      const matchingSlot = activeVariables.find(
-        (slot) => IMAGE_SLOTS.has(slot) && slot.toUpperCase().replace(/\s+/g, "_") === rect.name.toUpperCase().replace(/\s+/g, "_")
-      );
-      if (!matchingSlot)
+    for (const slot of activeVariables) {
+      if (!IMAGE_SLOTS.has(slot))
         continue;
-      const url = copy[matchingSlot];
-      if (!url || url.trim() === "")
-        continue;
+      const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
+      const url = (_a = copy[slot]) != null ? _a : "";
       const isUrl = url.startsWith("http") || url.startsWith("data:image");
-      if (!isUrl)
-        continue;
-      try {
-        let imageData;
-        if (url.startsWith("data:image")) {
-          const base64 = url.split(",")[1];
-          const binary = atob(base64);
-          imageData = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++)
-            imageData[i] = binary.charCodeAt(i);
+      const labelName = `${slot}_placeholder_label`;
+      const staleLabels = frame.findAll(
+        (n) => n.type === "TEXT" && n.name === labelName
+      );
+      for (const lbl of staleLabels)
+        lbl.remove();
+      const existingRect = frame.findOne(
+        (n) => n.type === "RECTANGLE" && n.name.toUpperCase().replace(/\s+/g, "_") === slotKey
+      );
+      if (isUrl && url.trim() !== "") {
+        if (existingRect) {
+          try {
+            let imageData;
+            if (url.startsWith("data:image")) {
+              const base64 = url.split(",")[1];
+              const binary = atob(base64);
+              imageData = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++)
+                imageData[i] = binary.charCodeAt(i);
+            } else {
+              const base64 = await fetchImageViaUI(url);
+              if (!base64)
+                throw new Error("UI fetch returned null for " + url);
+              const binary = atob(base64);
+              imageData = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++)
+                imageData[i] = binary.charCodeAt(i);
+            }
+            const image = figma.createImage(imageData);
+            existingRect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];
+          } catch (imgErr) {
+            figma.ui.postMessage({ type: "LOG", message: `[DBF] image fill failed for ${slot}: ${imgErr}` });
+          }
         } else {
-          const base64 = await fetchImageViaUI(url);
-          if (!base64)
-            throw new Error("UI fetch returned null");
-          const binary = atob(base64);
-          imageData = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++)
-            imageData[i] = binary.charCodeAt(i);
+          const y = (_b = SLOT_Y[slotKey]) != null ? _b : 400;
+          await placeImageInFrame(frame, slot, url, y);
         }
-        const image = figma.createImage(imageData);
-        rect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];
-      } catch (e) {
+      } else {
+        if (existingRect)
+          existingRect.remove();
       }
     }
   }

@@ -1011,37 +1011,66 @@ async function applyCopyToFrame(
     textNode.characters = newText;
   }
 
-  // ── Image / Illustration fills on existing rectangle layers ──────────────
-  // If the frame has a RECTANGLE named "Image" or "Illustration" and the
-  // corresponding copy value is a URL/data URL, update its image fill.
-  const rectNodes = frame.findAll((n) => n.type === "RECTANGLE") as RectangleNode[];
-  for (const rect of rectNodes) {
-    const matchingSlot = activeVariables.find(
-      (slot) => IMAGE_SLOTS.has(slot) && slot.toUpperCase().replace(/\s+/g, "_") === rect.name.toUpperCase().replace(/\s+/g, "_")
-    );
-    if (!matchingSlot) continue;
-    const url = copy[matchingSlot];
-    if (!url || url.trim() === "") continue;
-    const isUrl = url.startsWith("http") || url.startsWith("data:image");
-    if (!isUrl) continue;
+  // ── Image / Illustration fills ───────────────────────────────────────────────
+  // For each active image slot:
+  //  a) Remove any stale placeholder label ("Slot_placeholder_label") text node.
+  //  b) If a URL is present:
+  //     - If a rectangle named after the slot exists, update its fill.
+  //     - If no rectangle exists yet (frame created before image was uploaded),
+  //       create one via placeImageInFrame.
+  //  c) If no URL, remove any existing rectangle for that slot (no placeholder).
 
-    try {
-      let imageData: Uint8Array;
-      if (url.startsWith("data:image")) {
-        const base64 = url.split(",")[1];
-        const binary = atob(base64);
-        imageData = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
+  for (const slot of activeVariables) {
+    if (!IMAGE_SLOTS.has(slot)) continue;
+
+    const slotKey = slot.toUpperCase().replace(/\s+/g, "_");
+    const url = copy[slot] ?? "";
+    const isUrl = url.startsWith("http") || url.startsWith("data:image");
+
+    // Always remove stale placeholder label text nodes for this slot
+    const labelName = `${slot}_placeholder_label`;
+    const staleLabels = frame.findAll(
+      (n) => n.type === "TEXT" && n.name === labelName
+    );
+    for (const lbl of staleLabels) lbl.remove();
+
+    // Find existing rectangle for this slot
+    const existingRect = frame.findOne(
+      (n) => n.type === "RECTANGLE" &&
+        n.name.toUpperCase().replace(/\s+/g, "_") === slotKey
+    ) as RectangleNode | null;
+
+    if (isUrl && url.trim() !== "") {
+      // We have a URL — apply image fill
+      if (existingRect) {
+        // Update fill on existing rectangle
+        try {
+          let imageData: Uint8Array;
+          if (url.startsWith("data:image")) {
+            const base64 = url.split(",")[1];
+            const binary = atob(base64);
+            imageData = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
+          } else {
+            const base64 = await fetchImageViaUI(url);
+            if (!base64) throw new Error("UI fetch returned null for " + url);
+            const binary = atob(base64);
+            imageData = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
+          }
+          const image = figma.createImage(imageData);
+          existingRect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];
+        } catch (imgErr) {
+          figma.ui.postMessage({ type: "LOG", message: `[DBF] image fill failed for ${slot}: ${imgErr}` });
+        }
       } else {
-        // Remote URL — delegate to UI thread (main thread has no network access)
-        const base64 = await fetchImageViaUI(url);
-        if (!base64) throw new Error("UI fetch returned null");
-        const binary = atob(base64);
-        imageData = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i);
+        // No rectangle yet — create one with the image fill
+        const y = SLOT_Y[slotKey] ?? 400;
+        await placeImageInFrame(frame, slot, url, y);
       }
-      const image = figma.createImage(imageData);
-      rect.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FIT" }];
-    } catch { /* non-fatal — keep existing fill */ }
+    } else {
+      // No URL — remove any existing rectangle (no placeholder boxes)
+      if (existingRect) existingRect.remove();
+    }
   }
 }
