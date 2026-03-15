@@ -257,7 +257,7 @@
   </style>
 </head>
 <body>
-  <h1>Division Banner Factory <span style="font-size:11px;font-weight:400;color:#999;vertical-align:middle">v22</span></h1>
+  <h1>Division Banner Factory <span style="font-size:11px;font-weight:400;color:#999;vertical-align:middle">v23</span></h1>
 
   <div class="field">
     <label for="clientSelect">Client</label>
@@ -841,9 +841,32 @@
       btnFetch.disabled = false;
     }
   });
-  function triggerApply(updatesOnly) {
-    if (!currentPayload)
+  async function triggerApply(updatesOnly) {
+    const campaignId = campaignSelect.value;
+    if (!campaignId)
       return;
+    btnApplyAll.disabled = true;
+    btnApplyUpdates.disabled = true;
+    btnFetch.disabled = true;
+    showStatus("Refreshing data from Mente\u2026", "loading");
+    try {
+      const url = `${ROOT_API}/api/campaigns/${campaignId}/figma-sync`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      currentPayload = data;
+      updateExportButton();
+      updateVideoExportButton();
+    } catch (err) {
+      showStatus(`Refresh failed: ${String(err)}`, "error");
+      btnApplyAll.disabled = false;
+      btnApplyUpdates.disabled = false;
+      btnFetch.disabled = false;
+      return;
+    }
     let framesToApply = currentPayload.frames;
     if (updatesOnly && currentStatusResults.length > 0) {
       const needsUpdate = new Set(

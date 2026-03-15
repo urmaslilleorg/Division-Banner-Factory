@@ -162,7 +162,7 @@ const SLIDE_GAP = 100;
 
 // ── Plugin entry ───────────────────────────────────────────────────────────────
 
-const PLUGIN_VERSION = "v22";
+const PLUGIN_VERSION = "v23";
 console.log(`[DBF] Plugin loaded ${PLUGIN_VERSION}`);
 figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factory ${PLUGIN_VERSION}` });
 

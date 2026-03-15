@@ -686,8 +686,36 @@ btnFetch.addEventListener("click", async () => {
 
 // ── Step 4: Apply copy ────────────────────────────────────────────────────────
 
-function triggerApply(updatesOnly: boolean) {
-  if (!currentPayload) return;
+async function triggerApply(updatesOnly: boolean) {
+  // Always re-fetch the latest data from figma-sync before applying.
+  // This ensures changes saved in the Mente web app (Airtable) are picked up
+  // immediately without needing to click Fetch first.
+  const campaignId = campaignSelect.value;
+  if (!campaignId) return;
+
+  btnApplyAll.disabled = true;
+  btnApplyUpdates.disabled = true;
+  btnFetch.disabled = true;
+  showStatus("Refreshing data from Mente…", "loading");
+
+  try {
+    const url = `${ROOT_API}/api/campaigns/${campaignId}/figma-sync`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    const data: SyncPayload = await res.json();
+    currentPayload = data;
+    updateExportButton();
+    updateVideoExportButton();
+  } catch (err) {
+    showStatus(`Refresh failed: ${String(err)}`, "error");
+    btnApplyAll.disabled = false;
+    btnApplyUpdates.disabled = false;
+    btnFetch.disabled = false;
+    return;
+  }
 
   let framesToApply = currentPayload.frames;
 

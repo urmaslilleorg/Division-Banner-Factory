@@ -45,7 +45,7 @@
   };
   var IMAGE_SLOTS = /* @__PURE__ */ new Set(["Illustration", "Image"]);
   var SLIDE_GAP = 100;
-  var PLUGIN_VERSION = "v22";
+  var PLUGIN_VERSION = "v23";
   console.log(`[DBF] Plugin loaded ${PLUGIN_VERSION}`);
   figma.showUI(__html__, { width: 420, height: 580, title: `Division Banner Factory ${PLUGIN_VERSION}` });
   (async () => {
