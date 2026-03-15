@@ -5,10 +5,11 @@
  *   1. On open → fetch client list from /api/clients/list
  *   2. Populate Client dropdown (auto-select if only 1)
  *   3. User selects client → fetch campaign list from /api/campaigns/list?client=<name>
- *   4. Populate Campaign dropdown (auto-select if only 1)
- *   5. User selects campaign → Fetch frames becomes active
- *   6. Click Fetch → GET /api/campaigns/<id>/figma-sync
- *   7. Click Apply → sends APPLY_COPY to plugin main thread
+ *   4. Build Month dropdown from campaigns' month values (most recent first)
+ *   5. User selects month → filter Campaign dropdown
+ *   6. User selects campaign → Fetch frames becomes active
+ *   7. Click Fetch → GET /api/campaigns/<id>/figma-sync
+ *   8. Click Apply → sends APPLY_COPY to plugin main thread
  *
  * EXPORT flow:
  *   1. Fetch must have been run first (needs frame data for record ID matching)
@@ -72,6 +73,7 @@ const ROOT_API = "https://sydameapteek.menteproduction.com";
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
 const clientSelect        = document.getElementById("clientSelect")        as HTMLSelectElement;
+const monthSelect         = document.getElementById("monthSelect")         as HTMLSelectElement;
 const campaignSelect      = document.getElementById("campaignSelect")      as HTMLSelectElement;
 const btnFetch            = document.getElementById("btnFetch")            as HTMLButtonElement;
 const btnApply            = document.getElementById("btnApply")            as HTMLButtonElement;
@@ -96,6 +98,7 @@ let selectedFrameCount = 0; // updated via SELECTION_CHANGED from main thread
 // In-memory prefs (populated from figma.clientStorage via READY message)
 let savedClientId: string | undefined;
 let savedCampaignId: string | undefined;
+let savedMonth: string | undefined;
 
 // Export state
 interface ExportFrameState {
@@ -107,11 +110,12 @@ let exportFrames: ExportFrameState[] = [];
 let exportTotal = 0;
 let exportDoneCount = 0;
 
-function savePrefs(clientId?: string, campaignId?: string) {
+function savePrefs(clientId?: string, campaignId?: string, month?: string) {
   if (clientId !== undefined)   savedClientId   = clientId;
   if (campaignId !== undefined) savedCampaignId = campaignId;
+  if (month !== undefined)      savedMonth      = month;
   parent.postMessage(
-    { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId } },
+    { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId, month } },
     "*"
   );
 }
@@ -172,7 +176,6 @@ function renderExportList() {
 function campaignLabel(c: CampaignItem): string {
   const parts: string[] = [];
   if (c.formatCount > 0) parts.push(`${c.formatCount} formats`);
-  if (c.month) parts.push(c.month);
   return parts.length > 0 ? `${c.name}  (${parts.join(" · ")})` : c.name;
 }
 
@@ -186,7 +189,7 @@ function updateExportButton() {
   if (selectedFrameCount > 0) {
     btnExport.textContent = `Export ${selectedFrameCount} selected`;
   } else {
-    // Count all _MASTER_ frames including carousel slides
+    // Count all frames including carousel slides
     let total = 0;
     for (const f of currentPayload.frames) {
       if (f.type === "Carousel" && f.slides) {
@@ -196,6 +199,126 @@ function updateExportButton() {
       }
     }
     btnExport.textContent = `Export all (${total})`;
+  }
+}
+
+// ── Month helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse a month string like "March 2026" into a sortable number (YYYYMM).
+ * Returns 0 for unrecognised strings.
+ */
+function monthSortKey(monthStr: string): number {
+  const MONTHS: Record<string, number> = {
+    january: 1, february: 2, march: 3, april: 4,
+    may: 5, june: 6, july: 7, august: 8,
+    september: 9, october: 10, november: 11, december: 12,
+  };
+  const parts = monthStr.trim().split(/\s+/);
+  if (parts.length !== 2) return 0;
+  const monthNum = MONTHS[parts[0].toLowerCase()];
+  const year = parseInt(parts[1], 10);
+  if (!monthNum || isNaN(year)) return 0;
+  return year * 100 + monthNum;
+}
+
+/**
+ * Build and populate the Month dropdown from the loaded campaigns list.
+ * Restores saved month selection if available.
+ */
+function buildMonthDropdown() {
+  // Collect unique, non-empty months
+  const monthSet = new Set<string>();
+  for (const c of campaigns) {
+    if (c.month && c.month.trim()) monthSet.add(c.month.trim());
+  }
+
+  // Sort most recent first
+  const sortedMonths = Array.from(monthSet).sort(
+    (a, b) => monthSortKey(b) - monthSortKey(a)
+  );
+
+  monthSelect.innerHTML = "";
+
+  // "All months" option
+  const allOpt = document.createElement("option");
+  allOpt.value = "__all__";
+  allOpt.textContent = "All months";
+  monthSelect.appendChild(allOpt);
+
+  // Separator (disabled option)
+  if (sortedMonths.length > 0) {
+    const sep = document.createElement("option");
+    sep.disabled = true;
+    sep.textContent = "─────────────";
+    monthSelect.appendChild(sep);
+  }
+
+  for (const m of sortedMonths) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    monthSelect.appendChild(opt);
+  }
+
+  monthSelect.disabled = false;
+
+  // Restore saved month
+  if (savedMonth && (savedMonth === "__all__" || monthSet.has(savedMonth))) {
+    monthSelect.value = savedMonth;
+  } else {
+    monthSelect.value = "__all__";
+  }
+
+  // Populate campaign dropdown based on selected month
+  populateCampaignDropdown(monthSelect.value);
+}
+
+/**
+ * Populate the campaign dropdown filtered by the given month value.
+ * Pass "__all__" to show all campaigns.
+ */
+function populateCampaignDropdown(monthValue: string) {
+  const filtered =
+    monthValue === "__all__"
+      ? campaigns
+      : campaigns.filter((c) => c.month === monthValue);
+
+  campaignSelect.innerHTML = "";
+
+  if (filtered.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No campaigns for this month";
+    campaignSelect.appendChild(opt);
+    campaignSelect.disabled = true;
+    btnFetch.disabled = true;
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select campaign…";
+  campaignSelect.appendChild(placeholder);
+
+  for (const c of filtered) {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = campaignLabel(c);
+    campaignSelect.appendChild(opt);
+  }
+
+  campaignSelect.disabled = false;
+
+  // Restore saved campaign if it's in the filtered list
+  if (savedCampaignId && filtered.find((c) => c.id === savedCampaignId)) {
+    campaignSelect.value = savedCampaignId;
+    btnFetch.disabled = false;
+  } else if (filtered.length === 1) {
+    campaignSelect.value = filtered[0].id;
+    btnFetch.disabled = false;
+  } else {
+    btnFetch.disabled = true;
   }
 }
 
@@ -244,6 +367,8 @@ async function loadCampaigns(clientId: string) {
   const client = clients.find((c) => c.id === clientId);
   if (!client) return;
 
+  monthSelect.disabled = true;
+  monthSelect.innerHTML = '<option value="">Loading…</option>';
   campaignSelect.disabled = true;
   campaignSelect.innerHTML = '<option value="">Loading campaigns…</option>';
   btnFetch.disabled = true;
@@ -259,27 +384,14 @@ async function loadCampaigns(clientId: string) {
     campaigns = await res.json();
 
     if (campaigns.length === 0) {
+      monthSelect.innerHTML = '<option value="">No active campaigns</option>';
       campaignSelect.innerHTML = '<option value="">No active campaigns</option>';
       return;
     }
 
-    campaignSelect.innerHTML = '<option value="">Select campaign…</option>';
-    for (const c of campaigns) {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = campaignLabel(c);
-      campaignSelect.appendChild(opt);
-    }
-    campaignSelect.disabled = false;
-
-    if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
-      campaignSelect.value = savedCampaignId;
-      btnFetch.disabled = false;
-    } else if (campaigns.length === 1) {
-      campaignSelect.value = campaigns[0].id;
-      btnFetch.disabled = false;
-    }
+    buildMonthDropdown();
   } catch (err) {
+    monthSelect.innerHTML = `<option value="">Error</option>`;
     campaignSelect.innerHTML = `<option value="">Error loading campaigns</option>`;
     showStatus(`Failed to load campaigns: ${String(err)}`, "error");
   }
@@ -290,14 +402,31 @@ async function loadCampaigns(clientId: string) {
 clientSelect.addEventListener("change", async () => {
   const clientId = clientSelect.value;
   if (!clientId) {
+    monthSelect.innerHTML = '<option value="">Select a client first</option>';
+    monthSelect.disabled = true;
     campaignSelect.innerHTML = '<option value="">Select a client first</option>';
     campaignSelect.disabled = true;
     btnFetch.disabled = true;
     return;
   }
-  savePrefs(clientId, "");
+  savePrefs(clientId, "", "");
   savedCampaignId = undefined;
+  savedMonth = undefined;
   await loadCampaigns(clientId);
+});
+
+// ── Event: month selection ────────────────────────────────────────────────────
+
+monthSelect.addEventListener("change", () => {
+  const monthValue = monthSelect.value;
+  savePrefs(undefined, undefined, monthValue);
+  savedCampaignId = undefined;
+  currentPayload = null;
+  btnApply.disabled = true;
+  frameListEl.style.display = "none";
+  hideStatus();
+  updateExportButton();
+  populateCampaignDropdown(monthValue);
 });
 
 // ── Event: campaign selection ─────────────────────────────────────────────────
@@ -411,7 +540,7 @@ function findRecordId(frameName: string): string | null {
   const standard = currentPayload.frames.find((f) => f.figmaFrame === frameName);
   if (standard) return standard.recordId;
 
-  // Carousel slide: _MASTER_..._Slide_N
+  // Carousel slide: ..._Slide_N
   const slideMatch = frameName.match(/^(.+)_Slide_(\d+)$/);
   if (slideMatch) {
     const parentName = slideMatch[1];
@@ -500,6 +629,7 @@ window.onmessage = async (event: MessageEvent) => {
   if (msg.type === "READY") {
     if (msg.savedClientId)   savedClientId   = msg.savedClientId;
     if (msg.savedCampaignId) savedCampaignId = msg.savedCampaignId;
+    if (msg.savedMonth)      savedMonth      = msg.savedMonth;
     hideStatus();
     loadClients();
   }

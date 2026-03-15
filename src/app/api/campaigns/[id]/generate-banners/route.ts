@@ -145,11 +145,13 @@ function generateFigmaFrame(
   channel: string,
   formatName: string,
   width: number,
-  height: number
+  height: number,
+  campaignName: string
 ): string {
+  const campaignNorm = normaliseForFigma(campaignName);
   const channelNorm = normaliseForFigma(channel.replace(/[/+]/g, ""));
   const formatNorm = normaliseForFigma(formatName);
-  return `_MASTER_${channelNorm}_${formatNorm}_${width}x${height}`;
+  return `${campaignNorm}_${channelNorm}_${formatNorm}_${width}x${height}`;
 }
 
 async function createBanners(
@@ -356,7 +358,7 @@ export async function POST(
         (channel.toLowerCase().includes("dooh") ? "JPG" : "PNG");
       const figmaFrameBase =
         (f["Figma_Frame_Base"] as string) ||
-        generateFigmaFrame(channel, formatName, width, height);
+        generateFigmaFrame(channel, formatName, width, height, campaignName);
 
       const cfg = (formatConfigs[formatName] ?? {}) as { mode?: string; slideCount?: number; variables?: string[] };
       const mode = cfg.mode ?? "default";

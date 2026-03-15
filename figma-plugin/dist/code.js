@@ -34,7 +34,8 @@
   (async () => {
     const clientId = await figma.clientStorage.getAsync("dbf_clientId").catch(() => void 0);
     const campaignId = await figma.clientStorage.getAsync("dbf_campaignId").catch(() => void 0);
-    figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId });
+    const month = await figma.clientStorage.getAsync("dbf_month").catch(() => void 0);
+    figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId, savedMonth: month });
   })();
   figma.ui.onmessage = async (msg) => {
     if (msg.type === "RESIZE") {
@@ -46,12 +47,15 @@
       return;
     }
     if (msg.type === "SAVE_PREFS") {
-      const { clientId, campaignId } = msg;
+      const { clientId, campaignId, month } = msg;
       if (clientId !== void 0)
         await figma.clientStorage.setAsync("dbf_clientId", clientId).catch(() => {
         });
       if (campaignId !== void 0)
         await figma.clientStorage.setAsync("dbf_campaignId", campaignId).catch(() => {
+        });
+      if (month !== void 0)
+        await figma.clientStorage.setAsync("dbf_month", month).catch(() => {
         });
       return;
     }
@@ -84,9 +88,20 @@
             if (frameData.type === "Carousel" && frameData.slides) {
               for (const slide of frameData.slides) {
                 const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
-                const existingSlide = page.findOne(
+                let existingSlide = page.findOne(
                   (n) => n.type === "FRAME" && n.name === slideFrameName
                 );
+                if (!existingSlide) {
+                  const oldSlideFrameName = deriveOldMasterName(slideFrameName);
+                  if (oldSlideFrameName) {
+                    existingSlide = page.findOne(
+                      (n) => n.type === "FRAME" && n.name === oldSlideFrameName
+                    );
+                    if (existingSlide) {
+                      existingSlide.name = slideFrameName;
+                    }
+                  }
+                }
                 if (existingSlide) {
                   await applyCopyToFrame(existingSlide, slide.copy, slide.activeVariables);
                   updated++;
@@ -106,9 +121,20 @@
                 }
               }
             } else {
-              const existing = page.findOne(
+              let existing = page.findOne(
                 (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
               );
+              if (!existing) {
+                const oldFrameName = deriveOldMasterName(frameData.figmaFrame);
+                if (oldFrameName) {
+                  existing = page.findOne(
+                    (n) => n.type === "FRAME" && n.name === oldFrameName
+                  );
+                  if (existing) {
+                    existing.name = frameData.figmaFrame;
+                  }
+                }
+              }
               if (existing) {
                 await applyCopyToFrame(existing, frameData.copy, frameData.activeVariables);
                 updated++;
@@ -136,14 +162,13 @@
     }
     if (msg.type === "EXPORT_TO_MENTE") {
       const page = figma.currentPage;
-      const selected = figma.currentPage.selection.filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_"));
-      const framesToExport = selected.length > 0 ? selected : page.children.filter(
-        (n) => n.type === "FRAME" && n.name.startsWith("_MASTER_")
-      );
+      const isExportableFrame = (n) => n.type === "FRAME" && !n.name.startsWith("__label__");
+      const selected = figma.currentPage.selection.filter(isExportableFrame);
+      const framesToExport = selected.length > 0 ? selected : page.children.filter(isExportableFrame);
       if (framesToExport.length === 0) {
         figma.ui.postMessage({
           type: "EXPORT_ERROR",
-          message: "No _MASTER_ frames found on this page. Run Fetch + Apply first."
+          message: "No frames found on this page. Run Fetch + Apply first."
         });
         return;
       }
@@ -184,12 +209,21 @@
     }
   };
   figma.on("selectionchange", () => {
-    const selected = figma.currentPage.selection.filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_"));
+    const selected = figma.currentPage.selection.filter((n) => n.type === "FRAME" && !n.name.startsWith("__label__"));
     figma.ui.postMessage({
       type: "SELECTION_CHANGED",
       count: selected.length
     });
   });
+  function deriveOldMasterName(newName) {
+    if (newName.startsWith("_MASTER_"))
+      return null;
+    const underscoreIdx = newName.indexOf("_");
+    if (underscoreIdx < 0)
+      return null;
+    const withoutCampaign = newName.slice(underscoreIdx + 1);
+    return `_MASTER_${withoutCampaign}`;
+  }
   async function createStandardFrame(frameData) {
     const frame = figma.createFrame();
     frame.name = frameData.figmaFrame;

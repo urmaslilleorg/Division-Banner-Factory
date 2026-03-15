@@ -204,9 +204,16 @@
   </div>
 
   <div class="field">
+    <label for="monthSelect">Month</label>
+    <select id="monthSelect" disabled>
+      <option value="">Select a client first</option>
+    </select>
+  </div>
+
+  <div class="field">
     <label for="campaignSelect">Campaign</label>
     <select id="campaignSelect" disabled>
-      <option value="">Select a client first</option>
+      <option value="">Select a month first</option>
     </select>
   </div>
 
@@ -249,6 +256,7 @@
   // src/ui.ts
   var ROOT_API = "https://sydameapteek.menteproduction.com";
   var clientSelect = document.getElementById("clientSelect");
+  var monthSelect = document.getElementById("monthSelect");
   var campaignSelect = document.getElementById("campaignSelect");
   var btnFetch = document.getElementById("btnFetch");
   var btnApply = document.getElementById("btnApply");
@@ -267,16 +275,19 @@
   var selectedFrameCount = 0;
   var savedClientId;
   var savedCampaignId;
+  var savedMonth;
   var exportFrames = [];
   var exportTotal = 0;
   var exportDoneCount = 0;
-  function savePrefs(clientId, campaignId) {
+  function savePrefs(clientId, campaignId, month) {
     if (clientId !== void 0)
       savedClientId = clientId;
     if (campaignId !== void 0)
       savedCampaignId = campaignId;
+    if (month !== void 0)
+      savedMonth = month;
     parent.postMessage(
-      { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId } },
+      { pluginMessage: { type: "SAVE_PREFS", clientId, campaignId, month } },
       "*"
     );
   }
@@ -320,8 +331,6 @@
     const parts = [];
     if (c.formatCount > 0)
       parts.push(`${c.formatCount} formats`);
-    if (c.month)
-      parts.push(c.month);
     return parts.length > 0 ? `${c.name}  (${parts.join(" \xB7 ")})` : c.name;
   }
   function updateExportButton() {
@@ -343,6 +352,97 @@
         }
       }
       btnExport.textContent = `Export all (${total})`;
+    }
+  }
+  function monthSortKey(monthStr) {
+    const MONTHS = {
+      january: 1,
+      february: 2,
+      march: 3,
+      april: 4,
+      may: 5,
+      june: 6,
+      july: 7,
+      august: 8,
+      september: 9,
+      october: 10,
+      november: 11,
+      december: 12
+    };
+    const parts = monthStr.trim().split(/\s+/);
+    if (parts.length !== 2)
+      return 0;
+    const monthNum = MONTHS[parts[0].toLowerCase()];
+    const year = parseInt(parts[1], 10);
+    if (!monthNum || isNaN(year))
+      return 0;
+    return year * 100 + monthNum;
+  }
+  function buildMonthDropdown() {
+    const monthSet = /* @__PURE__ */ new Set();
+    for (const c of campaigns) {
+      if (c.month && c.month.trim())
+        monthSet.add(c.month.trim());
+    }
+    const sortedMonths = Array.from(monthSet).sort(
+      (a, b) => monthSortKey(b) - monthSortKey(a)
+    );
+    monthSelect.innerHTML = "";
+    const allOpt = document.createElement("option");
+    allOpt.value = "__all__";
+    allOpt.textContent = "All months";
+    monthSelect.appendChild(allOpt);
+    if (sortedMonths.length > 0) {
+      const sep = document.createElement("option");
+      sep.disabled = true;
+      sep.textContent = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500";
+      monthSelect.appendChild(sep);
+    }
+    for (const m of sortedMonths) {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = m;
+      monthSelect.appendChild(opt);
+    }
+    monthSelect.disabled = false;
+    if (savedMonth && (savedMonth === "__all__" || monthSet.has(savedMonth))) {
+      monthSelect.value = savedMonth;
+    } else {
+      monthSelect.value = "__all__";
+    }
+    populateCampaignDropdown(monthSelect.value);
+  }
+  function populateCampaignDropdown(monthValue) {
+    const filtered = monthValue === "__all__" ? campaigns : campaigns.filter((c) => c.month === monthValue);
+    campaignSelect.innerHTML = "";
+    if (filtered.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No campaigns for this month";
+      campaignSelect.appendChild(opt);
+      campaignSelect.disabled = true;
+      btnFetch.disabled = true;
+      return;
+    }
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select campaign\u2026";
+    campaignSelect.appendChild(placeholder);
+    for (const c of filtered) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = campaignLabel(c);
+      campaignSelect.appendChild(opt);
+    }
+    campaignSelect.disabled = false;
+    if (savedCampaignId && filtered.find((c) => c.id === savedCampaignId)) {
+      campaignSelect.value = savedCampaignId;
+      btnFetch.disabled = false;
+    } else if (filtered.length === 1) {
+      campaignSelect.value = filtered[0].id;
+      btnFetch.disabled = false;
+    } else {
+      btnFetch.disabled = true;
     }
   }
   async function loadClients() {
@@ -381,6 +481,8 @@
     const client = clients.find((c) => c.id === clientId);
     if (!client)
       return;
+    monthSelect.disabled = true;
+    monthSelect.innerHTML = '<option value="">Loading\u2026</option>';
     campaignSelect.disabled = true;
     campaignSelect.innerHTML = '<option value="">Loading campaigns\u2026</option>';
     btnFetch.disabled = true;
@@ -395,25 +497,13 @@
         throw new Error(`HTTP ${res.status}`);
       campaigns = await res.json();
       if (campaigns.length === 0) {
+        monthSelect.innerHTML = '<option value="">No active campaigns</option>';
         campaignSelect.innerHTML = '<option value="">No active campaigns</option>';
         return;
       }
-      campaignSelect.innerHTML = '<option value="">Select campaign\u2026</option>';
-      for (const c of campaigns) {
-        const opt = document.createElement("option");
-        opt.value = c.id;
-        opt.textContent = campaignLabel(c);
-        campaignSelect.appendChild(opt);
-      }
-      campaignSelect.disabled = false;
-      if (savedCampaignId && campaigns.find((c) => c.id === savedCampaignId)) {
-        campaignSelect.value = savedCampaignId;
-        btnFetch.disabled = false;
-      } else if (campaigns.length === 1) {
-        campaignSelect.value = campaigns[0].id;
-        btnFetch.disabled = false;
-      }
+      buildMonthDropdown();
     } catch (err) {
+      monthSelect.innerHTML = `<option value="">Error</option>`;
       campaignSelect.innerHTML = `<option value="">Error loading campaigns</option>`;
       showStatus(`Failed to load campaigns: ${String(err)}`, "error");
     }
@@ -421,14 +511,28 @@
   clientSelect.addEventListener("change", async () => {
     const clientId = clientSelect.value;
     if (!clientId) {
+      monthSelect.innerHTML = '<option value="">Select a client first</option>';
+      monthSelect.disabled = true;
       campaignSelect.innerHTML = '<option value="">Select a client first</option>';
       campaignSelect.disabled = true;
       btnFetch.disabled = true;
       return;
     }
-    savePrefs(clientId, "");
+    savePrefs(clientId, "", "");
     savedCampaignId = void 0;
+    savedMonth = void 0;
     await loadCampaigns(clientId);
+  });
+  monthSelect.addEventListener("change", () => {
+    const monthValue = monthSelect.value;
+    savePrefs(void 0, void 0, monthValue);
+    savedCampaignId = void 0;
+    currentPayload = null;
+    btnApply.disabled = true;
+    frameListEl.style.display = "none";
+    hideStatus();
+    updateExportButton();
+    populateCampaignDropdown(monthValue);
   });
   campaignSelect.addEventListener("change", () => {
     const campaignId = campaignSelect.value;
@@ -591,6 +695,8 @@
         savedClientId = msg.savedClientId;
       if (msg.savedCampaignId)
         savedCampaignId = msg.savedCampaignId;
+      if (msg.savedMonth)
+        savedMonth = msg.savedMonth;
       hideStatus();
       loadClients();
     }

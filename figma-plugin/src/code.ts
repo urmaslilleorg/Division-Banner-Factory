@@ -110,9 +110,10 @@ figma.showUI(__html__, { width: 420, height: 580, title: "Division Banner Factor
 
 // Send READY with any saved preferences
 (async () => {
-  const clientId  = await figma.clientStorage.getAsync("dbf_clientId").catch(() => undefined);
+  const clientId   = await figma.clientStorage.getAsync("dbf_clientId").catch(() => undefined);
   const campaignId = await figma.clientStorage.getAsync("dbf_campaignId").catch(() => undefined);
-  figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId });
+  const month      = await figma.clientStorage.getAsync("dbf_month").catch(() => undefined);
+  figma.ui.postMessage({ type: "READY", savedClientId: clientId, savedCampaignId: campaignId, savedMonth: month });
 })();
 
 figma.ui.onmessage = async (msg: PluginMessage) => {
@@ -127,9 +128,10 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
   }
 
   if (msg.type === "SAVE_PREFS") {
-    const { clientId, campaignId } = msg as unknown as { type: string; clientId?: string; campaignId?: string };
-    if (clientId !== undefined)  await figma.clientStorage.setAsync("dbf_clientId",  clientId).catch(() => {});
+    const { clientId, campaignId, month } = msg as unknown as { type: string; clientId?: string; campaignId?: string; month?: string };
+    if (clientId !== undefined)   await figma.clientStorage.setAsync("dbf_clientId",   clientId).catch(() => {});
     if (campaignId !== undefined) await figma.clientStorage.setAsync("dbf_campaignId", campaignId).catch(() => {});
+    if (month !== undefined)      await figma.clientStorage.setAsync("dbf_month",      month).catch(() => {});
     return;
   }
 
@@ -177,14 +179,31 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 
         try {
           if (frameData.type === "Carousel" && frameData.slides) {
-            // ── CAROUSEL: only slide frames, no parent ────────────────────────
+            // ── CAROUSEL: only slide frames, no parent ────────────────────
             for (const slide of frameData.slides) {
               const slideFrameName = `${frameData.figmaFrame}_Slide_${slide.index}`;
 
               // Search ONLY on the campaign page using the local `page` var
-              const existingSlide = page.findOne(
+              let existingSlide = page.findOne(
                 (n) => n.type === "FRAME" && n.name === slideFrameName
               ) as FrameNode | null;
+
+              // Backward compat: also check for old _MASTER_ naming
+              if (!existingSlide) {
+                // Derive old name: strip campaign prefix, add _MASTER_
+                // New: CampaignName_Channel_FormatName_WxH_Slide_N
+                // Old: _MASTER_Channel_FormatName_WxH_Slide_N
+                const oldSlideFrameName = deriveOldMasterName(slideFrameName);
+                if (oldSlideFrameName) {
+                  existingSlide = page.findOne(
+                    (n) => n.type === "FRAME" && n.name === oldSlideFrameName
+                  ) as FrameNode | null;
+                  if (existingSlide) {
+                    // Rename to new naming
+                    existingSlide.name = slideFrameName;
+                  }
+                }
+              }
 
               if (existingSlide) {
                 // Smart merge: update text layers only, preserve design
@@ -204,11 +223,25 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
               }
             }
           } else {
-            // ── STANDARD: single frame ────────────────────────────────────────
+            // ── STANDARD: single frame ────────────────────────────────────
             // Search ONLY on the campaign page using the local `page` var
-            const existing = page.findOne(
+            let existing = page.findOne(
               (n) => n.type === "FRAME" && n.name === frameData.figmaFrame
             ) as FrameNode | null;
+
+            // Backward compat: also check for old _MASTER_ naming
+            if (!existing) {
+              const oldFrameName = deriveOldMasterName(frameData.figmaFrame);
+              if (oldFrameName) {
+                existing = page.findOne(
+                  (n) => n.type === "FRAME" && n.name === oldFrameName
+                ) as FrameNode | null;
+                if (existing) {
+                  // Rename to new naming
+                  existing.name = frameData.figmaFrame;
+                }
+              }
+            }
 
             if (existing) {
               // Smart merge: update text layers only, preserve design
@@ -241,24 +274,26 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
     figma.ui.postMessage({ type: "DONE", applied, created, updated, errors });
   }
 
-  // ── EXPORT: Export _MASTER_ frames as PNG and send to UI for upload ──────────
+  // ── EXPORT: Export campaign frames as PNG and send to UI for upload ──────────
   if (msg.type === "EXPORT_TO_MENTE") {
     const page = figma.currentPage;
 
     // 1. Determine frames to export
+    // Include frames that match new naming (no _MASTER_ prefix) AND old _MASTER_ naming
+    const isExportableFrame = (n: SceneNode) =>
+      n.type === "FRAME" && !n.name.startsWith("__label__");
+
     const selected = figma.currentPage.selection
-      .filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_")) as FrameNode[];
+      .filter(isExportableFrame) as FrameNode[];
 
     const framesToExport: FrameNode[] = selected.length > 0
       ? selected
-      : (page.children.filter(
-          (n) => n.type === "FRAME" && n.name.startsWith("_MASTER_")
-        ) as FrameNode[]);
+      : (page.children.filter(isExportableFrame) as FrameNode[]);
 
     if (framesToExport.length === 0) {
       figma.ui.postMessage({
         type: "EXPORT_ERROR",
-        message: "No _MASTER_ frames found on this page. Run Fetch + Apply first.",
+        message: "No frames found on this page. Run Fetch + Apply first.",
       });
       return;
     }
@@ -309,13 +344,34 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 // ── Selection change listener ─────────────────────────────────────────────────
 figma.on("selectionchange", () => {
   const selected = figma.currentPage.selection
-    .filter((n) => n.type === "FRAME" && n.name.startsWith("_MASTER_"));
+    .filter((n) => n.type === "FRAME" && !n.name.startsWith("__label__"));
   figma.ui.postMessage({
     type: "SELECTION_CHANGED",
     count: selected.length,
   });
 });
 
+
+// ── Backward-compat helpers ──────────────────────────────────────────────────
+
+/**
+ * Given a new-style frame name (CampaignName_Channel_FormatName_WxH[_Slide_N]),
+ * derive the equivalent old _MASTER_ name by stripping the first underscore-
+ * separated token (campaign name) and prepending _MASTER_.
+ *
+ * Returns null if the name already starts with _MASTER_ or cannot be parsed.
+ *
+ * Example:
+ *   "Avene_Spring2026_Google_Display_Horizontal_1200x628"
+ *   → "_MASTER_Google_Display_Horizontal_1200x628"
+ */
+function deriveOldMasterName(newName: string): string | null {
+  if (newName.startsWith("_MASTER_")) return null; // already old naming
+  const underscoreIdx = newName.indexOf("_");
+  if (underscoreIdx < 0) return null;
+  const withoutCampaign = newName.slice(underscoreIdx + 1);
+  return `_MASTER_${withoutCampaign}`;
+}
 
 // ── Frame creation ───────────────────────────────────────────────────────────────
 
