@@ -861,6 +861,8 @@ export default function CopyEditorTable({
                           {isAssetCol ? (
                             <AssetCell
                               value={value}
+                              bannerId={banner.id}
+                              airtableField={FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey)}
                               disabled={isSaving}
                               readOnly={isReadOnly}
                               accent="gray"
@@ -1048,6 +1050,8 @@ export default function CopyEditorTable({
                             {isSlideAssetCol ? (
                               <AssetCell
                                 value={value}
+                                bannerId={slide.id}
+                                airtableField={FIELD_TO_AIRTABLE[String(col.fieldKey)] || String(col.fieldKey)}
                                 disabled={isSaving}
                                 readOnly={isReadOnly}
                                 accent="purple"

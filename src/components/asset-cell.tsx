@@ -5,35 +5,41 @@
  *
  * Renders an image upload / URL paste UI for Image and Illustration cells
  * in the Copy & Assets table. Supports:
- *   - File upload (PNG, JPG, WebP, SVG) — reads as base64 data URL
+ *   - File upload (PNG, JPG, WebP, SVG) — POSTed to /api/banners/[id]/upload-asset
  *   - URL paste — validates and saves the URL directly
  *   - Drag & drop onto the cell
  *   - Thumbnail preview when a value is set
  *   - Replace / Remove actions
  *
- * The parent is responsible for persisting the value via PATCH.
- * This component calls onSave(url) immediately on any change.
+ * The parent is responsible for persisting the value via PATCH for URL-paste
+ * and remove actions. File uploads are persisted directly by the upload route.
+ * onSave(url) is called with the final URL after any successful change.
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 
 type Mode = "idle" | "url-input" | "uploading";
 
 interface AssetCellProps {
   value: string;
+  bannerId: string;
+  /** Airtable field name: "Image" or "Illustration" */
+  airtableField: string;
   disabled?: boolean;
   readOnly?: boolean;
-  /** Called with the new URL (or empty string for remove) after user action */
+  /** Called with the new URL (or empty string for remove) after any successful change */
   onSave: (url: string) => void;
-  /** Accent color for focus rings etc. Defaults to gray-900 */
+  /** Accent color for focus rings etc. Defaults to gray */
   accent?: "gray" | "purple";
 }
 
 export default function AssetCell({
   value,
+  bannerId,
+  airtableField,
   disabled = false,
   readOnly = false,
   onSave,
@@ -44,6 +50,7 @@ export default function AssetCell({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,29 +73,45 @@ export default function AssetCell({
   // ── File handling ──────────────────────────────────────────────────────────
 
   const processFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
       if (!ACCEPTED_TYPES.includes(file.type)) {
         alert("Unsupported file type. Please use PNG, JPG, WebP, or SVG.");
         return;
       }
       if (file.size > MAX_FILE_SIZE) {
-        alert("File too large. Maximum size is 2 MB.");
+        alert("File too large. Maximum size is 10 MB.");
         return;
       }
+
       setMode("uploading");
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
+      setUploadError(null);
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("field", airtableField);
+
+        const res = await fetch(`/api/banners/${bannerId}/upload-asset`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || `Upload failed (${res.status})`);
+        }
+
         setMode("idle");
-        onSave(dataUrl);
-      };
-      reader.onerror = () => {
+        onSave(data.url);
+      } catch (err) {
         setMode("idle");
-        alert("Failed to read file.");
-      };
-      reader.readAsDataURL(file);
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        setUploadError(msg);
+        setTimeout(() => setUploadError(null), 4000);
+      }
     },
-    [onSave]
+    [bannerId, airtableField, onSave]
   );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,6 +228,9 @@ export default function AssetCell({
             </button>
           </div>
         )}
+        {uploadError && (
+          <p className="text-[10px] text-red-500 leading-tight">{uploadError}</p>
+        )}
       </div>
     );
   }
@@ -257,7 +283,7 @@ export default function AssetCell({
   // ── EMPTY STATE ────────────────────────────────────────────────────────────
   return (
     <div
-      className={`flex gap-1 p-1 rounded transition-colors ${isDragging ? "bg-blue-50 ring-2 ring-blue-300" : ""}`}
+      className={`flex flex-col gap-1 p-1 rounded transition-colors ${isDragging ? "bg-blue-50 ring-2 ring-blue-300" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -266,7 +292,7 @@ export default function AssetCell({
       {readOnly ? (
         <span className="block min-h-[28px] text-xs text-gray-300 select-none">—</span>
       ) : (
-        <>
+        <div className="flex gap-1">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -293,7 +319,10 @@ export default function AssetCell({
             </svg>
             URL
           </button>
-        </>
+        </div>
+      )}
+      {uploadError && (
+        <p className="text-[10px] text-red-500 leading-tight">{uploadError}</p>
       )}
     </div>
   );
