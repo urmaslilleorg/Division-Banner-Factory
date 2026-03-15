@@ -1,34 +1,24 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getClientConfig } from "@/config/clients";
 
-const isPublicRoute = createRouteMatcher([
-  "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/api/webhooks(.*)",
-  // Figma plugin public endpoints — no auth, called from Figma sandbox
-  "/api/clients/list",
-  "/api/campaigns/list",
-  "/api/campaigns/lookup",
-  "/api/campaigns/:id/figma-sync",
-  "/api/banners/:id/upload-image",
-  "/api/banners/:id/plugin-update",
-]);
+export default function middleware(request: NextRequest) {
+  const hostname = request.headers.get("host") || "";
+  const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "localhost:3000";
 
-// /admin/* routes require division_admin role
-const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
+  const hostWithoutPort = hostname.split(":")[0];
+  const domainWithoutPort = appDomain.split(":")[0];
 
-// Root sign-in URL — always on menteproduction.com, never on accounts subdomain
-const ROOT_SIGN_IN = "https://menteproduction.com/sign-in";
+  let subdomain: string | null = null;
 
-export default clerkMiddleware((auth, request: NextRequest) => {
-  // /admin routes: protect with Clerk auth, inject admin client config
-  if (isAdminRoute(request)) {
-    if (!isPublicRoute(request)) {
-      auth().protect({ unauthenticatedUrl: ROOT_SIGN_IN });
-    }
+  if (hostWithoutPort.endsWith(`.${domainWithoutPort}`)) {
+    subdomain = hostWithoutPort.replace(`.${domainWithoutPort}`, "");
+  } else if (hostWithoutPort.includes(".localhost")) {
+    subdomain = hostWithoutPort.split(".localhost")[0];
+  }
+
+  // /admin routes: inject admin client config
+  if (request.nextUrl.pathname.startsWith("/admin")) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-client-id", "admin");
     requestHeaders.set("x-client-config", JSON.stringify({
@@ -44,70 +34,27 @@ export default clerkMiddleware((auth, request: NextRequest) => {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  const hostname = request.headers.get("host") || "";
-  const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "localhost:3000";
-
-  // Extract subdomain from hostname
-  // e.g. "avene.menteproduction.com" → "avene"
-  // For local dev: "avene.localhost:3000" → "avene"
-  const hostWithoutPort = hostname.split(":")[0];
-  const domainWithoutPort = appDomain.split(":")[0];
-
-  let subdomain: string | null = null;
-
-  if (hostWithoutPort.endsWith(`.${domainWithoutPort}`)) {
-    // Has a subdomain: strip the root domain
-    subdomain = hostWithoutPort.replace(`.${domainWithoutPort}`, "");
-  } else if (hostWithoutPort.includes(".localhost")) {
-    // Local dev subdomain: e.g. "avene.localhost"
-    subdomain = hostWithoutPort.split(".localhost")[0];
-  }
-  // else: root domain (menteproduction.com, www.menteproduction.com, localhost:3000)
-  // subdomain remains null → Division admin / landing context
-
-  // Only look up client config if a subdomain is present
   const clientConfig = subdomain ? getClientConfig(subdomain) : null;
 
-  // Unknown subdomain → 404
   if (subdomain && !clientConfig) {
-    // Allow API routes through without a client config
     if (request.nextUrl.pathname.startsWith("/api/")) {
       return NextResponse.next();
     }
     return NextResponse.json({ error: "Unknown client" }, { status: 404 });
   }
 
-  // Protect non-public routes — redirect unauthenticated users to sign-in page
-  // Always use the root domain sign-in URL to avoid accounts.menteproduction.com
-  if (!isPublicRoute(request)) {
-    const signInUrl = subdomain
-      ? `https://${subdomain}.${domainWithoutPort}/sign-in`
-      : ROOT_SIGN_IN;
-    auth().protect({ unauthenticatedUrl: signInUrl });
-  }
-
-  // Attach client config to request headers for downstream use
-  // On root domain (no subdomain), we do NOT set x-client-config — app layout
-  // will handle the null case gracefully (Division admin context).
   const requestHeaders = new Headers(request.headers);
-
   if (clientConfig) {
     requestHeaders.set("x-client-id", clientConfig.id);
     requestHeaders.set("x-client-config", JSON.stringify(clientConfig));
   }
 
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
-});
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and static files
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    // Always run for API routes
     "/(api|trpc)(.*)",
   ],
 };

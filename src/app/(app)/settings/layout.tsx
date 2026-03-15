@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { getUserRole } from "@/lib/auth-role";
 import { redirect } from "next/navigation";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
@@ -13,7 +12,7 @@ export default async function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) redirect("/sign-in");
   const role = await getUserRole();
   const isAdmin = role === "division_admin";

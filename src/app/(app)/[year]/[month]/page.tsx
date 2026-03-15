@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
@@ -27,7 +26,7 @@ const MONTH_NAMES: Record<string, string> = {
 };
 
 export default async function MonthDetailPage({ params }: PageProps) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) redirect("/sign-in");
 
   const year = parseInt(params.year, 10);

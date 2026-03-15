@@ -1,7 +1,5 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
 const BASE_ID = "appIqinespXjbIERp";
 const CLIENTS_TABLE = "tblE3eM8D5vlRs6Qq";
@@ -78,7 +76,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { clientId: string } }
 ) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const record = await getClientRecord(params.clientId);
@@ -99,7 +97,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { clientId: string } }
 ) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json() as {

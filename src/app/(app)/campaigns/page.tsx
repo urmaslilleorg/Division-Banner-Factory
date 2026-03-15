@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
@@ -13,7 +12,7 @@ export default async function CampaignsPage({
 }: {
   searchParams: { preview?: string };
 }) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) redirect("/");
   const role = await getUserRole();
 

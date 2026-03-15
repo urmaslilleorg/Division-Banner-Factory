@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { fetchFormats, fetchFormatsByIds } from "@/lib/airtable-campaigns";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
@@ -44,7 +43,7 @@ async function fetchClientTemplates(recordId: string): Promise<CampaignTemplate[
 }
 
 export default async function NewCampaignPage() {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) redirect("/sign-in");
 
   const clientConfig = getClientConfigFromHeaders();

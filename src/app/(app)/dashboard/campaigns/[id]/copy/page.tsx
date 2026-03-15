@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
 
@@ -14,7 +13,7 @@ interface PageProps {
 }
 
 export default async function CopyEditorRedirectPage({ params }: PageProps) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) redirect("/sign-in");
 
   try {

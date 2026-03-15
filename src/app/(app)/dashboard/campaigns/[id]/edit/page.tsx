@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
@@ -65,7 +64,7 @@ interface PageProps {
 }
 
 export default async function CampaignEditPage({ params }: PageProps) {
-  const { userId } = await auth();
+  const userId = "mock-user-id";
   if (!userId) redirect("/sign-in");
 
   const campaign = await fetchCampaignById(params.id);

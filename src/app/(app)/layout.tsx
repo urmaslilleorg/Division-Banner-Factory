@@ -1,4 +1,3 @@
-import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { getUserRole } from "@/lib/auth-role";
@@ -8,23 +7,12 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Read role from publicMetadata via currentUser() — sessionClaims.metadata
-  // is undefined without a Clerk JWT template, so we use currentUser() directly.
   const role = await getUserRole();
-
-  // Client config may be null on root domain (Division admin context)
   const clientConfig = getClientConfigFromHeaders();
 
-  // On root domain or /admin/* routes, treat as root domain context.
-  // Middleware sets id="admin" for /admin/* and id="demo" for root domain fallback.
-  // Both cases should show the MENTE wordmark and root-domain nav (Admin + Settings).
   const isRootDomain = !clientConfig || clientConfig.id === "demo" || clientConfig.id === "admin";
   const displayName = isRootDomain ? "MENTE" : clientConfig.name;
-  // Only render a logo <img> for real client subdomains with a known logo path
   const displayLogo = isRootDomain ? null : (clientConfig.logo || null);
-
-  // Logo/name links to /campaigns?preview=true on client subdomains, /admin on root domain
-  // ?preview=true bypasses the division_admin redirect guard in campaigns/page.tsx
   const homeHref = isRootDomain ? "/admin" : "/campaigns?preview=true";
 
   return (
@@ -50,30 +38,21 @@ export default async function AppLayout({
           </Link>
 
           <nav className="flex items-center gap-6 text-sm text-gray-600">
-            {/* Client subdomain: show Campaigns only */}
             {!isRootDomain && (
               <a href="/campaigns?preview=true" className="hover:text-gray-900 transition-colors">
                 Campaigns
               </a>
             )}
-            {/* Settings: visible on both domains for admin; on client subdomain for all roles */}
             {(isRootDomain ? role === "division_admin" : true) && (
               <a href="/settings" className="hover:text-gray-900 transition-colors">
                 Settings
               </a>
             )}
-            {/* Admin: root domain only, admin role only */}
             {isRootDomain && role === "division_admin" && (
               <a href="/admin" className="hover:text-gray-900 transition-colors font-medium">
                 Admin
               </a>
             )}
-            {/* Sign out — always visible for any authenticated user */}
-            <SignOutButton redirectUrl="/">
-              <button className="text-gray-400 hover:text-gray-600 transition-colors text-xs tracking-widest uppercase">
-                Sign out
-              </button>
-            </SignOutButton>
           </nav>
         </div>
       </header>

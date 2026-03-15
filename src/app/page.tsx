@@ -1,64 +1,40 @@
 "use client";
-
-import { SignInButton, useAuth, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function LandingPage() {
-  const { isSignedIn } = useAuth();
-
   return (
     <div style={{ background: "#0A0A0F", minHeight: "100dvh", overflow: "hidden" }}>
       {/* Animated gradient background */}
       <div className="mente-gradient" />
-
       {/* Film grain texture overlay */}
       <div className="mente-grain" />
-
-      {/* Fixed header — only shows when already signed in */}
-      {isSignedIn && (
-        <header
+      {/* Fixed header */}
+      <header
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          zIndex: 50,
+          display: "flex",
+          alignItems: "center",
+          gap: "16px",
+          padding: "1.5rem 2rem",
+        }}
+      >
+        <Link
+          href="/admin"
           style={{
-            position: "fixed",
-            top: 0,
-            right: 0,
-            zIndex: 50,
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            padding: "1.5rem 2rem",
+            fontFamily: "'DM Sans', sans-serif",
+            fontWeight: 300,
+            fontSize: "0.75rem",
+            letterSpacing: "0.12em",
+            color: "rgba(245,245,240,0.8)",
+            textDecoration: "none",
           }}
         >
-          <Link
-            href="/admin"
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 300,
-              fontSize: "0.75rem",
-              letterSpacing: "0.12em",
-              color: "rgba(245,245,240,0.8)",
-              textDecoration: "none",
-            }}
-          >
-            Go to app →
-          </Link>
-          <SignOutButton redirectUrl="/">
-            <button
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "rgba(245,245,240,0.4)",
-                fontSize: "0.75rem",
-                cursor: "pointer",
-                letterSpacing: "0.1em",
-                fontFamily: "'DM Sans', sans-serif",
-              }}
-            >
-              Sign out
-            </button>
-          </SignOutButton>
-        </header>
-      )}
-
+          Go to app →
+        </Link>
+      </header>
       {/* Page content */}
       <main
         style={{
@@ -89,7 +65,6 @@ export default function LandingPage() {
         >
           MENTE
         </h1>
-
         {/* Tagline */}
         <p
           style={{
@@ -105,7 +80,6 @@ export default function LandingPage() {
         >
           Banner production, elevated.
         </p>
-
         {/* Body lines */}
         <div
           style={{
@@ -121,14 +95,10 @@ export default function LandingPage() {
           <p style={{ margin: 0 }}>From brief to Figma. Copy managed.</p>
           <p style={{ margin: 0 }}>Campaigns delivered.</p>
         </div>
-
-        {/* Sign In button — modal mode keeps everything on menteproduction.com */}
-        {!isSignedIn && (
-          <SignInButton mode="modal" forceRedirectUrl="/admin">
-            <button className="sign-in-btn">Sign in</button>
-          </SignInButton>
-        )}
-
+        {/* Enter app button */}
+        <Link href="/admin">
+          <button className="sign-in-btn">Enter app</button>
+        </Link>
         {/* Footer */}
         <footer
           style={{
