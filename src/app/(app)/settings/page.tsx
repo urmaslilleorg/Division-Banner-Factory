@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { getUserRole } from "@/lib/auth-role";
 import { redirect } from "next/navigation";
 import { getClientConfigFromHeaders } from "@/lib/client-config";

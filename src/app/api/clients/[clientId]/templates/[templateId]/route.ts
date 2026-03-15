@@ -48,6 +48,7 @@ export async function DELETE(
   { params }: { params: { clientId: string; templateId: string } }
 ) {
   const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const role = await getUserRole();
   if (role !== "division_admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

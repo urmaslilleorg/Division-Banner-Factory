@@ -28,7 +28,6 @@ export const dynamic = "force-dynamic";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { fetchCampaignById } from "@/lib/airtable-campaigns";
 
 export const runtime = "nodejs";
