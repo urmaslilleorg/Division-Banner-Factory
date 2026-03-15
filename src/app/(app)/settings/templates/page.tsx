@@ -1,4 +1,7 @@
 import TemplatesManager from "@/components/templates-manager";
+import { getClientConfigFromHeaders } from "@/lib/client-config";
+import { fetchClientBySubdomain } from "@/lib/airtable-clients";
+import { auth } from "@clerk/nextjs/server";
 import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
@@ -44,14 +47,41 @@ async function fetchAllClientsWithTemplates(): Promise<ClientWithTemplates[]> {
 }
 
 export default async function TemplatesSettingsPage() {
-  const clients = await fetchAllClientsWithTemplates();
+  const { sessionClaims } = await auth();
+  const role = (sessionClaims?.metadata as Record<string, string> | undefined)?.role;
+  const isAdmin = role === "division_admin";
+
+  const clientConfig = getClientConfigFromHeaders();
+  const isClientSubdomain =
+    clientConfig &&
+    clientConfig.id !== "demo" &&
+    clientConfig.id !== "admin";
+
+  let clients: ClientWithTemplates[] = [];
+
+  if (isAdmin) {
+    // Admin sees all clients' templates
+    clients = await fetchAllClientsWithTemplates();
+  } else if (isClientSubdomain) {
+    // Client user sees only their own templates
+    const clientRecord = await fetchClientBySubdomain(clientConfig.subdomain);
+    if (clientRecord) {
+      clients = [{
+        id: clientRecord.id,
+        name: clientRecord.name,
+        subdomain: clientRecord.subdomain,
+        templates: clientRecord.clientTemplates ?? [],
+      }];
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Campaign Templates</h2>
         <p className="text-sm text-gray-500">
-          Saved campaign configuration templates per client. Templates can be applied when creating
-          or editing a campaign to pre-fill formats, variables, and default copy.
+          Saved campaign configuration templates. Apply a template when creating a new campaign
+          to pre-fill formats, variables, and default copy.
         </p>
       </div>
       <TemplatesManager clients={clients} />

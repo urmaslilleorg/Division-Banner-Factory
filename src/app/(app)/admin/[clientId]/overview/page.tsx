@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fetchClientById } from "@/lib/airtable-clients";
 import { fetchFormats } from "@/lib/airtable-campaigns";
+import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,8 @@ export default async function ClientOverviewPage({ params }: Props) {
     { label: "Accent", value: client.accentColor },
     { label: "Background", value: client.backgroundColor },
   ];
+
+  const templates: CampaignTemplate[] = client.clientTemplates ?? [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -214,6 +217,59 @@ export default async function ClientOverviewPage({ params }: Props) {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Templates card */}
+      <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Campaign Templates
+          </h2>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">
+              {templates.length} template{templates.length !== 1 ? "s" : ""}
+            </span>
+            <Link
+              href="/settings/templates"
+              className="text-xs text-gray-500 underline hover:text-gray-700"
+            >
+              Manage all
+            </Link>
+          </div>
+        </div>
+
+        {templates.length === 0 ? (
+          <p className="text-sm text-gray-400">
+            No templates saved yet. Create a campaign and click &ldquo;Save as Template&rdquo; to get started.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Created</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Formats</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Languages</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((tpl) => {
+                const fmts = Array.isArray(tpl.fieldConfig.formats)
+                  ? (tpl.fieldConfig.formats as string[])
+                  : Object.keys(tpl.fieldConfig.formats ?? {});
+                const langs = tpl.fieldConfig.languages ?? [];
+                return (
+                  <tr key={tpl.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                    <td className="px-3 py-2 font-medium text-gray-900">{tpl.name}</td>
+                    <td className="px-3 py-2 text-gray-500">{tpl.createdAt}</td>
+                    <td className="px-3 py-2 text-gray-500">{fmts.length} format{fmts.length !== 1 ? "s" : ""}</td>
+                    <td className="px-3 py-2 text-gray-500">{langs.length > 0 ? langs.join(", ") : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

@@ -43,6 +43,8 @@ export default async function NewCampaignPage() {
   ]);
 
   const clientVariables = clientRecord?.clientVariables ?? [];
+  const clientTemplates = clientRecord?.clientTemplates ?? [];
+  const clientId = clientRecord?.subdomain ?? "";
 
   // Fetch only client-linked formats when on a client subdomain
   const formatIds = clientRecord?.formatIds ?? [];
@@ -58,7 +60,14 @@ export default async function NewCampaignPage() {
           Set up a campaign and generate banner records automatically.
         </p>
       </div>
-      <CampaignBuilderForm formats={formats} variableRegistry={variableRegistry} clientName={clientName} clientVariables={clientVariables} />
+      <CampaignBuilderForm
+        formats={formats}
+        variableRegistry={variableRegistry}
+        clientName={clientName}
+        clientVariables={clientVariables}
+        clientId={clientId}
+        templates={clientTemplates}
+      />
     </main>
   );
 }

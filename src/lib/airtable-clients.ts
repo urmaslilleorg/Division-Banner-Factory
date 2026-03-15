@@ -4,6 +4,7 @@
  * Never import from client components.
  */
 import type { ClientVariable } from "@/lib/types";
+import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
 const BASE_ID = "appIqinespXjbIERp";
@@ -44,6 +45,8 @@ export interface ClientRecord {
   notes: string;
   /** Parsed Client_Variables JSON — empty array if not set */
   clientVariables: ClientVariable[];
+  /** Parsed Client_Templates JSON — empty array if not set */
+  clientTemplates: CampaignTemplate[];
 }
 
 /**
@@ -60,6 +63,17 @@ function parseClientVariables(raw: string | undefined): ClientVariable[] {
         typeof v === "object" && v !== null &&
         typeof v.slot === "string" && typeof v.label === "string"
     );
+  } catch {
+    return [];
+  }
+}
+
+function parseClientTemplates(raw: string | undefined): CampaignTemplate[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as CampaignTemplate[];
   } catch {
     return [];
   }
@@ -83,6 +97,7 @@ function parseClientRecord(record: AirtableRecord): ClientRecord {
     logoUrl: (f["Logo_URL"] as string) || "",
     notes: (f["Notes"] as string) || "",
     clientVariables: parseClientVariables(f["Client_Variables"] as string | undefined),
+    clientTemplates: parseClientTemplates(f["Client_Templates"] as string | undefined),
   };
 }
 
