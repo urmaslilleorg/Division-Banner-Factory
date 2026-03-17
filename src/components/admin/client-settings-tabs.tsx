@@ -11,6 +11,7 @@ import type { ClientRecord } from "@/lib/airtable-clients";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
 import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
 import ClientUsersManager from "@/components/admin/client-users-manager";
+import GenerateVariablesFlow from "@/components/generate-variables-flow";
 
 const TABS = [
   { id: "general", label: "General" },
@@ -210,6 +211,10 @@ export default function ClientSettingsTabs({
     setFigmaFiles(updated);
     await saveFigma(updated);
   };
+
+  // ── Templates tab state ──────────────────────────────────────────────────
+  const [showGenerateTemplate, setShowGenerateTemplate] = useState(false);
+  const hasAiKey = process.env.NEXT_PUBLIC_HAS_ANTHROPIC_KEY === "1";
 
   // ── Templates data for TemplatesManager ────────────────────────────────────
   const templatesClients = [
@@ -429,13 +434,34 @@ export default function ClientSettingsTabs({
       {/* ── Tab: Templates ────────────────────────────────────────────────── */}
       {activeTab === "templates" && (
         <div className="space-y-4">
-          <div>
-            <h2 className="text-base font-medium text-gray-900">Campaign Templates</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Saved campaign templates for {client.name}. Templates can be applied when creating new campaigns.
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-base font-medium text-gray-900">Campaign Templates</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Saved campaign templates for {client.name}. Templates can be applied when creating new campaigns.
+              </p>
+            </div>
+            {hasAiKey && (
+              <button
+                onClick={() => setShowGenerateTemplate(true)}
+                className="shrink-0 flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <span>🖼</span>
+                <span>Generate from banner</span>
+              </button>
+            )}
           </div>
           <TemplatesManager clients={templatesClients} />
+          {showGenerateTemplate && (
+            <GenerateVariablesFlow
+              clientName={client.name}
+              clientId={clientId}
+              clientFormats={formats}
+              mode="template"
+              onApply={() => { router.refresh(); }}
+              onClose={() => setShowGenerateTemplate(false)}
+            />
+          )}
         </div>
       )}
 
