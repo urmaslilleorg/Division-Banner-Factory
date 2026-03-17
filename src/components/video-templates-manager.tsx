@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import AnimationPreviewPanel from "./animation-preview-panel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -324,8 +325,11 @@ function TemplateEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+      {/* Wide modal: max-w-5xl for two-column layout */}
+      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
+
+        {/* Sticky header */}
+        <div className="shrink-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-900">
             {template.name ? `Edit: ${template.name}` : "New Animation Template"}
           </h2>
@@ -337,228 +341,245 @@ function TemplateEditorModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Name */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-              Template name
-            </label>
-            <input
-              type="text"
-              value={tpl.name}
-              onChange={(e) => setTpl({ ...tpl, name: e.target.value })}
-              placeholder="e.g. Retail Basic 15s"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
-            />
-          </div>
+        {/* Two-column body */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex flex-col lg:flex-row min-h-0">
 
-          {/* Duration */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-              Duration
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {DURATION_PRESETS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => { setTpl({ ...tpl, duration: d }); setCustomDuration(""); }}
-                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    tpl.duration === d && !isCustomDuration
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-200 text-gray-600 hover:border-gray-400"
-                  }`}
-                >
-                  {d}s
-                </button>
-              ))}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const val = parseFloat(customDuration) || tpl.duration;
-                    setTpl({ ...tpl, duration: val });
-                  }}
-                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isCustomDuration
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-200 text-gray-600 hover:border-gray-400"
-                  }`}
-                >
-                  Custom
-                </button>
-                {isCustomDuration && (
+            {/* ── LEFT: Editor ── */}
+            <div className="flex-1 min-w-0 p-6 space-y-6 lg:border-r lg:border-gray-100 overflow-y-auto">
+
+              {/* Name */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                  Template name
+                </label>
+                <input
+                  type="text"
+                  value={tpl.name}
+                  onChange={(e) => setTpl({ ...tpl, name: e.target.value })}
+                  placeholder="e.g. Retail Basic 15s"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+
+              {/* Duration */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                  Duration
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {DURATION_PRESETS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => { setTpl({ ...tpl, duration: d }); setCustomDuration(""); }}
+                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        tpl.duration === d && !isCustomDuration
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-200 text-gray-600 hover:border-gray-400"
+                      }`}
+                    >
+                      {d}s
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = parseFloat(customDuration) || tpl.duration;
+                        setTpl({ ...tpl, duration: val });
+                      }}
+                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        isCustomDuration
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-200 text-gray-600 hover:border-gray-400"
+                      }`}
+                    >
+                      Custom
+                    </button>
+                    {isCustomDuration && (
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={customDuration}
+                        onChange={(e) => {
+                          setCustomDuration(e.target.value);
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val) && val > 0) setTpl({ ...tpl, duration: val });
+                        }}
+                        className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Variable animations table */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                  Variable animations
+                </label>
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-24">Variable</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Effect</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-20">Start (s)</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-20">End (s)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {tpl.animations.map((a) => {
+                        const isActive = a.effect !== "none";
+                        return (
+                          <tr key={a.variable} className={isActive ? "bg-white" : "bg-gray-50/50"}>
+                            <td className="px-3 py-2 font-medium text-gray-700 text-xs">{a.variable}</td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={a.effect}
+                                onChange={(e) =>
+                                  setAnimation(a.variable, { effect: e.target.value as AnimationEffect })
+                                }
+                                className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
+                              >
+                                {EFFECT_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              {isActive ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={tpl.duration}
+                                  step={0.1}
+                                  value={a.start}
+                                  onChange={(e) =>
+                                    setAnimation(a.variable, { start: parseFloat(e.target.value) || 0 })
+                                  }
+                                  className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-gray-900"
+                                />
+                              ) : (
+                                <span className="text-gray-300 text-xs px-2">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {isActive ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={tpl.duration}
+                                  step={0.1}
+                                  value={a.end}
+                                  onChange={(e) =>
+                                    setAnimation(a.variable, { end: parseFloat(e.target.value) || 0 })
+                                  }
+                                  className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-gray-900"
+                                />
+                              ) : (
+                                <span className="text-gray-300 text-xs px-2">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Global exit */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                  Global exit
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={tpl.exit.effect}
+                    onChange={(e) =>
+                      setTpl({ ...tpl, exit: { ...tpl.exit, effect: e.target.value as AnimationEffect } })
+                    }
+                    className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  >
+                    {EFFECT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-sm text-gray-400">last</span>
                   <input
                     type="number"
-                    min={1}
-                    step={1}
-                    value={customDuration}
-                    onChange={(e) => {
-                      setCustomDuration(e.target.value);
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val > 0) setTpl({ ...tpl, duration: val });
-                    }}
-                    className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    min={0.1}
+                    step={0.1}
+                    value={tpl.exit.duration}
+                    onChange={(e) =>
+                      setTpl({
+                        ...tpl,
+                        exit: { ...tpl.exit, duration: parseFloat(e.target.value) || 1 },
+                      })
+                    }
+                    className="w-20 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
+                  <span className="text-sm text-gray-400">seconds</span>
+                </div>
+              </div>
+
+              {/* Timeline preview (collapsible) */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowTimeline((v) => !v)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 underline"
+                >
+                  {showTimeline ? "Hide timeline" : "Preview timeline"}
+                </button>
+                {showTimeline && (
+                  <AnimationTimeline template={tpl} />
                 )}
               </div>
+
+              {/* Validation errors */}
+              {errors.length > 0 && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 space-y-1">
+                  {errors.map((e, i) => (
+                    <p key={i} className="text-xs text-red-600">
+                      {e}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSave}
+                  className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="rounded-lg border border-gray-200 px-5 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Variable animations table */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-              Variable animations
-            </label>
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-24">Variable</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Effect</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-20">Start (s)</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-20">End (s)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {tpl.animations.map((a) => {
-                    const isActive = a.effect !== "none";
-                    return (
-                      <tr key={a.variable} className={isActive ? "bg-white" : "bg-gray-50/50"}>
-                        <td className="px-3 py-2 font-medium text-gray-700 text-xs">{a.variable}</td>
-                        <td className="px-3 py-2">
-                          <select
-                            value={a.effect}
-                            onChange={(e) =>
-                              setAnimation(a.variable, { effect: e.target.value as AnimationEffect })
-                            }
-                            className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900"
-                          >
-                            {EFFECT_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          {isActive ? (
-                            <input
-                              type="number"
-                              min={0}
-                              max={tpl.duration}
-                              step={0.1}
-                              value={a.start}
-                              onChange={(e) =>
-                                setAnimation(a.variable, { start: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-gray-900"
-                            />
-                          ) : (
-                            <span className="text-gray-300 text-xs px-2">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {isActive ? (
-                            <input
-                              type="number"
-                              min={0}
-                              max={tpl.duration}
-                              step={0.1}
-                              value={a.end}
-                              onChange={(e) =>
-                                setAnimation(a.variable, { end: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-gray-900"
-                            />
-                          ) : (
-                            <span className="text-gray-300 text-xs px-2">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* ── RIGHT: Live Preview ── */}
+            <div className="w-full lg:w-[420px] xl:w-[460px] shrink-0 p-6 bg-gray-50/50 overflow-y-auto">
+              <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-4">
+                Live preview
+              </p>
+              <AnimationPreviewPanel template={tpl} />
             </div>
-          </div>
 
-          {/* Global exit */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-              Global exit
-            </label>
-            <div className="flex items-center gap-3">
-              <select
-                value={tpl.exit.effect}
-                onChange={(e) =>
-                  setTpl({ ...tpl, exit: { ...tpl.exit, effect: e.target.value as AnimationEffect } })
-                }
-                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              >
-                {EFFECT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <span className="text-sm text-gray-400">last</span>
-              <input
-                type="number"
-                min={0.1}
-                step={0.1}
-                value={tpl.exit.duration}
-                onChange={(e) =>
-                  setTpl({
-                    ...tpl,
-                    exit: { ...tpl.exit, duration: parseFloat(e.target.value) || 1 },
-                  })
-                }
-                className="w-20 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-              <span className="text-sm text-gray-400">seconds</span>
-            </div>
-          </div>
-
-          {/* Timeline preview (nice-to-have) */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowTimeline((v) => !v)}
-              className="text-xs text-indigo-600 hover:text-indigo-800 underline"
-            >
-              {showTimeline ? "Hide timeline" : "Preview timeline"}
-            </button>
-            {showTimeline && (
-              <AnimationTimeline template={tpl} />
-            )}
-          </div>
-
-          {/* Validation errors */}
-          {errors.length > 0 && (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-3 space-y-1">
-              {errors.map((e, i) => (
-                <p key={i} className="text-xs text-red-600">
-                  {e}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              onClick={handleSave}
-              className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
-            >
-              Save
-            </button>
-            <button
-              onClick={onCancel}
-              className="rounded-lg border border-gray-200 px-5 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       </div>
