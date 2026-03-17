@@ -21,25 +21,37 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function ClientCard({ client }: ClientCardProps) {
-  const [archiving, setArchiving] = useState(false);
+  const [status, setStatus] = useState(client.status);
+  const [loading, setLoading] = useState(false);
 
-  const handleArchive = async () => {
-    if (!confirm(`Archive "${client.name}"? This will hide it from the client list.`)) return;
-    setArchiving(true);
+  const changeStatus = async (newStatus: "Active" | "Draft" | "Archived") => {
+    if (newStatus === "Archived") {
+      if (!confirm(`Archive "${client.name}"? This will hide it from the client list.`)) return;
+    }
+    setLoading(true);
     try {
-      await fetch(`/api/admin/clients/${client.id}/status`, {
+      const res = await fetch(`/api/admin/clients/${client.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "Archived" }),
+        body: JSON.stringify({ status: newStatus }),
       });
-      window.location.reload();
+      if (!res.ok) throw new Error("Failed");
+      // Optimistic update — reflect new status immediately without full reload
+      setStatus(newStatus);
+      if (newStatus === "Archived") {
+        // Archived clients are hidden from the list — reload to remove the card
+        window.location.reload();
+      }
     } catch {
-      alert("Failed to archive client.");
-      setArchiving(false);
+      alert(`Failed to set status to ${newStatus}.`);
+    } finally {
+      setLoading(false);
     }
   };
 
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "divisionbanners.ee";
+  const isLive = status === "Active" && !!client.subdomain;
+  const liveUrl = `https://${client.subdomain}.${appDomain}/campaigns?preview=true`;
 
   return (
     <div className="relative flex flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
@@ -47,16 +59,16 @@ export default function ClientCard({ client }: ClientCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span
-            className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_COLORS[client.status] || "bg-gray-400"}`}
+            className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_COLORS[status] || "bg-gray-400"}`}
           />
           <h3 className="truncate text-base font-semibold text-gray-900">
             {client.name}
           </h3>
         </div>
         <span
-          className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_BADGE[client.status] || STATUS_BADGE.Draft}`}
+          className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_BADGE[status] || STATUS_BADGE.Draft}`}
         >
-          {client.status}
+          {status}
         </span>
       </div>
 
@@ -83,41 +95,50 @@ export default function ClientCard({ client }: ClientCardProps) {
       {/* Actions */}
       <div className="mt-4 flex items-center gap-2 pt-3 border-t border-gray-100">
         {/* Live button — opens client subdomain in new tab */}
-        {(() => {
-          const isLive = client.status === "Active" && !!client.subdomain;
-          const liveUrl = `https://${client.subdomain}.${appDomain}/campaigns?preview=true`;
-          return isLive ? (
-            <a
-              href={liveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Live
-            </a>
-          ) : (
-            <button
-              disabled
-              title={client.status === "Draft" ? "Client is in Draft status" : "Set subdomain to go live"}
-              className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-300 cursor-not-allowed"
-            >
-              Live
-            </button>
-          );
-        })()}
+        {isLive ? (
+          <a
+            href={liveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Live
+          </a>
+        ) : (
+          <button
+            disabled
+            title={status === "Draft" ? "Client is in Draft status" : "Set subdomain to go live"}
+            className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-300 cursor-not-allowed"
+          >
+            Live
+          </button>
+        )}
+
         <Link
           href={`/admin/${client.id}/settings`}
           className="flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           Settings
         </Link>
-        <button
-          onClick={handleArchive}
-          disabled={archiving}
-          className="flex-1 rounded-md border border-red-100 px-3 py-1.5 text-center text-xs font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-        >
-          {archiving ? "..." : "Archive"}
-        </button>
+
+        {/* Status toggle: Draft ↔ Active, or Archive */}
+        {status === "Draft" ? (
+          <button
+            onClick={() => changeStatus("Active")}
+            disabled={loading}
+            className="flex-1 rounded-md border border-green-200 px-3 py-1.5 text-center text-xs font-medium text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50"
+          >
+            {loading ? "..." : "Activate"}
+          </button>
+        ) : status === "Active" ? (
+          <button
+            onClick={() => changeStatus("Archived")}
+            disabled={loading}
+            className="flex-1 rounded-md border border-red-100 px-3 py-1.5 text-center text-xs font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            {loading ? "..." : "Archive"}
+          </button>
+        ) : null}
       </div>
     </div>
   );
