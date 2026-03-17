@@ -26,18 +26,31 @@ async function airtableFetch(path: string) {
   return res.json();
 }
 
+// Table primary field names — used so we only fetch one lightweight field per record
+const TABLE_PRIMARY: Record<string, string> = {
+  [CLIENTS_TABLE]: "Client_Name",
+  [CAMPAIGNS_TABLE]: "Campaign Name",
+  [BANNERS_TABLE]: "Banner_ID",
+  [USERS_TABLE]: "Email",
+};
+
 async function countRecords(tableId: string, filterFormula?: string): Promise<number> {
-  let count = 0;
-  let offset: string | undefined;
-  do {
-    const p = new URLSearchParams({ "fields[]": "Name" });
-    if (filterFormula) p.set("filterByFormula", filterFormula);
-    if (offset) p.set("offset", offset);
-    const data = await airtableFetch(`${tableId}?${p.toString()}`);
-    count += (data.records as unknown[]).length;
-    offset = data.offset;
-  } while (offset);
-  return count;
+  try {
+    let count = 0;
+    let offset: string | undefined;
+    const primaryField = TABLE_PRIMARY[tableId] ?? "Name";
+    do {
+      const p = new URLSearchParams({ "fields[]": primaryField });
+      if (filterFormula) p.set("filterByFormula", filterFormula);
+      if (offset) p.set("offset", offset);
+      const data = await airtableFetch(`${tableId}?${p.toString()}`);
+      count += (data.records as unknown[]).length;
+      offset = data.offset;
+    } while (offset);
+    return count;
+  } catch {
+    return 0;
+  }
 }
 
 function parsePlatformConfig(registryJson: string) {
