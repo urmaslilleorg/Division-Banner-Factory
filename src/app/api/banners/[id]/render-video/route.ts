@@ -15,7 +15,7 @@ const CORS_HEADERS = {
 /**
  * POST /api/banners/[id]/render-video
  *
- * Public endpoint — called from the Figma plugin (no Clerk session).
+ * Public endpoint — called from the Figma plugin (no session cookie required).
  *
  * Accepts extracted Figma layer data for a video banner and:
  *   1. Validates the animation template ID

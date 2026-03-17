@@ -1,14 +1,11 @@
 "use client";
 import { useRouter } from "next/navigation";
-
 export default function LandingPage() {
   const router = useRouter();
-
   return (
     <div style={{ background: "#0A0A0F", minHeight: "100dvh", overflow: "hidden" }}>
       <div className="mente-gradient" />
       <div className="mente-grain" />
-
       <header
         style={{
           position: "fixed",
@@ -22,7 +19,7 @@ export default function LandingPage() {
         }}
       >
         <button
-          onClick={() => router.push("/admin")}
+          onClick={() => router.push("/login")}
           style={{
             fontFamily: "'DM Sans', sans-serif",
             fontWeight: 300,
@@ -35,10 +32,9 @@ export default function LandingPage() {
             padding: 0,
           }}
         >
-          Go to app →
+          Sign in →
         </button>
       </header>
-
       <main
         style={{
           position: "relative",
@@ -67,7 +63,6 @@ export default function LandingPage() {
         >
           MENTE
         </h1>
-
         <p
           style={{
             fontFamily: "'Cormorant Garamond', serif",
@@ -82,7 +77,6 @@ export default function LandingPage() {
         >
           Banner production, elevated.
         </p>
-
         <div
           style={{
             fontFamily: "'DM Sans', sans-serif",
@@ -97,11 +91,9 @@ export default function LandingPage() {
           <p style={{ margin: 0 }}>From brief to Figma. Copy managed.</p>
           <p style={{ margin: 0 }}>Campaigns delivered.</p>
         </div>
-
-        <button className="sign-in-btn" onClick={() => router.push("/admin")}>
-          Enter app
+        <button className="sign-in-btn" onClick={() => router.push("/login")}>
+          Sign in
         </button>
-
         <footer
           style={{
             position: "fixed",

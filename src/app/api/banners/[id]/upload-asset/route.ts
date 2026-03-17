@@ -1,3 +1,7 @@
+/**
+ * Public endpoint (no session required) — called by the Figma plugin.
+ * TODO: add API key auth for plugin routes in a future phase.
+ */
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";

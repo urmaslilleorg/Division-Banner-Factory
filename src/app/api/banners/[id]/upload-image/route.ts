@@ -14,7 +14,7 @@ const CORS_HEADERS = {
 /**
  * POST /api/banners/[id]/upload-image
  *
- * Public endpoint — called from the Figma plugin (no Clerk session).
+ * Public endpoint — called from the Figma plugin (no session cookie required).
  * Accepts a base64 PNG and stores it as a data URL in Product_Image_URL.
  *
  * Body: { image: "data:image/png;base64,...", fileName: "frame.png" }

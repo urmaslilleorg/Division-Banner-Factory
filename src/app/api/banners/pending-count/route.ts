@@ -11,7 +11,7 @@ const BANNERS_TABLE = "tblE3Np8VIaKJsqoW";
  * - division_admin / division_designer: count where Approval_Status = "Revision_Requested"
  * - client_reviewer: count where Approval_Status = "Pending" AND Status = "Client_Review"
  *
- * Role is passed as a query param for now (TODO: derive from Clerk session claims).
+ * Role is passed as a query param. Can be derived from x-user-role header set by middleware.
  */
 export async function GET(request: NextRequest) {
   try {

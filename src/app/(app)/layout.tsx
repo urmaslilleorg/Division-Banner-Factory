@@ -1,15 +1,18 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
-import { getUserRole } from "@/lib/auth-role";
+import { getUser } from "@/lib/get-user";
+import SignOutButton from "@/components/sign-out-button";
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const role = await getUserRole();
+  const hdrs = await headers();
+  const user = getUser(hdrs);
+  const role = user?.role ?? "viewer";
   const clientConfig = getClientConfigFromHeaders();
-
   const isRootDomain = !clientConfig || clientConfig.id === "demo" || clientConfig.id === "admin";
   const displayName = isRootDomain ? "MENTE" : clientConfig.name;
   const displayLogo = isRootDomain ? null : (clientConfig.logo || null);
@@ -36,7 +39,6 @@ export default async function AppLayout({
               </span>
             )}
           </Link>
-
           <nav className="flex items-center gap-6 text-sm text-gray-600">
             {!isRootDomain && (
               <a href="/campaigns?preview=true" className="hover:text-gray-900 transition-colors">
@@ -53,6 +55,7 @@ export default async function AppLayout({
                 Admin
               </a>
             )}
+            {user && <SignOutButton />}
           </nav>
         </div>
       </header>

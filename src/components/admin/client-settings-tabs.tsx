@@ -10,6 +10,7 @@ import type { VideoTemplate } from "@/components/video-templates-manager";
 import type { ClientRecord } from "@/lib/airtable-clients";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
 import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
+import ClientUsersManager from "@/components/admin/client-users-manager";
 
 const TABS = [
   { id: "general", label: "General" },
@@ -18,6 +19,7 @@ const TABS = [
   { id: "templates", label: "Templates" },
   { id: "figma", label: "Figma" },
   { id: "video", label: "Video" },
+  { id: "users", label: "Users" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -577,6 +579,10 @@ export default function ClientSettingsTabs({
             </ol>
           </div>
         </div>
+      )}
+      {/* ──────────────────── USERS TAB ──────────────────── */}
+      {activeTab === "users" && (
+        <ClientUsersManager clientId={clientId} />
       )}
     </div>
   );
