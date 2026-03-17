@@ -235,20 +235,47 @@ function TemplateCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const activeAnimations = template.animations.filter((a) => a.effect !== "none");
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">{template.name}</h3>
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      {/* Clickable header */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setExpanded((v) => !v)}
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-gray-50 transition-colors"
+      >
+        {/* Chevron */}
+        <svg
+          className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-150 ${
+            expanded ? "rotate-180" : ""
+          }`}
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M2 4l4 4 4-4" />
+        </svg>
+        {/* Name + meta */}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-gray-900 truncate">{template.name}</h3>
           <p className="text-xs text-gray-400 mt-0.5">
             Duration: {template.duration}s · {activeAnimations.length} animation
             {activeAnimations.length !== 1 ? "s" : ""}
           </p>
         </div>
+        {/* Edit / Delete — stop propagation so they don't toggle the card */}
         {!readOnly && (
-          <div className="flex items-center gap-2 shrink-0">
+          <div
+            className="flex items-center gap-2 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               onClick={onEdit}
               className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
@@ -265,29 +292,33 @@ function TemplateCard({
         )}
       </div>
 
-      {/* Animation rows */}
-      {activeAnimations.length > 0 && (
-        <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
-          {activeAnimations.map((a) => (
-            <div
-              key={a.variable}
-              className="flex items-center gap-3 px-3 py-1.5 text-xs"
-            >
-              <span className="w-20 font-medium text-gray-700 shrink-0">{a.variable}</span>
-              <span className="w-24 font-mono text-indigo-600 shrink-0">{a.effect}</span>
-              <span className="text-gray-400">
-                {a.start}s → {a.end}s
-              </span>
+      {/* Expandable body */}
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
+          {/* Animation rows */}
+          {activeAnimations.length > 0 && (
+            <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100 mt-3">
+              {activeAnimations.map((a) => (
+                <div
+                  key={a.variable}
+                  className="flex items-center gap-3 px-3 py-1.5 text-xs"
+                >
+                  <span className="w-20 font-medium text-gray-700 shrink-0">{a.variable}</span>
+                  <span className="w-24 font-mono text-indigo-600 shrink-0">{a.effect}</span>
+                  <span className="text-gray-400">
+                    {a.start}s → {a.end}s
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+          {/* Global exit */}
+          <p className="text-xs text-gray-400">
+            Exit: <span className="font-mono text-gray-600">{template.exit.effect}</span> · last{" "}
+            {template.exit.duration}s
+          </p>
         </div>
       )}
-
-      {/* Global exit */}
-      <p className="text-xs text-gray-400">
-        Exit: <span className="font-mono text-gray-600">{template.exit.effect}</span> · last{" "}
-        {template.exit.duration}s
-      </p>
     </div>
   );
 }
