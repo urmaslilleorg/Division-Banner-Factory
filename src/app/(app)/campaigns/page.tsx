@@ -4,8 +4,7 @@ import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { getUserRole } from "@/lib/auth-role";
 import { fetchAllCampaigns, fetchBannerSummaries } from "@/lib/airtable-campaigns";
 import CalendarGrid from "@/components/calendar-grid";
-import Link from "next/link";
-import { Plus } from "lucide-react";
+import CampaignHeaderButtons from "@/components/campaign-header-buttons";
 
 export default async function CampaignsPage({
   searchParams,
@@ -51,6 +50,7 @@ export default async function CampaignsPage({
   ]);
 
   const userRole = role;
+  const hasAiKey = !!process.env.ANTHROPIC_API_KEY;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -63,13 +63,10 @@ export default async function CampaignsPage({
           </p>
         </div>
         {(role === "division_admin" || role === "division_designer") && (
-          <Link
-            href="/campaigns/new?preview=true"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New campaign
-          </Link>
+          <CampaignHeaderButtons
+            hasAiKey={hasAiKey}
+            newCampaignHref="/campaigns/new?preview=true"
+          />
         )}
       </div>
       <CalendarGrid

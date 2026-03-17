@@ -131,6 +131,24 @@ function buildInitialFormatConfigs(
     (fieldConfig?.formats && !Array.isArray(fieldConfig.formats)
       ? (fieldConfig.formats as Record<string, { variables?: string[]; mode?: string; slideCount?: number; copy?: Record<string, string>; slides?: unknown[] }>)
       : undefined);
+  const defaultCopy = fieldConfig?.defaultCopy ?? {};
+  const prefillVars = fieldConfig?.variables ?? [];
+
+  // When we have prefill variables but no per-format config, seed all formats with prefill
+  if (!configSource && prefillVars.length > 0) {
+    const result: Record<string, FormatConfig> = {};
+    for (const f of formats) {
+      result[f.id] = {
+        variables: prefillVars,
+        mode: "default",
+        copy: { ...defaultCopy },
+        slideCount: 3,
+        slides: [],
+      };
+    }
+    return result;
+  }
+
   if (!configSource) return {};
   const result: Record<string, FormatConfig> = {};
   for (const f of formats) {
@@ -142,7 +160,8 @@ function buildInitialFormatConfigs(
       result[f.id] = {
         variables: vars,
         mode: (saved.mode as FormatConfig["mode"]) ?? "default",
-        copy: saved.copy ?? {},
+        // Merge defaultCopy with saved copy (saved takes priority)
+        copy: { ...defaultCopy, ...(saved.copy ?? {}) },
         slideCount: saved.slideCount ?? (slides.length || 3),
         slides,
       };
@@ -372,9 +391,14 @@ export default function CampaignBuilderForm({
         return prev.filter((f) => f !== id);
       } else {
         if (!formatConfigs[id]) {
+          // Seed with prefill variables/copy if available
+          const prefillVars2 = initialData?.fieldConfig?.variables ?? [];
+          const prefillCopy2 = initialData?.fieldConfig?.defaultCopy ?? {};
+          const seedVars = prefillVars2.length > 0 ? prefillVars2 : ["H1", "CTA"];
+          const seedCopy = prefillVars2.length > 0 ? { ...prefillCopy2 } : {};
           setFormatConfigs((c) => ({
             ...c,
-            [id]: { variables: ["H1", "CTA"], mode: "default", copy: {}, slideCount: 3, slides: [] },
+            [id]: { variables: seedVars, mode: "default", copy: seedCopy, slideCount: 3, slides: [] },
           }));
         }
         setExpandedFormats((e) => ({ ...e, [id]: true }));

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { fetchFormats, fetchFormatsByIds } from "@/lib/airtable-campaigns";
 import { getClientConfigFromHeaders } from "@/lib/client-config";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
-import CampaignBuilderForm from "@/components/campaign-builder-form";
+import CampaignBuilderForm, { CampaignInitialData } from "@/components/campaign-builder-form";
 import { VariableDefinition } from "@/components/variables-manager";
 
 async function fetchVariableRegistry(): Promise<VariableDefinition[]> {
@@ -24,7 +24,11 @@ async function fetchVariableRegistry(): Promise<VariableDefinition[]> {
   }
 }
 
-export default async function NewCampaignPage() {
+export default async function NewCampaignPage({
+  searchParams,
+}: {
+  searchParams: { preview?: string; prefill?: string };
+}) {
   const userId = "mock-user-id";
   if (!userId) redirect("/sign-in");
 
@@ -51,12 +55,40 @@ export default async function NewCampaignPage() {
     ? await fetchFormatsByIds(formatIds)
     : await fetchFormats();
 
+  // Parse banner-analysis prefill config from URL param
+  let initialData: CampaignInitialData | undefined;
+  if (searchParams.prefill) {
+    try {
+      const prefill = JSON.parse(decodeURIComponent(searchParams.prefill)) as {
+        variables: string[];
+        copy: Record<string, string>;
+      };
+      if (prefill.variables && Array.isArray(prefill.variables)) {
+        initialData = {
+          campaignName: "",
+          productName: "",
+          launchMonth: "",
+          fieldConfig: {
+            variables: prefill.variables,
+            defaultCopy: prefill.copy ?? {},
+          },
+        };
+      }
+    } catch {
+      // Ignore malformed prefill
+    }
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
         <h1 className="text-2xl font-light text-gray-900">New Campaign</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Set up a campaign and generate banner records automatically.
+          {initialData ? (
+            <>Pre-filled from banner analysis · review and adjust before saving.</>
+          ) : (
+            <>Set up a campaign and generate banner records automatically.</>
+          )}
         </p>
       </div>
       <CampaignBuilderForm
@@ -66,6 +98,7 @@ export default async function NewCampaignPage() {
         clientVariables={clientVariables}
         clientId={clientId}
         templates={clientTemplates}
+        initialData={initialData}
       />
     </main>
   );

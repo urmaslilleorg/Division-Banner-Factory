@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import AnimationPreviewPanel from "./animation-preview-panel";
+import CreateFromVideoFlow from "./create-from-video-flow";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -97,6 +98,8 @@ export default function VideoTemplatesManager({
   const [editing, setEditing] = useState<VideoTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [showVideoFlow, setShowVideoFlow] = useState(false);
+  const hasAiKey = !!(process.env.NEXT_PUBLIC_HAS_ANTHROPIC_KEY === "1");
 
   // ── Persist to Airtable ───────────────────────────────────────────────────
 
@@ -125,6 +128,11 @@ export default function VideoTemplatesManager({
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleCreate = () => setEditing(buildDefaultTemplate());
+
+  const handleVideoFlowReady = (tpl: VideoTemplate) => {
+    setShowVideoFlow(false);
+    setEditing(tpl);
+  };
 
   const handleEdit = (tpl: VideoTemplate) => setEditing(JSON.parse(JSON.stringify(tpl)));
 
@@ -164,14 +172,22 @@ export default function VideoTemplatesManager({
         />
       ))}
 
-      {/* Create button */}
+      {/* Create buttons */}
       {!readOnly && (
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 hover:border-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <span className="text-lg leading-none">+</span> Create animation template
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleCreate}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 hover:border-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <span className="text-lg leading-none">+</span> New template
+          </button>
+          <button
+            onClick={() => setShowVideoFlow(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-indigo-200 px-4 py-2 text-sm text-indigo-600 hover:border-indigo-500 hover:text-indigo-900 transition-colors"
+          >
+            <span className="text-lg leading-none">🎬</span> Create from video
+          </button>
+        </div>
       )}
 
       {/* Status */}
@@ -191,6 +207,15 @@ export default function VideoTemplatesManager({
           template={editing}
           onSave={handleSave}
           onCancel={() => setEditing(null)}
+        />
+      )}
+
+      {/* Create from video flow */}
+      {showVideoFlow && (
+        <CreateFromVideoFlow
+          hasAiKey={hasAiKey}
+          onTemplateReady={handleVideoFlowReady}
+          onCancel={() => setShowVideoFlow(false)}
         />
       )}
     </div>
