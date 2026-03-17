@@ -3,8 +3,10 @@
  * TODO: add API key auth for plugin routes in a future phase.
  */
 export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { maybeAutoSetPendingReview } from "@/lib/campaign-status-helpers";
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
 const BASE_ID = "appIqinespXjbIERp";
@@ -22,8 +24,11 @@ const CORS_HEADERS = {
  * Narrow public endpoint — called from the Figma plugin after upload-image.
  * Only accepts imageUrl and status fields to minimise attack surface.
  *
- * Body: { imageUrl?: string, status?: string }
+ * Body: { imageUrl?: string, status?: string, campaignId?: string }
  * Returns: { success: true }
+ *
+ * Auto-trigger: if imageUrl is provided and campaignId is known,
+ * checks if all banners are now exported → sets Campaign_Status = Pending_Review.
  */
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
@@ -34,8 +39,12 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const body = await request.json() as { imageUrl?: string; status?: string };
-    const { imageUrl, status } = body;
+    const body = await request.json() as {
+      imageUrl?: string;
+      status?: string;
+      campaignId?: string;
+    };
+    const { imageUrl, status, campaignId } = body;
 
     const fields: Record<string, unknown> = {};
     if (imageUrl !== undefined) fields["Product_Image_URL"] = imageUrl;
@@ -43,13 +52,14 @@ export async function POST(
 
     if (Object.keys(fields).length === 0) {
       return NextResponse.json(
-        { error: "No valid fields provided (accepted: imageUrl, status)" },
+        { error: "No valid fields provided (accepted: imageUrl, status, campaignId)" },
         { status: 400, headers: CORS_HEADERS }
       );
     }
 
     const recordId = params.id;
 
+    // 1. Update the banner record
     const res = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}/${recordId}`,
       {
@@ -67,7 +77,28 @@ export async function POST(
       throw new Error(`Airtable PATCH error ${res.status}: ${err}`);
     }
 
-    // Bust Next.js cache so the campaign page shows the new Product_Image_URL immediately
+    // 2. If an image was exported and we know the campaign, check for auto Pending_Review
+    if (imageUrl && campaignId) {
+      // Fire-and-forget — do not await to keep response fast
+      maybeAutoSetPendingReview(recordId, campaignId).catch((err) =>
+        console.error("[plugin-update] auto-trigger error:", err)
+      );
+    } else if (imageUrl) {
+      // campaignId not provided by plugin — fetch it from the updated record
+      const updatedRecord = await res.clone().json() as {
+        id: string;
+        fields: Record<string, unknown>;
+      };
+      const campaignLink = updatedRecord.fields["Campaign Link"] as string[] | undefined;
+      const resolvedCampaignId = campaignLink?.[0];
+      if (resolvedCampaignId) {
+        maybeAutoSetPendingReview(recordId, resolvedCampaignId).catch((err) =>
+          console.error("[plugin-update] auto-trigger error:", err)
+        );
+      }
+    }
+
+    // 3. Bust Next.js cache so the campaign page shows the new Product_Image_URL immediately
     revalidatePath("/", "layout");
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });

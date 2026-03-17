@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { DownloadZipButton } from "@/components/download-zip-button";
+import CampaignStatusBadge from "@/components/campaign-status-badge";
 
 interface PageProps {
   params: { year: string; month: string };
@@ -137,6 +138,7 @@ export default async function MonthDetailPage({ params }: PageProps) {
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-3">
                     <h2 className="font-medium text-gray-900">{campaign.name}</h2>
+                    <CampaignStatusBadge status={campaign.campaignStatus} />
                     <span className="text-xs text-gray-400">{campaign.clientName}</span>
                   </div>
 

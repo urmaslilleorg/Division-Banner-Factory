@@ -7,6 +7,7 @@ import { fetchAllCampaigns, FieldConfig } from "@/lib/airtable-campaigns";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignDetailTabs from "@/components/campaign-detail-tabs";
 import { FigmaIntegrationPanel } from "@/components/figma-integration-panel";
+import CampaignStatusBar from "@/components/campaign-status-bar";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
 function launchMonthToUrl(launchMonth: string | null): string {
@@ -144,6 +145,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
   let copySheetUrl: string | null = null;
   let figmaCampaignFile: string | null = null;
   let lastFigmaSync: string | null = null;
+  let campaignStatus = "Draft";
   let campaignFound = false;
 
   // Try to find campaign record to get ID and metadata
@@ -176,6 +178,7 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
       copySheetUrl = found.copySheetUrl ?? null;
       figmaCampaignFile = found.figmaCampaignFile ?? null;
       lastFigmaSync = found.lastFigmaSync ?? null;
+      campaignStatus = found.campaignStatus ?? "Draft";
     } else if (!isRecordId) {
       campaignName = formattedName;
     }
@@ -298,13 +301,22 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         ← Back to {backLabel}
       </Link>
 
-      <div className="space-y-1">
+      <div className="space-y-2">
         <h1 className="text-3xl font-light tracking-tight text-gray-900">
           {campaignName}
         </h1>
-        <p className="text-sm text-gray-500">
-          {banners.length} banner{banners.length !== 1 ? "s" : ""} · {totalConfigured} format{totalConfigured !== 1 ? "s" : ""} configured
-        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <p className="text-sm text-gray-500">
+            {banners.length} banner{banners.length !== 1 ? "s" : ""} · {totalConfigured} format{totalConfigured !== 1 ? "s" : ""} configured
+          </p>
+          {campaignId && (
+            <CampaignStatusBar
+              campaignId={campaignId}
+              initialStatus={campaignStatus as import("@/components/campaign-status-bar").CampaignStatus}
+              userRole={userRole}
+            />
+          )}
+        </div>
       </div>
 
       {/* Figma Integration — visible to all platform users (admin, designer, client) */}

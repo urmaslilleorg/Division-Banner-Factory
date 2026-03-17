@@ -53,6 +53,7 @@ export interface Campaign {
   copyProgress: number;
   figmaCampaignFile: string | null;
   lastFigmaSync: string | null;
+  campaignStatus: string;
 }
 
 export interface SlideVariableConfig {
@@ -128,6 +129,7 @@ function parseCampaign(record: AirtableRecord): Campaign {
     copyProgress: (f["Copy_Progress"] as number) || 0,
     figmaCampaignFile: (f["Figma_Campaign_File"] as string) || null,
     lastFigmaSync: (f["Last_Figma_Sync"] as string) || null,
+    campaignStatus: (f["Campaign_Status"] as string) || "Draft",
   };
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import { Campaign, BannerSummary } from "@/lib/airtable-campaigns";
 import { Progress } from "@/components/ui/progress";
+import CampaignStatusBadge from "@/components/campaign-status-badge";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -287,9 +288,16 @@ function CampaignNames({ campaigns }: { campaigns: Campaign[] }) {
   const shown = campaigns.slice(0, 2);
   const extra = campaigns.length - 2;
   return (
-    <p className="text-[10px] text-gray-400 truncate">
-      {shown.map((c) => c.name).join(", ")}
-      {extra > 0 && ` +${extra} more`}
-    </p>
+    <div className="space-y-0.5">
+      {shown.map((c) => (
+        <div key={c.id} className="flex items-center gap-1.5">
+          <span className="text-[10px] text-gray-400 truncate">{c.name}</span>
+          <CampaignStatusBadge status={c.campaignStatus} />
+        </div>
+      ))}
+      {extra > 0 && (
+        <p className="text-[10px] text-gray-400">+{extra} more</p>
+      )}
+    </div>
   );
 }

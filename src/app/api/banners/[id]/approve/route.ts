@@ -1,5 +1,9 @@
 export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { getUser } from "@/lib/get-user";
+import { maybeAutoSetApproved } from "@/lib/campaign-status-helpers";
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
 const BASE_ID = "appIqinespXjbIERp";
@@ -11,8 +15,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const userId = "mock-user-id";
-  if (!userId) {
+  const hdrs = await headers();
+  const user = getUser(hdrs);
+
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -61,6 +67,24 @@ export async function PATCH(
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Airtable PATCH error ${res.status}: ${err}`);
+    }
+
+    // Fetch the updated banner to get its campaign link
+    const updatedBanner = await res.json() as {
+      id: string;
+      fields: Record<string, unknown>;
+    };
+
+    // Auto-trigger: if approved, check if all campaign banners are now approved
+    if (approvalStatus === "Approved") {
+      const campaignLink = updatedBanner.fields["Campaign Link"] as string[] | undefined;
+      const campaignId = campaignLink?.[0];
+      if (campaignId) {
+        // Fire-and-forget
+        maybeAutoSetApproved(campaignId).catch((err) =>
+          console.error("[approve] auto-trigger error:", err)
+        );
+      }
     }
 
     return NextResponse.json({ success: true, approvalStatus });
