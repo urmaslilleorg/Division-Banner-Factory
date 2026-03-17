@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import GenerateVariablesFlow from "@/components/generate-variables-flow";
 import { useRouter } from "next/navigation";
 import FormatPicker from "@/components/format-picker";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
@@ -58,6 +59,8 @@ export default function NewClientWizard({ formats, variableSlots, initialData, e
   const [error, setError] = useState("");
 
   const slots = variableSlots && variableSlots.length > 0 ? variableSlots : DEFAULT_VARIABLE_SLOTS;
+  const [showGenerateFlow, setShowGenerateFlow] = useState(false);
+  const hasAiKey = process.env.NEXT_PUBLIC_HAS_ANTHROPIC_KEY === "1";
 
   // Build default clientVariables from slots (all enabled, label = slot name)
   const defaultClientVariables: ClientVariable[] = slots.map((s) => ({ slot: s, label: s }));
@@ -343,6 +346,19 @@ export default function NewClientWizard({ formats, variableSlots, initialData, e
               Define the copy variables for this client. Select which slots to use and give each a custom label.
             </p>
           </div>
+          {hasAiKey && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setShowGenerateFlow(true)}
+                className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <span>🖼</span>
+                Generate from banner
+              </button>
+              <span className="ml-3 text-xs text-gray-400">or configure manually below</span>
+            </div>
+          )}
           <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
             {slots.map((slot) => {
               const enabled = isSlotEnabled(slot);
@@ -373,6 +389,18 @@ export default function NewClientWizard({ formats, variableSlots, initialData, e
             Only checked slots will be saved and shown in the Campaign Builder and Copy Editor.
           </p>
         </div>
+      )}
+
+      {/* Generate Variables Flow modal */}
+      {showGenerateFlow && (
+        <GenerateVariablesFlow
+          clientName={data.clientName || "New Client"}
+          onApply={(variables) => {
+            // Pre-fill wizard Step 3 with AI-detected variables
+            setData((prev) => ({ ...prev, clientVariables: variables }));
+          }}
+          onClose={() => setShowGenerateFlow(false)}
+        />
       )}
 
       {/* Step 4 — Asset library */}

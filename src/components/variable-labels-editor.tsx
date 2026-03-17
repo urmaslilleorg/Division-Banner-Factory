@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ClientVariable } from "@/lib/types";
+import GenerateVariablesFlow from "@/components/generate-variables-flow";
 
 const DEFAULT_SLOTS = ["H1", "H2", "H3", "CTA", "Price_Tag", "Illustration", "Image"];
 
@@ -31,6 +32,9 @@ export default function VariableLabelsEditor({
   );
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [showGenerateFlow, setShowGenerateFlow] = useState(false);
+
+  const hasAiKey = process.env.NEXT_PUBLIC_HAS_ANTHROPIC_KEY === "1";
 
   const handleSave = async () => {
     setSaving(true);
@@ -75,6 +79,21 @@ export default function VariableLabelsEditor({
           Leave blank to use the default slot name.
         </p>
       </div>
+
+      {/* Generate from banner button */}
+      {hasAiKey && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowGenerateFlow(true)}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <span>🖼</span>
+            Generate from banner
+          </button>
+          <span className="text-xs text-gray-400">or configure manually below</span>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <table className="w-full text-sm">
@@ -140,6 +159,21 @@ export default function VariableLabelsEditor({
         >
           {flash}
         </p>
+      )}
+
+      {/* Generate Variables Flow modal */}
+      {showGenerateFlow && (
+        <GenerateVariablesFlow
+          clientName={clientName}
+          clientId={clientId}
+          onApply={(variables) => {
+            // Update the labels map from AI result
+            const newMap = buildMap(variables);
+            setLabels(newMap);
+            setFlash("Variables updated from banner analysis");
+          }}
+          onClose={() => setShowGenerateFlow(false)}
+        />
       )}
     </div>
   );
