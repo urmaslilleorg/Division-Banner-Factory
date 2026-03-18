@@ -30,6 +30,7 @@ export async function PATCH(
       clientVariables,
       clientTemplates,
       videoTemplates,
+      formatTemplates,
     } = body;
 
     const fields: Record<string, unknown> = {};
@@ -50,6 +51,7 @@ export async function PATCH(
     if (clientVariables !== undefined) fields["Client_Variables"] = clientVariables;
     if (clientTemplates !== undefined) fields["Client_Templates"] = clientTemplates;
     if (videoTemplates !== undefined) fields["Video_Templates"] = videoTemplates;
+    if (formatTemplates !== undefined) fields["Format_Templates"] = formatTemplates;
 
     const res = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${CLIENTS_TABLE}/${id}`,

@@ -11,6 +11,8 @@ import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/ro
 import ClientUsersManager from "@/components/admin/client-users-manager";
 import GenerateVariablesFlow from "@/components/generate-variables-flow";
 import VariableSlotToggler from "@/components/variable-slot-toggler";
+import FormatTemplatesManager from "@/components/admin/format-templates-manager";
+import type { FormatTemplate } from "@/lib/airtable-clients";
 
 const TABS = [
   { id: "general", label: "General" },
@@ -109,6 +111,7 @@ export default function ClientSettingsTabs({
 
   // ── Format Templates tab state ─────────────────────────────────────────────
   const initialVideoTemplates: VideoTemplate[] = (client.videoTemplates as VideoTemplate[] | undefined) ?? [];
+  const initialFormatTemplates: FormatTemplate[] = (client.formatTemplates as FormatTemplate[] | undefined) ?? [];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const setTab = (id: TabId) => {
@@ -428,29 +431,60 @@ export default function ClientSettingsTabs({
 
       {/* ── Tab: Format Templates ─────────────────────────────────────────── */}
       {activeTab === "format-templates" && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-base font-medium text-gray-900">Animation Templates</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Define reusable animation timelines for video banner exports. Each template controls
-              which variable layers animate, their effect, and timing.
-            </p>
+        <div className="space-y-8">
+
+          {/* ── FORMAT TEMPLATES section ──────────────────────────────────── */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-medium text-gray-900">Format Templates</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Define reusable variable configurations for specific formats. Each template sets
+                which variable slots are active, their display labels, and optionally links to an
+                animation timeline for video exports.
+              </p>
+            </div>
+
+            <FormatTemplatesManager
+              clientId={clientId}
+              clientName={client.name}
+              clientSubdomain={client.subdomain}
+              initialTemplates={initialFormatTemplates}
+              allFormats={formats}
+              animationTemplates={initialVideoTemplates}
+              hasAiKey={hasAiKey}
+            />
           </div>
 
-          <VideoTemplatesManager
-            clientId={clientId}
-            initialTemplates={initialVideoTemplates}
-          />
+          {/* ── Divider ───────────────────────────────────────────────────── */}
+          <div className="border-t border-gray-200" />
 
-          <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
-            <p className="font-medium mb-1">How video export works</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>Mark a format as <strong>Is Video</strong> in the Formats table in Airtable.</li>
-              <li>When adding that format to a campaign, select an animation template.</li>
-              <li>In the Figma plugin, use <strong>Export video</strong> to send layer data to the platform.</li>
-              <li>The platform renders a WebM video per banner and stores the URL in <code>Video_URL</code>.</li>
-            </ol>
+          {/* ── ANIMATION LIBRARY section ─────────────────────────────────── */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-medium text-gray-900">Animation Library</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Reusable animation timelines for video banner exports. Each timeline controls which
+                variable layers animate, their effect, and timing. Video format templates reference
+                these timelines.
+              </p>
+            </div>
+
+            <VideoTemplatesManager
+              clientId={clientId}
+              initialTemplates={initialVideoTemplates}
+            />
+
+            <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
+              <p className="font-medium mb-1">How video export works</p>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>Mark a format as <strong>Is Video</strong> in the Formats table in Airtable.</li>
+                <li>Create an animation timeline above, then link it to a video format template.</li>
+                <li>In the Figma plugin, use <strong>Export video</strong> to send layer data to the platform.</li>
+                <li>The platform renders a WebM video per banner and stores the URL in <code>Video_URL</code>.</li>
+              </ol>
+            </div>
           </div>
+
         </div>
       )}
 

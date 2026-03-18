@@ -28,6 +28,21 @@ async function airtableGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** A format template — defines variable slots+labels for a set of formats. */
+export interface FormatTemplate {
+  id: string;
+  name: string;
+  /** "still" = static banner, "video" = animated export */
+  type: "still" | "video";
+  createdAt: string;
+  /** Airtable format IDs this template applies to */
+  formatIds: string[];
+  /** Variable slots with per-template labels */
+  variables: { slot: string; label: string }[];
+  /** Optional reference to a VideoTemplate id (video type only) */
+  animationTemplateId?: string;
+}
+
 export interface ClientRecord {
   id: string;
   name: string;
@@ -49,6 +64,8 @@ export interface ClientRecord {
   clientTemplates: CampaignTemplate[];
   /** Parsed Video_Templates JSON — empty array if not set */
   videoTemplates: Array<{ id: string; name: string; duration: number; fps?: number; description?: string; keyframes?: unknown[] }>;
+  /** Parsed Format_Templates JSON — empty array if not set */
+  formatTemplates: FormatTemplate[];
 }
 
 /**
@@ -94,6 +111,17 @@ function parseClientTemplates(raw: string | undefined): CampaignTemplate[] {
   }
 }
 
+function parseFormatTemplates(raw: string | undefined): FormatTemplate[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as FormatTemplate[];
+  } catch {
+    return [];
+  }
+}
+
 function parseClientRecord(record: AirtableRecord): ClientRecord {
   const f = record.fields;
   return {
@@ -114,6 +142,7 @@ function parseClientRecord(record: AirtableRecord): ClientRecord {
     clientVariables: parseClientVariables(f["Client_Variables"] as string | undefined),
     clientTemplates: parseClientTemplates(f["Client_Templates"] as string | undefined),
     videoTemplates: parseVideoTemplates(f["Video_Templates"] as string | undefined),
+    formatTemplates: parseFormatTemplates(f["Format_Templates"] as string | undefined),
   };
 }
 
