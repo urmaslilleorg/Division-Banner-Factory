@@ -121,22 +121,43 @@ export async function createNexdCreative(
   templateId: string,
   width: number,
   height: number
-): Promise<NexdCreative> {
-  const result = await nexdRequest<{
+): Promise<NexdCreative & { _rawResult?: unknown }> {
+  // Use raw fetch to capture the full response for debugging
+  const apiKey = getApiKey();
+  const url = `${NEXD_BASE}/v2/campaigns/${campaignId}/creatives`;
+  const body = { name, layout_id: templateId, width, height };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const rawText = await res.text();
+  let data: Record<string, unknown>;
+  try { data = JSON.parse(rawText); } catch { throw new Error(`Nexd create creative non-JSON (${res.status}): ${rawText.slice(0, 200)}`); }
+
+  if (!res.ok || data.error) {
+    throw new Error(`Nexd API error (${res.status}): ${(data as {msg?: string}).msg ?? rawText.slice(0, 200)}`);
+  }
+
+  const result = (data.result ?? data) as {
     creative_id: string;
     assets: Record<string, NexdAsset>;
     settings: Record<string, unknown>;
-  }>("POST", `/v2/campaigns/${campaignId}/creatives`, {
-    name,
-    layout_id: templateId,
-    width,
-    height,
-  });
+    layout_id?: string;
+    [key: string]: unknown;
+  };
 
   return {
     creativeId: result.creative_id,
     assets: result.assets ?? {},
     settings: result.settings ?? {},
+    _rawResult: result, // full response for debug
   };
 }
 

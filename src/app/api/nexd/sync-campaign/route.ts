@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
 
     // 4. Process each eligible banner
     let uploadDebugCapture: UploadDebugInfo | null = null;
+    let createResponseCapture: unknown = null;
     for (const banner of banners) {
       const f = banner.fields;
       const bannerName = f.Banner_Name ?? banner.id;
@@ -266,6 +267,7 @@ export async function POST(request: NextRequest) {
       const imageUrl = f.Product_Image_URL!;
 
       let uploadDebug: UploadDebugInfo | null = null;
+      let createDebugCapture: unknown = null;
       try {
         // a. Create Nexd creative
         const creative = await createNexdCreative(
@@ -275,6 +277,7 @@ export async function POST(request: NextRequest) {
           width,
           height
         );
+        createDebugCapture = creative._rawResult; // capture full create response
 
         // b. Get primary slot
         const primarySlot = await getPrimarySlot(resolvedTemplateId);
@@ -305,6 +308,7 @@ export async function POST(request: NextRequest) {
       }
       // Attach upload debug to the first banner processed
       if (uploadDebug && !uploadDebugCapture) uploadDebugCapture = uploadDebug;
+      if (createDebugCapture && !createResponseCapture) createResponseCapture = createDebugCapture;
     }
 
     // 5. Fire-and-forget email notification if any banners were synced
@@ -339,6 +343,7 @@ export async function POST(request: NextRequest) {
       skippedNames: skipped,
       debug: debugCounts,
       uploadDebug: uploadDebugCapture,
+      createDebug: createResponseCapture,
     });
   } catch (err) {
     console.error("[nexd/sync-campaign] Error:", err);

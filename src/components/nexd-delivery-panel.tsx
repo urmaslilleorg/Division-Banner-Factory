@@ -37,6 +37,7 @@ interface SyncResult {
   skippedNames: string[];
   debug?: DebugCounts;
   uploadDebug?: UploadDebugInfo | null;
+  createDebug?: unknown;
 }
 
 interface Props {
@@ -207,6 +208,16 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Create debug */}
+              {result.createDebug && (
+                <div className="rounded-lg bg-purple-50 border border-purple-200 px-4 py-3">
+                  <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
+                    Create Creative Debug — Raw Nexd Response
+                  </p>
+                  <pre className="text-xs text-purple-900 bg-purple-100 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(result.createDebug, null, 2)}</pre>
                 </div>
               )}
 
