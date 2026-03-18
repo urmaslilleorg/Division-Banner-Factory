@@ -209,7 +209,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
     }
   };
 
-  const cellCls = "px-3 py-2 text-sm text-gray-700 whitespace-nowrap";
+  const cellCls = "px-3 py-2 text-sm whitespace-nowrap";
   const inputCls =
     "w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400";
 
@@ -241,8 +241,8 @@ export default function AdminFormatManager({ initialFormats }: Props) {
   const renderRow = (f: FormatRow) => (
     <tr
       key={f.id}
-      className={`cursor-pointer hover:bg-gray-50 transition-colors${
-        f.nexdTemplateId ? " text-emerald-600" : ""
+      className={`cursor-pointer hover:bg-gray-50 transition-colors ${
+        f.nexdTemplateId ? "text-emerald-600" : "text-gray-700"
       }`}
       onClick={() => !editingId && startEdit(f)}
     >
@@ -325,14 +325,14 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           </td>
           <td className={cellCls}>
             {f.nexdTemplateId ? (
-              <span className="text-xs font-medium text-emerald-600">
+              <span className="text-xs font-medium">
                 {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
               </span>
             ) : (
-              <span className="text-gray-300">—</span>
+              <span className="opacity-40">—</span>
             )}
           </td>
-          <td className={cellCls + " text-xs text-gray-400"}>
+          <td className={cellCls + " text-xs opacity-60"}>
             {f.usedBy.length > 0 ? f.usedBy.join(", ") : "—"}
           </td>
           <td className={cellCls} onClick={(e) => e.stopPropagation()}>
@@ -383,14 +383,14 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                 {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
               </span>
             ) : (
-              <span className="text-gray-300">—</span>
+              <span className="opacity-40">—</span>
             )}
           </td>
           <td className={cellCls + " text-xs"}>
             {f.usedBy.length > 0 ? (
               <span>{f.usedBy.join(", ")}</span>
             ) : (
-              <span className="text-gray-300">—</span>
+              <span className="opacity-40">—</span>
             )}
           </td>
           <td className={cellCls} onClick={(e) => e.stopPropagation()}>
