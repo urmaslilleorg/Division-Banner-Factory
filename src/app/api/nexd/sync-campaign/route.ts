@@ -269,14 +269,33 @@ export async function POST(request: NextRequest) {
       let uploadDebug: UploadDebugInfo | null = null;
       let createDebugCapture: unknown = null;
       try {
-        // a. Create Nexd creative
-        const creative = await createNexdCreative(
-          nexdCampaignId,
-          bannerName,
-          resolvedTemplateId,
-          width,
-          height
-        );
+        // a. Create Nexd creative — with automatic recovery if the stored campaign ID is stale
+        let creative;
+        try {
+          creative = await createNexdCreative(
+            nexdCampaignId,
+            bannerName,
+            resolvedTemplateId,
+            width,
+            height
+          );
+        } catch (createErr) {
+          // If the Nexd campaign no longer exists (404), create a fresh one and retry
+          if (String(createErr).includes("404")) {
+            const freshCampaign = await createNexdCampaign(campaignName);
+            nexdCampaignId = freshCampaign.campaignId;
+            await airtablePatch(CAMPAIGNS_TABLE, campaignId, { Nexd_Campaign_ID: nexdCampaignId });
+            creative = await createNexdCreative(
+              nexdCampaignId,
+              bannerName,
+              resolvedTemplateId,
+              width,
+              height
+            );
+          } else {
+            throw createErr;
+          }
+        }
         createDebugCapture = creative._rawResult; // capture full create response
 
         // b. Get primary slot
