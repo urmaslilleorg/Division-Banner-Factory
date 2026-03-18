@@ -50,8 +50,11 @@ export default async function AppLayout({
                 Settings
               </a>
             )}
-            {isRootDomain && role === "division_admin" && (
-              <a href="/admin" className="hover:text-gray-900 transition-colors font-medium">
+            {role === "division_admin" && (
+              <a
+                href={`https://${process.env.NEXT_PUBLIC_APP_DOMAIN}/admin`}
+                className="hover:text-gray-900 transition-colors font-medium"
+              >
                 Admin
               </a>
             )}
