@@ -20,8 +20,9 @@ import {
   createNexdCampaign,
   createNexdCreative,
   getPrimarySlot,
-  smartUploadAsset,
+  smartUploadAssetDebug,
   getEmbedTag,
+  type UploadDebugInfo,
 } from "@/lib/nexd";
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
@@ -237,6 +238,7 @@ export async function POST(request: NextRequest) {
     const { eligible: banners, debug: debugCounts } = filterEligibleBanners(allBanners);
 
     // 4. Process each eligible banner
+    let uploadDebugCapture: UploadDebugInfo | null = null;
     for (const banner of banners) {
       const f = banner.fields;
       const bannerName = f.Banner_Name ?? banner.id;
@@ -263,6 +265,7 @@ export async function POST(request: NextRequest) {
       const height = format?.Height ?? f.Height ?? 250;
       const imageUrl = f.Product_Image_URL!;
 
+      let uploadDebug: UploadDebugInfo | null = null;
       try {
         // a. Create Nexd creative
         const creative = await createNexdCreative(
@@ -276,8 +279,22 @@ export async function POST(request: NextRequest) {
         // b. Get primary slot
         const primarySlot = await getPrimarySlot(resolvedTemplateId);
 
-        // c. Upload image to creative slot
-        await smartUploadAsset(creative.creativeId, primarySlot.slotId, imageUrl);
+        console.log("[nexd/sync] About to upload:", {
+          creativeId: creative.creativeId,
+          slotId: primarySlot.slotId,
+          slotName: primarySlot.name,
+          slotType: primarySlot.type,
+          slotRequired: primarySlot.required,
+          imageUrl,
+        });
+
+        // c. Upload image to creative slot (debug variant captures full response)
+        const { debug } = await smartUploadAssetDebug(
+          creative.creativeId,
+          primarySlot.slotId,
+          imageUrl
+        );
+        uploadDebug = debug;
 
         // d. Get embed tag
         const embedResult = await getEmbedTag(creative.creativeId);
@@ -291,8 +308,12 @@ export async function POST(request: NextRequest) {
 
         synced.push(`${bannerName} [template=${resolvedTemplateId} slot=${primarySlot.slotId} creative=${creative.creativeId}]`);
       } catch (bannerErr) {
+        const errWithDebug = bannerErr as { uploadDebug?: UploadDebugInfo };
+        if (errWithDebug.uploadDebug) uploadDebug = errWithDebug.uploadDebug;
         errors.push(`${bannerName}: ${String(bannerErr)}`);
       }
+      // Attach upload debug to the first banner processed
+      if (uploadDebug && !uploadDebugCapture) uploadDebugCapture = uploadDebug;
     }
 
     // 5. Fire-and-forget email notification if any banners were synced
@@ -326,6 +347,7 @@ export async function POST(request: NextRequest) {
       syncedNames: synced,
       skippedNames: skipped,
       debug: debugCounts,
+      uploadDebug: uploadDebugCapture,
     });
   } catch (err) {
     console.error("[nexd/sync-campaign] Error:", err);

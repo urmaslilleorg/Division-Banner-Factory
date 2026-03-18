@@ -259,6 +259,30 @@ export async function smartUploadAsset(
   slotId: string,
   imageUrl: string
 ): Promise<NexdAsset> {
+  const { asset } = await smartUploadAssetDebug(creativeId, slotId, imageUrl);
+  return asset;
+}
+
+export interface UploadDebugInfo {
+  uploadUrl: string;
+  uploadStatus: number;
+  uploadResponseRaw: string;
+  uploadResponseParsed: unknown;
+  slotId: string;
+  creativeId: string;
+  filename: string;
+  dataUrlPrefix: string; // first 80 chars of the data URL sent
+}
+
+/**
+ * Debug variant of smartUploadAsset — returns the full upload debug info
+ * so the sync route can include it in the response JSON.
+ */
+export async function smartUploadAssetDebug(
+  creativeId: string,
+  slotId: string,
+  imageUrl: string
+): Promise<{ asset: NexdAsset; debug: UploadDebugInfo }> {
   // Download the image
   const imgRes = await fetch(imageUrl);
   if (!imgRes.ok) {
@@ -266,7 +290,6 @@ export async function smartUploadAsset(
   }
 
   const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
-  // Determine extension from content-type
   let ext = "jpg";
   if (contentType.includes("png")) ext = "png";
   else if (contentType.includes("gif")) ext = "gif";
@@ -276,8 +299,67 @@ export async function smartUploadAsset(
   const filename = `creative_asset.${ext}`;
   const buffer = await imgRes.arrayBuffer();
   const base64 = Buffer.from(buffer).toString("base64");
+  const mimeType = contentType.split(";")[0];
+  const dataUrl = `data:${mimeType};base64,${base64}`;
 
-  return uploadAssetBase64(creativeId, slotId, filename, base64, contentType.split(";")[0]);
+  // Build the exact URL that will be called
+  const uploadPath = `/creatives/${creativeId}/assets/${slotId}`;
+  const uploadUrl = `${NEXD_BASE}${uploadPath}`;
+
+  console.log("[nexd] UPLOAD URL:", uploadUrl);
+  console.log("[nexd] CREATIVE ID:", creativeId);
+  console.log("[nexd] SLOT ID:", slotId);
+  console.log("[nexd] FILENAME:", filename);
+  console.log("[nexd] DATA URL PREFIX:", dataUrl.slice(0, 80));
+
+  // Make the raw fetch so we can capture status + full response
+  const apiKey = getApiKey();
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ filename, data: dataUrl }),
+  });
+
+  const rawText = await uploadRes.text();
+  console.log("[nexd] UPLOAD STATUS:", uploadRes.status);
+  console.log("[nexd] UPLOAD RESPONSE:", rawText.slice(0, 500));
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(rawText); } catch { parsed = rawText; }
+
+  const debugInfo: UploadDebugInfo = {
+    uploadUrl,
+    uploadStatus: uploadRes.status,
+    uploadResponseRaw: rawText.slice(0, 1000),
+    uploadResponseParsed: parsed,
+    slotId,
+    creativeId,
+    filename,
+    dataUrlPrefix: dataUrl.slice(0, 80),
+  };
+
+  if (!uploadRes.ok) {
+    const errData = parsed as Record<string, unknown>;
+    throw Object.assign(
+      new Error(`Nexd upload error (${uploadRes.status}): ${(errData as {msg?: string}).msg ?? rawText.slice(0, 200)}`),
+      { uploadDebug: debugInfo }
+    );
+  }
+
+  const data = parsed as { result?: NexdAsset; error?: boolean } & Record<string, unknown>;
+  if (data.error) {
+    throw Object.assign(
+      new Error(`Nexd upload error: ${(data as {msg?: string}).msg ?? rawText.slice(0, 200)}`),
+      { uploadDebug: debugInfo }
+    );
+  }
+
+  const asset = (data.result ?? data) as NexdAsset;
+  return { asset, debug: debugInfo };
 }
 
 // ─── Embed tag ────────────────────────────────────────────────────────────────

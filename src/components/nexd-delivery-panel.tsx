@@ -18,6 +18,17 @@ interface DebugCounts {
   eligible: number;
 }
 
+interface UploadDebugInfo {
+  uploadUrl: string;
+  uploadStatus: number;
+  uploadResponseRaw: string;
+  uploadResponseParsed: unknown;
+  slotId: string;
+  creativeId: string;
+  filename: string;
+  dataUrlPrefix: string;
+}
+
 interface SyncResult {
   synced: number;
   skipped: number;
@@ -25,6 +36,7 @@ interface SyncResult {
   syncedNames: string[];
   skippedNames: string[];
   debug?: DebugCounts;
+  uploadDebug?: UploadDebugInfo | null;
 }
 
 interface Props {
@@ -195,6 +207,27 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Upload debug */}
+              {result.uploadDebug && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">
+                    Upload Debug — First Banner
+                  </p>
+                  <table className="text-xs text-amber-900 w-full">
+                    <tbody>
+                      <tr><td className="pr-4 py-0.5 text-amber-600 font-medium w-40">Upload URL</td><td className="font-mono break-all">{result.uploadDebug.uploadUrl}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-amber-600 font-medium">HTTP Status</td><td className="font-mono font-bold">{result.uploadDebug.uploadStatus}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-amber-600 font-medium">Creative ID</td><td className="font-mono">{result.uploadDebug.creativeId}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-amber-600 font-medium">Slot ID</td><td className="font-mono">{result.uploadDebug.slotId}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-amber-600 font-medium">Filename</td><td className="font-mono">{result.uploadDebug.filename}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-amber-600 font-medium">Data URL prefix</td><td className="font-mono break-all">{result.uploadDebug.dataUrlPrefix}</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mt-3 mb-1">Raw Response</p>
+                  <pre className="text-xs text-amber-800 bg-amber-100 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{result.uploadDebug.uploadResponseRaw}</pre>
                 </div>
               )}
 
