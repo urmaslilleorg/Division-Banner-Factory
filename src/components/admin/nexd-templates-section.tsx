@@ -186,11 +186,10 @@ function MapFormatsModal({ template, allFormats, onClose, onSaved }: MapFormatsM
 
 interface MappedFormatsCellProps {
   mappedFormats: AirtableFormat[];
-  onMapFormats: () => void;
   onUnmapFormat: (formatId: string) => void;
 }
 
-function MappedFormatsCell({ mappedFormats, onMapFormats, onUnmapFormat }: MappedFormatsCellProps) {
+function MappedFormatsCell({ mappedFormats, onUnmapFormat }: MappedFormatsCellProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -204,48 +203,41 @@ function MappedFormatsCell({ mappedFormats, onMapFormats, onUnmapFormat }: Mappe
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  if (mappedFormats.length === 0) {
+    return <span className="text-xs text-gray-300">—</span>;
+  }
+
   return (
-    <div className="flex items-center gap-1.5" ref={ref}>
-      {/* Count button — opens popover */}
-      {mappedFormats.length > 0 && (
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"
-          >
-            {mappedFormats.length} {mappedFormats.length === 1 ? "format" : "formats"} mapped
-            <svg viewBox="0 0 10 6" className={`h-2.5 w-2.5 shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4" /></svg>
-          </button>
-          {open && (
-            <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white shadow-lg py-1">
-              {mappedFormats.map((f) => (
-                <div key={f.id} className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-gray-50">
-                  <span className="text-xs text-gray-700 truncate">{f.formatName}</span>
-                  <button
-                    type="button"
-                    onClick={() => { onUnmapFormat(f.id); }}
-                    className="shrink-0 text-gray-300 hover:text-red-500 transition-colors"
-                    title="Remove mapping"
-                  >
-                    <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M2 2l8 8M10 2l-8 8" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {/* Map formats button */}
-      <button
-        type="button"
-        onClick={onMapFormats}
-        className="rounded border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
-      >
-        + Map formats
-      </button>
+    <div className="inline-flex justify-end" ref={ref}>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"
+        >
+          {mappedFormats.length} {mappedFormats.length === 1 ? "format" : "formats"} mapped
+          <svg viewBox="0 0 10 6" className={`h-2.5 w-2.5 shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4" /></svg>
+        </button>
+        {open && (
+          <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+            {mappedFormats.map((f) => (
+              <div key={f.id} className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-gray-50">
+                <span className="text-xs text-gray-700 truncate">{f.formatName}</span>
+                <button
+                  type="button"
+                  onClick={() => { onUnmapFormat(f.id); }}
+                  className="shrink-0 text-gray-300 hover:text-red-500 transition-colors"
+                  title="Remove mapping"
+                >
+                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 2l8 8M10 2l-8 8" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -282,12 +274,22 @@ function TemplateRow({ template, mappedFormats, onMapFormats, onUnmapFormat }: T
       </td>
       <td className={cellCls + " font-mono text-xs text-gray-400"}>{template.engine}</td>
       <td className={cellCls + " font-mono text-xs text-gray-400"}>{template.id}</td>
-      <td className={cellCls}>
+      {/* Mapped column */}
+      <td className="px-3 py-2 text-right">
         <MappedFormatsCell
           mappedFormats={mappedFormats}
-          onMapFormats={() => onMapFormats(template)}
           onUnmapFormat={onUnmapFormat}
         />
+      </td>
+      {/* Action column */}
+      <td className="px-3 py-2 text-right">
+        <button
+          type="button"
+          onClick={() => onMapFormats(template)}
+          className="rounded border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors whitespace-nowrap"
+        >
+          + Map formats
+        </button>
       </td>
     </tr>
   );
@@ -411,7 +413,7 @@ export default function NexdTemplatesSection({ defaultOpen = false }: { defaultO
   const tableHeader = (
     <thead>
       <tr className="bg-gray-50">
-        {["Template name", "Type", "Device", "Video", "Base", "ID", "Mapped formats"].map((h) => (
+        {["Template name", "Type", "Device", "Video", "Base", "ID"].map((h) => (
           <th
             key={h}
             className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"
@@ -419,6 +421,12 @@ export default function NexdTemplatesSection({ defaultOpen = false }: { defaultO
             {h}
           </th>
         ))}
+        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Mapped
+        </th>
+        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Action
+        </th>
       </tr>
     </thead>
   );
