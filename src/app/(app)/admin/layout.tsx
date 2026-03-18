@@ -39,17 +39,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </svg>
             Platform Settings
           </Link>
-          <div className="pt-4 border-t border-gray-100">
-            <Link
-              href="/"
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Factory
-            </Link>
-          </div>
         </nav>
       </aside>
 
