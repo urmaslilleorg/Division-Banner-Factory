@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
 
 export interface FormatPickerProps {
@@ -53,6 +53,20 @@ export default function FormatPicker({
 }: FormatPickerProps) {
   const grouped = groupByChannel(formats);
   const channels = orderedChannels(grouped);
+
+  // Nexd template id → name map (fetched once on mount)
+  const [nexdTemplatesMap, setNexdTemplatesMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/nexd/templates")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.templates) return;
+        const map: Record<string, string> = {};
+        for (const t of data.templates) map[t.id] = t.name;
+        setNexdTemplatesMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   // All channels collapsed by default
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -180,6 +194,11 @@ export default function FormatPicker({
                     {f.device && (
                       <span className="text-xs text-gray-400 shrink-0 w-24 text-right">
                         {f.device}
+                      </span>
+                    )}
+                    {f.nexdTemplateIds.length > 0 && (
+                      <span className="text-xs font-medium text-emerald-600 shrink-0">
+                        {f.nexdTemplateIds.map((id) => nexdTemplatesMap[id] ?? id).join(", ")}
                       </span>
                     )}
                   </label>
