@@ -241,7 +241,9 @@ export default function AdminFormatManager({ initialFormats }: Props) {
   const renderRow = (f: FormatRow) => (
     <tr
       key={f.id}
-      className="cursor-pointer hover:bg-gray-50 transition-colors"
+      className={`cursor-pointer hover:bg-gray-50 transition-colors${
+        f.nexdTemplateId ? " text-emerald-600" : ""
+      }`}
       onClick={() => !editingId && startEdit(f)}
     >
       {editingId === f.id ? (
@@ -363,15 +365,13 @@ export default function AdminFormatManager({ initialFormats }: Props) {
             {f.width}×{f.height}
           </td>
           <td className={cellCls}>{f.device}</td>
-          <td className={cellCls + " text-gray-400"}>
+          <td className={cellCls}>
             {f.safeArea || "—"}
           </td>
           <td className={cellCls}>
             <span
               className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                f.outputFormat === "JPG"
-                  ? "bg-amber-50 text-amber-700"
-                  : "bg-blue-50 text-blue-700"
+                f.outputFormat === "JPG" ? "bg-amber-50" : "bg-blue-50"
               }`}
             >
               {f.outputFormat}
@@ -379,7 +379,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           </td>
           <td className={cellCls}>
             {f.nexdTemplateId ? (
-              <span className="text-xs font-medium text-emerald-600">
+              <span className="text-xs font-medium">
                 {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
               </span>
             ) : (
@@ -388,7 +388,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           </td>
           <td className={cellCls + " text-xs"}>
             {f.usedBy.length > 0 ? (
-              <span className="text-gray-600">{f.usedBy.join(", ")}</span>
+              <span>{f.usedBy.join(", ")}</span>
             ) : (
               <span className="text-gray-300">—</span>
             )}
