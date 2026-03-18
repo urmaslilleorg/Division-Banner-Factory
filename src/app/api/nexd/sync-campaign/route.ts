@@ -94,9 +94,7 @@ interface AirtableBanner {
 }
 
 async function fetchBannersForCampaign(campaignId: string): Promise<AirtableBanner[]> {
-  const formula = encodeURIComponent(
-    `AND(FIND("${campaignId}",ARRAYJOIN({Campaign Link})),{Approval_Status}="Approved",{Product_Image_URL}!="")`
-  );
+  const formula = `AND(FIND("${campaignId}",ARRAYJOIN({Campaign Link})),{Approval_Status}="Approved",{Product_Image_URL}!="")`;
   const banners: AirtableBanner[] = [];
   let offset: string | undefined;
 

@@ -294,8 +294,11 @@ export async function getEmbedTag(creativeId: string): Promise<NexdEmbedResult> 
 export interface NexdTemplate {
   id: string;
   name: string;
-  placementType: string;
-  engine: string;
+  placementType: string; // "Infeed" | "Interstitial" | "Responsive" | "Skin"
+  engine: string;        // base engine name e.g. "still", "cube", "carousel"
+  device: number;        // 0=all, 1=mobile, 2=desktop, 3=responsive
+  isVideo: boolean;
+  previewUrl?: string;
 }
 
 export async function listNexdTemplates(): Promise<NexdTemplate[]> {
@@ -305,6 +308,9 @@ export async function listNexdTemplates(): Promise<NexdTemplate[]> {
       name: string;
       placement_type: string;
       engine: string;
+      device?: number;
+      is_video?: boolean;
+      preview_url?: string;
     }>
   >("GET", "/templates/list");
 
@@ -315,5 +321,8 @@ export async function listNexdTemplates(): Promise<NexdTemplate[]> {
     name: t.name,
     placementType: t.placement_type,
     engine: t.engine,
+    device: t.device ?? 0,
+    isVideo: t.is_video ?? false,
+    previewUrl: t.preview_url,
   }));
 }

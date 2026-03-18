@@ -2,6 +2,7 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AdminFormatManager from "@/components/admin/admin-format-manager";
+import NexdTemplatesSection from "@/components/admin/nexd-templates-section";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Counts {
@@ -328,6 +329,7 @@ export default function PlatformSettingsTabs({
             </p>
           </div>
           <AdminFormatManager initialFormats={formatsData} />
+          <NexdTemplatesSection />
         </div>
       )}
 
