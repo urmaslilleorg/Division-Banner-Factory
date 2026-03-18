@@ -383,7 +383,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
               {f.outputFormat}
             </span>
           </td>
-          <td className={cellCls}>
+          <td className={cellCls} onClick={(e) => e.stopPropagation()}>
             {f.nexdTemplateIds.length > 0 ? (
               <span className="text-xs font-medium">
                 {f.nexdTemplateIds.map((id) => nexdTemplatesMap[id] ?? id).join(", ")}
