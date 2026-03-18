@@ -202,9 +202,11 @@ export async function getDemoCreativeId(templateId: string): Promise<string | nu
 }
 
 /**
- * Duplicate a Nexd creative (typically a template demo creative) with a new name.
+ * Duplicate a Nexd creative (typically a source creative with the correct layout) with a new name.
  * Returns the new creative ID.
  * POST /v2/creatives/duplicate  body: { ids: [sourceId], names: [newName] }
+ *
+ * Response shape: { result: { items: [{ creative_id, name, layout_name, ... }] } }
  */
 export async function duplicateNexdCreative(
   sourceCreativeId: string,
@@ -215,9 +217,15 @@ export async function duplicateNexdCreative(
     "/v2/creatives/duplicate",
     { ids: [sourceCreativeId], names: [newName] }
   );
-  // Response is an array of created creative objects
-  const items = Array.isArray(result) ? result : [(result as Record<string, unknown>)];
-  const first = items[0] as Record<string, unknown>;
+  // Response: { items: [...] } or an array directly
+  let items: Record<string, unknown>[];
+  if (Array.isArray(result)) {
+    items = result as Record<string, unknown>[];
+  } else {
+    const r = result as Record<string, unknown>;
+    items = Array.isArray(r.items) ? (r.items as Record<string, unknown>[]) : [r];
+  }
+  const first = items[0];
   const id = first?.creative_id ?? first?.id;
   if (!id) throw new Error(`duplicateNexdCreative: unexpected response shape: ${JSON.stringify(result).slice(0, 200)}`);
   return String(id);

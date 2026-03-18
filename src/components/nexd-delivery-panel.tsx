@@ -142,7 +142,6 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
           {/* Result */}
           {result && (
             <div className="space-y-3">
-              {/* Summary row */}
               <div className="flex items-center gap-4 text-sm">
                 <span className="font-medium text-green-700">
                   {result.synced} synced
@@ -161,7 +160,6 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                 )}
               </div>
 
-              {/* Debug counts */}
               {result.debug && (
                 <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
                   <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
@@ -179,7 +177,6 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                 </div>
               )}
 
-              {/* Synced banners */}
               {result.syncedNames.length > 0 && (
                 <div className="rounded-lg bg-green-50 border border-green-100 px-4 py-3">
                   <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">
@@ -195,7 +192,6 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                 </div>
               )}
 
-              {/* Skipped banners */}
               {result.skippedNames.length > 0 && (
                 <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -211,8 +207,7 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                 </div>
               )}
 
-              {/* Create debug */}
-              {result.createDebug && (
+              {Boolean(result.createDebug) && (
                 <div className="rounded-lg bg-purple-50 border border-purple-200 px-4 py-3">
                   <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
                     Create Creative Debug — Raw Nexd Response
@@ -221,7 +216,6 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                 </div>
               )}
 
-              {/* Upload debug */}
               {result.uploadDebug && (
                 <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
                   <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">
@@ -242,7 +236,6 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                 </div>
               )}
 
-              {/* Errors */}
               {result.errors.length > 0 && (
                 <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-3">
                   <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">

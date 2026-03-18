@@ -10,6 +10,25 @@ export const runtime = "nodejs";
  * Body: { campaignId: string }  — Airtable record ID of the campaign
  *
  * Returns: { synced: number, skipped: number, errors: string[] }
+ *
+ * Creative creation strategy (v3 — duplicate source creative):
+ * ─────────────────────────────────────────────────────────────
+ * The Nexd API does not apply a layout when creating a creative via
+ * POST /v2/campaigns/{id}/creatives (layout_id is silently ignored).
+ * PUT /creatives/{id} with { template_id } works but only routes correctly
+ * from the same region as the creative — unreliable across Vercel regions.
+ *
+ * The correct approach is to duplicate a pre-configured "source creative"
+ * that already has the correct layout applied. The source creative ID is
+ * stored in the Formats table as Nexd_Source_Creative_ID.
+ *
+ * Flow per banner:
+ *   a. POST /v2/creatives/duplicate { ids: [sourceCreativeId], names: [bannerName] }
+ *      → new creative inherits layout, template_id, and asset slots from source
+ *   b. GET /templates/{templateId} → resolve primary slot ID (YGvTp3Q4hpNx)
+ *   c. POST /creatives/{newId}/assets/{slotId} with base64 image data
+ *   d. GET /creatives/embedded?creative_id={newId} → embed tag
+ *   e. PATCH Airtable banner record
  */
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
@@ -18,8 +37,7 @@ import { sendNotification } from "@/lib/email";
 import { fetchAllUsers } from "@/lib/users";
 import {
   createNexdCampaign,
-  createNexdCreative,
-  applyTemplateToCreative,
+  duplicateNexdCreative,
   getPrimarySlot,
   smartUploadAssetDebug,
   getEmbedTag,
@@ -157,6 +175,8 @@ interface FormatRecord {
   Nexd_Template_ID?: string;
   /** JSON array of all mapped Nexd template IDs for this format */
   Nexd_Template_IDs?: string[];
+  /** Nexd creative ID to duplicate — must have the correct layout applied */
+  Nexd_Source_Creative_ID?: string;
   Width?: number;
   Height?: number;
 }
@@ -183,6 +203,7 @@ async function getFormatByName(formatName: string): Promise<FormatRecord | null>
   const fmt: FormatRecord = {
     Nexd_Template_ID: record.fields.Nexd_Template_ID || undefined,
     Nexd_Template_IDs: parsedIds.length > 0 ? parsedIds : undefined,
+    Nexd_Source_Creative_ID: record.fields.Nexd_Source_Creative_ID || undefined,
     Width: record.fields.Width || undefined,
     Height: record.fields.Height || undefined,
   };
@@ -233,14 +254,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Fetch ALL banners for this campaign, then filter in JS
-    // Uses Campaign_Name field (same as fetchBanners in airtable.ts) because
-    // ARRAYJOIN on a linked record field returns display names, not record IDs.
     const allBanners = await fetchAllBannersForCampaign(campaignName);
     const { eligible: banners, debug: debugCounts } = filterEligibleBanners(allBanners);
 
     // 4. Process each eligible banner
     let uploadDebugCapture: UploadDebugInfo | null = null;
-    let createResponseCapture: unknown = null;
+    let createDebugCapture: unknown = null;
+
     for (const banner of banners) {
       const f = banner.fields;
       const bannerName = f.Banner_Name ?? banner.id;
@@ -263,35 +283,31 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const width = format?.Width ?? f.Width ?? 300;
-      const height = format?.Height ?? f.Height ?? 250;
+      // Resolve source creative ID for duplication
+      const sourceCreativeId = format?.Nexd_Source_Creative_ID;
+      if (!sourceCreativeId) {
+        skipped.push(`${bannerName} (no Nexd_Source_Creative_ID for format "${formatName}" — add one in Format Settings)`);
+        continue;
+      }
+
       const imageUrl = f.Product_Image_URL!;
 
       let uploadDebug: UploadDebugInfo | null = null;
-      let createDebugCapture: unknown = null;
       try {
-        // a. Create blank creative in the Nexd campaign
-        const creative = await createNexdCreative(
-          nexdCampaignId, bannerName, resolvedTemplateId, width, height
-        );
-        const creativeId = creative.creativeId;
+        // a. Duplicate the source creative (inherits layout + asset slots)
+        const creativeId = await duplicateNexdCreative(sourceCreativeId, bannerName);
 
-        // b. Apply the template/layout via PUT /creatives/{id} with { template_id }
-        //    This is the only reliable way to assign a layout — the POST endpoint ignores layout_id
-        await applyTemplateToCreative(creativeId, resolvedTemplateId);
-        createDebugCapture = { method: "create+applyTemplate", creativeId, templateId: resolvedTemplateId };
-
-        // c. Get primary slot
+        // b. Get primary slot ID from template
         const primarySlot = await getPrimarySlot(resolvedTemplateId);
 
-        // d. Upload image to creative slot (debug variant captures full response)
+        // c. Upload image to creative slot (debug variant captures full response)
         const { debug } = await smartUploadAssetDebug(creativeId, primarySlot.slotId, imageUrl);
         uploadDebug = debug;
 
-        // e. Get embed tag
+        // d. Get embed tag
         const embedResult = await getEmbedTag(creativeId);
 
-        // f. Update banner record in Airtable
+        // e. Update banner record in Airtable
         await airtablePatch(BANNERS_TABLE, banner.id, {
           Nexd_Creative_ID: creativeId,
           Nexd_Embed_Tag: embedResult.tag ?? "",
@@ -299,6 +315,17 @@ export async function POST(request: NextRequest) {
         });
 
         synced.push(`${bannerName} [template=${resolvedTemplateId} slot=${primarySlot.slotId} creative=${creativeId}]`);
+
+        // Capture debug for first banner
+        if (!createDebugCapture) {
+          createDebugCapture = {
+            method: "duplicate",
+            sourceCreativeId,
+            newCreativeId: creativeId,
+            templateId: resolvedTemplateId,
+            slotId: primarySlot.slotId,
+          };
+        }
       } catch (bannerErr) {
         const errWithDebug = bannerErr as { uploadDebug?: UploadDebugInfo };
         if (errWithDebug.uploadDebug) uploadDebug = errWithDebug.uploadDebug;
@@ -306,7 +333,6 @@ export async function POST(request: NextRequest) {
       }
       // Attach upload debug to the first banner processed
       if (uploadDebug && !uploadDebugCapture) uploadDebugCapture = uploadDebug;
-      if (createDebugCapture && !createResponseCapture) createResponseCapture = createDebugCapture;
     }
 
     // 5. Fire-and-forget email notification if any banners were synced
@@ -341,7 +367,7 @@ export async function POST(request: NextRequest) {
       skippedNames: skipped,
       debug: debugCounts,
       uploadDebug: uploadDebugCapture,
-      createDebug: createResponseCapture,
+      createDebug: createDebugCapture,
     });
   } catch (err) {
     console.error("[nexd/sync-campaign] Error:", err);
