@@ -512,7 +512,7 @@ export default function ClientSettingsTabs({
           {showGenerateTemplate && (
             <GenerateVariablesFlow
               clientName={client.name}
-              clientId={client.subdomain}
+              clientId={clientId}
               clientFormats={formats}
               mode="template"
               onApply={() => { router.refresh(); }}

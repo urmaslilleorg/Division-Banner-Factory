@@ -416,7 +416,7 @@ function FormatTemplateCard({
 interface Props {
   clientId: string;
   clientName: string;
-  clientSubdomain: string;
+  clientSubdomain?: string; // kept for API compatibility, not used internally
   initialTemplates: FormatTemplate[];
   allFormats: AirtableFormat[];
   animationTemplates: VideoTemplate[];
@@ -426,7 +426,7 @@ interface Props {
 export default function FormatTemplatesManager({
   clientId,
   clientName,
-  clientSubdomain,
+  clientSubdomain: _clientSubdomain, // eslint-disable-line @typescript-eslint/no-unused-vars
   initialTemplates,
   allFormats,
   animationTemplates,
@@ -569,7 +569,7 @@ export default function FormatTemplatesManager({
       {showGenerateFlow && (
         <GenerateVariablesFlow
           clientName={clientName}
-          clientId={clientSubdomain}
+          clientId={clientId}
           clientFormats={allFormats}
           mode="variables"
           onApply={handleGenerateApply}

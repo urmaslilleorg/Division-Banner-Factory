@@ -212,7 +212,7 @@ export default function GenerateVariablesFlow({
 
       // 2. Also update variable labels (high-confidence only)
       const highConfVars = reviewItems
-        .filter((item) => item.included && item.confidence >= 70)
+        .filter((item) => item.included && item.confidence >= 0.7)
         .map((item) => ({ slot: item.slot, label: item.editedLabel || item.slot }));
       if (highConfVars.length > 0) {
         await fetch(`/api/admin/clients/${clientId}`, {
@@ -355,8 +355,8 @@ export default function GenerateVariablesFlow({
                         />
                       </div>
                       {item.detected && (
-                        <span className={`shrink-0 text-xs font-medium ${item.confidence >= 80 ? "text-green-600" : item.confidence >= 50 ? "text-amber-600" : "text-gray-400"}`}>
-                          {Math.round(item.confidence)}%
+                        <span className={`shrink-0 text-xs font-medium ${item.confidence >= 0.8 ? "text-green-600" : item.confidence >= 0.5 ? "text-amber-600" : "text-gray-400"}`}>
+                          {Math.round(item.confidence * 100)}%
                         </span>
                       )}
                     </div>
