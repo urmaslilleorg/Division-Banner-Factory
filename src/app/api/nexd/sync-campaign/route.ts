@@ -97,6 +97,7 @@ interface AirtableBanner {
 
 async function fetchBannersForCampaign(campaignId: string): Promise<AirtableBanner[]> {
   const formula = `AND(FIND("${campaignId}",ARRAYJOIN({Campaign Link})),{Approval_Status}="Approved",{Product_Image_URL}!="")`;
+  console.log(`[nexd/sync] fetchBannersForCampaign formula: ${formula}`);
   const banners: AirtableBanner[] = [];
   let offset: string | undefined;
 
@@ -108,10 +109,12 @@ async function fetchBannersForCampaign(campaignId: string): Promise<AirtableBann
     );
     if (!res.ok) throw new Error(`Failed to fetch banners: ${await res.text()}`);
     const data = await res.json();
+    console.log(`[nexd/sync] page returned ${data.records?.length ?? 0} records, offset=${data.offset ?? 'none'}`);
     banners.push(...(data.records ?? []));
     offset = data.offset;
   } while (offset);
 
+  console.log(`[nexd/sync] total banners fetched: ${banners.length}`);
   return banners;
 }
 
@@ -198,14 +201,37 @@ export async function POST(request: NextRequest) {
 
     // 3. Fetch eligible banners
     const banners = await fetchBannersForCampaign(campaignId);
+    console.log(`[nexd/sync] campaignId=${campaignId}, banners found: ${banners.length}`);
+
+    // 3b. Also fetch ALL banners for this campaign (no Approval_Status filter) to diagnose
+    {
+      const diagFormula = `FIND("${campaignId}",ARRAYJOIN({Campaign Link}))`;
+      const diagParams = new URLSearchParams({ filterByFormula: diagFormula, pageSize: "100" });
+      for (const fld of ["Banner_Name", "Approval_Status", "Product_Image_URL", "Nexd_Status", "Nexd_Selected_Template", "Format_Name"]) {
+        diagParams.append("fields[]", fld);
+      }
+      const diagRes = await airtableGet(`https://api.airtable.com/v0/${BASE_ID}/${BANNERS_TABLE}?${diagParams}`);
+      if (diagRes.ok) {
+        const diagData = await diagRes.json();
+        console.log(`[nexd/sync] DIAG: all banners for campaign (no filter): ${diagData.records?.length ?? 0}`);
+        for (const r of (diagData.records ?? [])) {
+          const df = r.fields;
+          console.log(`[nexd/sync] DIAG banner id=${r.id} name="${df.Banner_Name}" Approval_Status="${df.Approval_Status}" Product_Image_URL="${df.Product_Image_URL ? '[SET]' : '[EMPTY]'}" Nexd_Status="${df.Nexd_Status}" Nexd_Selected_Template="${df.Nexd_Selected_Template}" Format_Name="${df.Format_Name}"`);
+        }
+      }
+    }
 
     // 4. Process each banner
     for (const banner of banners) {
       const f = banner.fields;
       const bannerName = f.Banner_Name ?? banner.id;
 
+      console.log(`[nexd/sync] processing banner: "${bannerName}" (${banner.id})`);
+      console.log(`[nexd/sync]   Approval_Status="${f.Approval_Status}" Product_Image_URL="${f.Product_Image_URL ? '[SET]' : '[EMPTY]'}" Nexd_Status="${f.Nexd_Status}" Nexd_Selected_Template="${f.Nexd_Selected_Template}" Format_Name="${f.Format_Name}"`);
+
       // Skip already uploaded
       if (f.Nexd_Status === "uploaded" || f.Nexd_Status === "published") {
+        console.log(`[nexd/sync]   SKIP: already ${f.Nexd_Status}`);
         skipped.push(`${bannerName} (already ${f.Nexd_Status})`);
         continue;
       }
@@ -213,6 +239,7 @@ export async function POST(request: NextRequest) {
       // Look up format
       const formatName = f.Format_Name ?? "";
       const format = formatName ? await getFormatByName(formatName) : null;
+      console.log(`[nexd/sync]   format lookup "${formatName}": Nexd_Template_ID="${format?.Nexd_Template_ID}" Nexd_Template_IDs=${JSON.stringify(format?.Nexd_Template_IDs)}`);
 
       // Resolve Nexd template ID:
       // 1. Banner-level override (Nexd_Selected_Template) takes priority
@@ -223,7 +250,10 @@ export async function POST(request: NextRequest) {
         (format?.Nexd_Template_IDs?.[0]) ||
         format?.Nexd_Template_ID;
 
+      console.log(`[nexd/sync]   resolvedTemplateId="${resolvedTemplateId}"`);
+
       if (!resolvedTemplateId) {
+        console.log(`[nexd/sync]   SKIP: no Nexd template`);
         skipped.push(`${bannerName} (no Nexd template for format "${formatName}")`);
         continue;
       }
