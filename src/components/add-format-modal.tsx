@@ -111,6 +111,11 @@ export default function AddFormatModal({
           active: (r.fields["Active"] as boolean) || false,
           isVideo: (r.fields["Is_Video"] as boolean) || false,
           nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
+          nexdTemplateIds: (() => {
+            const raw = r.fields["Nexd_Template_IDs"] as string | undefined;
+            if (!raw) return [];
+            try { return JSON.parse(raw) as string[]; } catch { return []; }
+          })(),
         }));
         // Filter to client-linked formats only (if clientFormatIds provided)
         const filtered =

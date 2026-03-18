@@ -124,6 +124,8 @@ export interface Banner {
   nexdStatus: string;
   /** Nexd embed tag HTML (set after sync to Nexd) */
   nexdEmbedTag: string;
+  /** Nexd template ID selected for this banner at campaign creation time */
+  nexdSelectedTemplate: string;
 }
 
 /**
@@ -188,5 +190,6 @@ export function parseBannerRecord(record: {
     nexdCreativeId: (f["Nexd_Creative_ID"] as string) || "",
     nexdStatus: (f["Nexd_Status"] as string) || "",
     nexdEmbedTag: (f["Nexd_Embed_Tag"] as string) || "",
+    nexdSelectedTemplate: (f["Nexd_Selected_Template"] as string) || "",
   };
 }

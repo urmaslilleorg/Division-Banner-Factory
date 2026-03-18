@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AirtableFormat } from "@/lib/airtable-campaigns";
 import { VariableDefinition } from "@/components/variables-manager";
@@ -47,6 +47,8 @@ interface FormatConfig {
   copy: Record<string, string>;   // used by "specific" mode
   slideCount: number;
   slides: SlideConfig[]; // NEW: per-slide configs
+  /** Nexd template ID selected for delivery (when format has multiple options) */
+  nexdSelectedTemplateId?: string;
 }
 
 interface CreateResponse {
@@ -144,6 +146,7 @@ function buildInitialFormatConfigs(
         copy: { ...defaultCopy },
         slideCount: 3,
         slides: [],
+        nexdSelectedTemplateId: undefined,
       };
     }
     return result;
@@ -164,6 +167,7 @@ function buildInitialFormatConfigs(
         copy: { ...defaultCopy, ...(saved.copy ?? {}) },
         slideCount: saved.slideCount ?? (slides.length || 3),
         slides,
+        nexdSelectedTemplateId: (saved as { nexdSelectedTemplateId?: string }).nexdSelectedTemplateId,
       };
     }
   }
@@ -242,6 +246,20 @@ export default function CampaignBuilderForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+
+  // Nexd template id → name map (fetched once, used in per-format dropdown)
+  const [nexdTemplatesMap, setNexdTemplatesMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/nexd/templates")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.templates) return;
+        const map: Record<string, string> = {};
+        for (const t of data.templates) map[t.id] = t.name;
+        setNexdTemplatesMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   // ── Template state ──────────────────────────────────────────────────────────
   const [templateSaving, setTemplateSaving] = useState(false);
@@ -368,7 +386,16 @@ export default function CampaignBuilderForm({
       copy: {},
       slideCount: 3,
       slides: [],
+      nexdSelectedTemplateId: undefined,
     };
+  };
+
+  // Set nexd template selection for a format
+  const setFormatNexdTemplate = (formatId: string, templateId: string) => {
+    setFormatConfigs((prev) => ({
+      ...prev,
+      [formatId]: { ...getFormatConfig(formatId), nexdSelectedTemplateId: templateId || undefined },
+    }));
   };
 
   // Build empty SlideConfig array of length n, inheriting format-level variables
@@ -529,6 +556,7 @@ export default function CampaignBuilderForm({
                 variables: s.variables,
               }))
             : [],
+          ...(cfg.nexdSelectedTemplateId ? { nexdSelectedTemplateId: cfg.nexdSelectedTemplateId } : {}),
         };
       }
 
@@ -595,13 +623,14 @@ export default function CampaignBuilderForm({
 
     } else {
       // ── CREATE: POST /api/campaigns/create ──────────────────────────────────
-      const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }> = {};
+      const fieldConfigFormats: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number; nexdSelectedTemplateId?: string }> = {};
       for (const f of selectedFormatData) {
         const cfg = getFormatConfig(f.id);
         fieldConfigFormats[f.formatName] = {
           variables: cfg.variables,
           mode: cfg.mode,
           ...(cfg.mode === "carousel" ? { slideCount: cfg.slideCount } : {}),
+          ...(cfg.nexdSelectedTemplateId ? { nexdSelectedTemplateId: cfg.nexdSelectedTemplateId } : {}),
         };
       }
 
@@ -633,10 +662,13 @@ export default function CampaignBuilderForm({
                 variables: cfg.variables,
                 mode: cfg.mode,
               };
+              const withNexd = cfg.nexdSelectedTemplateId
+                ? { ...base, nexdSelectedTemplateId: cfg.nexdSelectedTemplateId }
+                : base;
               if (cfg.mode === "carousel") {
                 // Pass per-slide variable structure only (no copy values)
                 return {
-                  ...base,
+                  ...withNexd,
                   slideCount: cfg.slideCount,
                   slides: cfg.slides.map((s) => ({
                     index: s.index,
@@ -644,7 +676,7 @@ export default function CampaignBuilderForm({
                   })),
                 };
               }
-              return base;
+              return withNexd;
             }),
             fieldConfigFormats,
           }),
@@ -930,6 +962,24 @@ export default function CampaignBuilderForm({
                               ))}
                             </div>
                           </div>
+
+                          {/* Nexd delivery template selector — only shown when format has multiple Nexd templates */}
+                          {f.nexdTemplateIds.length > 1 && (
+                            <div className="space-y-1.5">
+                              <p className="text-xs font-medium text-gray-500">Nexd delivery template</p>
+                              <select
+                                value={cfg.nexdSelectedTemplateId ?? ""}
+                                onChange={(e) => setFormatNexdTemplate(f.id, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                              >
+                                <option value="">Auto (first mapped template)</option>
+                                {f.nexdTemplateIds.map((tid) => (
+                                  <option key={tid} value={tid}>{nexdTemplatesMap[tid] ?? tid}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
 
                           {/* DEFAULT mode */}
                           {cfg.mode === "default" && (

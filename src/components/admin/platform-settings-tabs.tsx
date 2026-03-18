@@ -53,6 +53,7 @@ interface FormatRow {
   outputFormat: string;
   figmaFrameBase: string;
   nexdTemplateId: string;
+  nexdTemplateIds: string[];
   usedBy: string[];
 }
 

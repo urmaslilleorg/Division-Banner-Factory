@@ -28,6 +28,7 @@ export async function PATCH(
   if (body.outputFormat !== undefined) fields["Output_Format"] = body.outputFormat;
   if (body.figmaFrameBase !== undefined) fields["Figma_Frame_Base"] = body.figmaFrameBase;
   if (body.nexdTemplateId !== undefined) fields["Nexd_Template_ID"] = body.nexdTemplateId;
+  if (body.nexdTemplateIds !== undefined) fields["Nexd_Template_IDs"] = JSON.stringify(body.nexdTemplateIds);
 
   const res = await fetch(`${BASE_URL}/${params.id}`, {
     method: "PATCH",

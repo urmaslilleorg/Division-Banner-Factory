@@ -107,6 +107,7 @@ export default async function PlatformSettingsPage({
     outputFormat: f.outputFormat ?? "",
     figmaFrameBase: f.figmaFrameBase ?? "",
     nexdTemplateId: f.nexdTemplateId ?? "",
+    nexdTemplateIds: f.nexdTemplateIds ?? [],
     usedBy: usedByMap[f.id] || [],
   }));
 

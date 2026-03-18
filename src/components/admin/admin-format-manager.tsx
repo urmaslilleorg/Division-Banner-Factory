@@ -14,6 +14,7 @@ interface FormatRow {
   outputFormat: string;
   figmaFrameBase: string;
   nexdTemplateId: string;
+  nexdTemplateIds: string[];
   usedBy: string[];
 }
 
@@ -39,6 +40,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
     outputFormat: "PNG",
     figmaFrameBase: "",
     nexdTemplateId: "",
+    nexdTemplateIds: [],
   });
   // Nexd template id → name map (fetched from cached route)
   const [nexdTemplatesMap, setNexdTemplatesMap] = useState<Record<string, string>>({});
@@ -113,6 +115,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
       outputFormat: f.outputFormat,
       figmaFrameBase: f.figmaFrameBase,
       nexdTemplateId: f.nexdTemplateId,
+      nexdTemplateIds: f.nexdTemplateIds,
     });
   };
 
@@ -139,6 +142,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                   outputFormat: editValues.outputFormat ?? f.outputFormat,
                   figmaFrameBase: editValues.figmaFrameBase ?? f.figmaFrameBase,
                   nexdTemplateId: editValues.nexdTemplateId ?? f.nexdTemplateId,
+                  nexdTemplateIds: f.nexdTemplateIds,
                 }
               : f
           )
@@ -184,6 +188,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           outputFormat: newValues.outputFormat || "PNG",
           figmaFrameBase: newValues.figmaFrameBase || "",
           nexdTemplateId: newValues.nexdTemplateId || "",
+          nexdTemplateIds: [],
           usedBy: [],
         };
         setFormats((prev) => [...prev, newRow]);
@@ -202,6 +207,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           outputFormat: "PNG",
           figmaFrameBase: "",
           nexdTemplateId: "",
+          nexdTemplateIds: [],
         });
       }
     } finally {
@@ -242,7 +248,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
     <tr
       key={f.id}
       className={`cursor-pointer hover:bg-gray-50 transition-colors ${
-        f.nexdTemplateId ? "text-emerald-600" : "text-gray-700"
+        f.nexdTemplateIds.length > 0 ? "text-emerald-600" : "text-gray-700"
       }`}
       onClick={() => !editingId && startEdit(f)}
     >
@@ -324,9 +330,9 @@ export default function AdminFormatManager({ initialFormats }: Props) {
             </select>
           </td>
           <td className={cellCls}>
-            {f.nexdTemplateId ? (
+            {f.nexdTemplateIds.length > 0 ? (
               <span className="text-xs font-medium">
-                {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
+                {f.nexdTemplateIds.map((id) => nexdTemplatesMap[id] ?? id).join(", ")}
               </span>
             ) : (
               <span className="opacity-40">—</span>
@@ -378,9 +384,9 @@ export default function AdminFormatManager({ initialFormats }: Props) {
             </span>
           </td>
           <td className={cellCls}>
-            {f.nexdTemplateId ? (
+            {f.nexdTemplateIds.length > 0 ? (
               <span className="text-xs font-medium">
-                {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
+                {f.nexdTemplateIds.map((id) => nexdTemplatesMap[id] ?? id).join(", ")}
               </span>
             ) : (
               <span className="opacity-40">—</span>

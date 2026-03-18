@@ -48,6 +48,11 @@ function parseAirtableFormat(r: RawFormatRecord): AirtableFormat {
     active: (r.fields["Active"] as boolean) || false,
     isVideo: (r.fields["Is_Video"] as boolean) || false,
     nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
+    nexdTemplateIds: (() => {
+      const raw = r.fields["Nexd_Template_IDs"] as string | undefined;
+      if (!raw) return [];
+      try { return JSON.parse(raw) as string[]; } catch { return []; }
+    })(),
   };
 }
 
@@ -62,7 +67,7 @@ interface MapFormatsModalProps {
 
 function MapFormatsModal({ template, allFormats, onClose, onSaved }: MapFormatsModalProps) {
   const initialSelected = useMemo(
-    () => allFormats.filter((f) => f.nexdTemplateId === template.id).map((f) => f.id),
+    () => allFormats.filter((f) => f.nexdTemplateIds.includes(template.id)).map((f) => f.id),
     [allFormats, template.id]
   );
   const [selected, setSelected] = useState<string[]>(initialSelected);
@@ -80,20 +85,26 @@ function MapFormatsModal({ template, allFormats, onClose, onSaved }: MapFormatsM
       const patches: Promise<Response>[] = [];
 
       for (const id of toAdd) {
+        const fmt = allFormats.find((f) => f.id === id);
+        const currentIds = fmt?.nexdTemplateIds ?? [];
+        const newIds = currentIds.includes(template.id) ? currentIds : [...currentIds, template.id];
         patches.push(
           fetch(`/api/formats/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nexdTemplateId: template.id }),
+            body: JSON.stringify({ nexdTemplateIds: newIds }),
           })
         );
       }
       for (const id of toRemove) {
+        const fmt = allFormats.find((f) => f.id === id);
+        const currentIds = fmt?.nexdTemplateIds ?? [];
+        const newIds = currentIds.filter((tid) => tid !== template.id);
         patches.push(
           fetch(`/api/formats/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nexdTemplateId: "" }),
+            body: JSON.stringify({ nexdTemplateIds: newIds }),
           })
         );
       }
@@ -186,10 +197,11 @@ function MapFormatsModal({ template, allFormats, onClose, onSaved }: MapFormatsM
 
 interface MappedFormatsCellProps {
   mappedFormats: AirtableFormat[];
-  onUnmapFormat: (formatId: string) => void;
+  templateId: string;
+  onUnmapFormat: (formatId: string, templateId: string) => void;
 }
 
-function MappedFormatsCell({ mappedFormats, onUnmapFormat }: MappedFormatsCellProps) {
+function MappedFormatsCell({ mappedFormats, templateId, onUnmapFormat }: MappedFormatsCellProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -225,7 +237,7 @@ function MappedFormatsCell({ mappedFormats, onUnmapFormat }: MappedFormatsCellPr
                 <span className="text-xs text-gray-700 truncate">{f.formatName}</span>
                 <button
                   type="button"
-                  onClick={() => { onUnmapFormat(f.id); }}
+                  onClick={() => { onUnmapFormat(f.id, templateId); }}
                   className="shrink-0 text-gray-300 hover:text-red-500 transition-colors"
                   title="Remove mapping"
                 >
@@ -248,7 +260,7 @@ interface TemplateRowProps {
   template: NexdTemplate;
   mappedFormats: AirtableFormat[];
   onMapFormats: (template: NexdTemplate) => void;
-  onUnmapFormat: (formatId: string) => void;
+  onUnmapFormat: (formatId: string, templateId: string) => void;
 }
 
 function TemplateRow({ template, mappedFormats, onMapFormats, onUnmapFormat }: TemplateRowProps) {
@@ -278,6 +290,7 @@ function TemplateRow({ template, mappedFormats, onMapFormats, onUnmapFormat }: T
       <td className="px-3 py-2 text-right">
         <MappedFormatsCell
           mappedFormats={mappedFormats}
+          templateId={template.id}
           onUnmapFormat={onUnmapFormat}
         />
       </td>
@@ -384,25 +397,38 @@ export default function NexdTemplatesSection({ defaultOpen = false }: { defaultO
     setAllFormats((prev) =>
       prev.map((f) => {
         const wasSelected = selectedFormatIds.includes(f.id);
-        const wasMapped = f.nexdTemplateId === templateId;
-        if (wasSelected && !wasMapped) return { ...f, nexdTemplateId: templateId };
-        if (!wasSelected && wasMapped) return { ...f, nexdTemplateId: "" };
+        const wasMapped = f.nexdTemplateIds.includes(templateId);
+        if (wasSelected && !wasMapped) {
+          return { ...f, nexdTemplateIds: [...f.nexdTemplateIds, templateId] };
+        }
+        if (!wasSelected && wasMapped) {
+          return { ...f, nexdTemplateIds: f.nexdTemplateIds.filter((id) => id !== templateId) };
+        }
         return f;
       })
     );
   };
 
-  // Unmap a single format from its Nexd template
-  const handleUnmapFormat = async (formatId: string) => {
+  // Unmap a single format from a specific Nexd template
+  // The unmap button is inside a TemplateRow, so we need to know which templateId to remove.
+  // We pass the templateId through the handler.
+  const handleUnmapFormat = async (formatId: string, templateId: string) => {
     // Optimistic update
     setAllFormats((prev) =>
-      prev.map((f) => (f.id === formatId ? { ...f, nexdTemplateId: "" } : f))
+      prev.map((f) =>
+        f.id === formatId
+          ? { ...f, nexdTemplateIds: f.nexdTemplateIds.filter((id) => id !== templateId) }
+          : f
+      )
     );
     try {
+      const fmt = allFormats.find((f) => f.id === formatId);
+      const currentIds = fmt?.nexdTemplateIds ?? [];
+      const newIds = currentIds.filter((id) => id !== templateId);
       await fetch(`/api/formats/${formatId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nexdTemplateId: "" }),
+        body: JSON.stringify({ nexdTemplateIds: newIds }),
       });
     } catch {
       // Revert on failure — reload formats
@@ -533,7 +559,7 @@ export default function NexdTemplatesSection({ defaultOpen = false }: { defaultO
                             <tbody>
                               {rows.map((t) => {
                                 const mapped = allFormats.filter(
-                                  (f) => f.nexdTemplateId === t.id
+                                  (f) => f.nexdTemplateIds.includes(t.id)
                                 );
                                 return (
                                   <TemplateRow

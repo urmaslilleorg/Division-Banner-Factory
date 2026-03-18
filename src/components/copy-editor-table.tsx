@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Banner } from "@/lib/types";
 import type { ClientVariable } from "@/lib/types";
 import { FieldConfig, FormatFieldConfig, SlideVariableConfig } from "@/lib/airtable-campaigns";
@@ -86,6 +86,19 @@ export default function CopyEditorTable({
   clientFormatIds = [],
   clientVideoTemplates,
 }: CopyEditorTableProps) {
+  // Nexd template id → name map (fetched once on mount)
+  const [nexdTemplatesMap, setNexdTemplatesMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/nexd/templates")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.templates) return;
+        const map: Record<string, string> = {};
+        for (const t of data.templates) map[t.id] = t.name;
+        setNexdTemplatesMap(map);
+      })
+      .catch(() => {});
+  }, []);
   /** Resolve display label for a variable slot, using client-specific label if available */
   const resolveLabel = (slot: string) => {
     if (clientVariables && clientVariables.length > 0) {
@@ -507,6 +520,7 @@ export default function CopyEditorTable({
     1 + // lang
     1 + // status
     columns.length + // copy columns
+    1 + // nexd
     1 + // ready
     (canDelete ? 1 : 0); // delete
 
@@ -632,6 +646,9 @@ export default function CopyEditorTable({
                   {col.label}
                 </th>
               ))}
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                Nexd
+              </th>
               <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
                 Ready
               </th>
@@ -918,6 +935,16 @@ export default function CopyEditorTable({
                         </td>
                       );
                     })}
+                    {/* Nexd selected template */}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {banner.nexdSelectedTemplate ? (
+                        <span className="text-xs font-medium text-emerald-600">
+                          {nexdTemplatesMap[banner.nexdSelectedTemplate] ?? banner.nexdSelectedTemplate}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
+                    </td>
                     {/* Ready badge */}
                     <td className="px-3 py-2">
                       {isComplete ? (
@@ -1106,6 +1133,8 @@ export default function CopyEditorTable({
                           </td>
                         );
                       })}
+                      {/* Nexd cell placeholder */}
+                      <td className="px-3 py-2" />
                       {/* Ready cell placeholder */}
                       <td className="px-3 py-2" />
                       {/* Delete slide button */}

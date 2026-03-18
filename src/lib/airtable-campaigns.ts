@@ -92,8 +92,10 @@ export interface AirtableFormat {
   outputFormat: string;
   active: boolean;
   isVideo: boolean;
-  /** Nexd template ID for delivery (e.g. "qsfpBY") */
+  /** Nexd template ID for delivery (e.g. "qsfpBY") — legacy single-value field */
   nexdTemplateId: string;
+  /** JSON array of Nexd template IDs available for this format (multi-mapping) */
+  nexdTemplateIds: string[];
 }
 
 export interface BannerSummary {
@@ -229,6 +231,11 @@ export async function fetchFormats(): Promise<AirtableFormat[]> {
     active: (r.fields["Active"] as boolean) || false,
     isVideo: (r.fields["Is_Video"] as boolean) || false,
     nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
+    nexdTemplateIds: (() => {
+      const raw = r.fields["Nexd_Template_IDs"] as string | undefined;
+      if (!raw) return [];
+      try { return JSON.parse(raw) as string[]; } catch { return []; }
+    })(),
   }));
 }
 
@@ -272,6 +279,11 @@ export async function fetchFormatsByIds(ids: string[]): Promise<AirtableFormat[]
     active: (r.fields["Active"] as boolean) || false,
     isVideo: (r.fields["Is_Video"] as boolean) || false,
     nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
+    nexdTemplateIds: (() => {
+      const raw = r.fields["Nexd_Template_IDs"] as string | undefined;
+      if (!raw) return [];
+      try { return JSON.parse(raw) as string[]; } catch { return []; }
+    })(),
   }));
 }
 

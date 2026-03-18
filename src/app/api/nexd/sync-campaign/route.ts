@@ -88,6 +88,8 @@ interface AirtableBanner {
     Approval_Status?: string;
     Nexd_Status?: string;
     Nexd_Creative_ID?: string;
+    /** Per-banner override: specific Nexd template ID to use for this banner */
+    Nexd_Selected_Template?: string;
     Width?: number;
     Height?: number;
   };
@@ -117,6 +119,8 @@ async function fetchBannersForCampaign(campaignId: string): Promise<AirtableBann
 
 interface FormatRecord {
   Nexd_Template_ID?: string;
+  /** JSON array of all mapped Nexd template IDs for this format */
+  Nexd_Template_IDs?: string[];
   Width?: number;
   Height?: number;
 }
@@ -135,8 +139,14 @@ async function getFormatByName(formatName: string): Promise<FormatRecord | null>
   const record = data.records?.[0];
   if (!record) return null;
 
+  const rawIds = record.fields.Nexd_Template_IDs as string | undefined;
+  let parsedIds: string[] = [];
+  if (rawIds) {
+    try { parsedIds = JSON.parse(rawIds); } catch { parsedIds = []; }
+  }
   const fmt: FormatRecord = {
     Nexd_Template_ID: record.fields.Nexd_Template_ID || undefined,
+    Nexd_Template_IDs: parsedIds.length > 0 ? parsedIds : undefined,
     Width: record.fields.Width || undefined,
     Height: record.fields.Height || undefined,
   };
@@ -204,13 +214,22 @@ export async function POST(request: NextRequest) {
       const formatName = f.Format_Name ?? "";
       const format = formatName ? await getFormatByName(formatName) : null;
 
-      if (!format?.Nexd_Template_ID) {
+      // Resolve Nexd template ID:
+      // 1. Banner-level override (Nexd_Selected_Template) takes priority
+      // 2. Fall back to first ID in format's Nexd_Template_IDs array
+      // 3. Fall back to legacy Nexd_Template_ID single field
+      const resolvedTemplateId =
+        f.Nexd_Selected_Template ||
+        (format?.Nexd_Template_IDs?.[0]) ||
+        format?.Nexd_Template_ID;
+
+      if (!resolvedTemplateId) {
         skipped.push(`${bannerName} (no Nexd template for format "${formatName}")`);
         continue;
       }
 
-      const width = format.Width ?? f.Width ?? 300;
-      const height = format.Height ?? f.Height ?? 250;
+      const width = format?.Width ?? f.Width ?? 300;
+      const height = format?.Height ?? f.Height ?? 250;
       const imageUrl = f.Product_Image_URL!;
 
       try {
@@ -218,13 +237,13 @@ export async function POST(request: NextRequest) {
         const creative = await createNexdCreative(
           nexdCampaignId,
           bannerName,
-          format.Nexd_Template_ID,
+          resolvedTemplateId,
           width,
           height
         );
 
         // b. Get primary slot
-        const primarySlot = await getPrimarySlot(format.Nexd_Template_ID);
+        const primarySlot = await getPrimarySlot(resolvedTemplateId);
 
         // c. Upload image
         await smartUploadAsset(creative.creativeId, primarySlot.slotId, imageUrl);

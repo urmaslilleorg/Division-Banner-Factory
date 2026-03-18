@@ -123,6 +123,8 @@ export interface FormatInput {
   /** mode=carousel: slide count and per-slide variable structure (no copy values) */
   slideCount?: number;
   slides?: Array<{ index: number; variables: string[] }>;
+  /** Nexd template ID selected for this format at campaign creation time */
+  nexdSelectedTemplateId?: string;
 }
 
 export interface CreateCampaignRequest {
@@ -134,7 +136,7 @@ export interface CreateCampaignRequest {
   endDate: string;
   languages: string[];
   formats: FormatInput[];
-  fieldConfigFormats?: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number }>;
+  fieldConfigFormats?: Record<string, { variables: string[]; mode: FormatMode; slideCount?: number; nexdSelectedTemplateId?: string }>;
   // defaultCopy intentionally removed — copy is entered in Copy & Assets tab
 }
 
@@ -216,7 +218,7 @@ export async function POST(request: NextRequest) {
         format.outputFormat ||
         (format.channel?.toLowerCase().includes("dooh") ? "JPG" : "PNG");
 
-      const baseFields = {
+      const baseFields: Record<string, unknown> = {
         Campaign_Name: campaignName,
         "Campaign Link": [campaignId],
         Channel: format.channel,
@@ -228,6 +230,7 @@ export async function POST(request: NextRequest) {
         Output_Format: outputFormat,
         Status: "Brief_received",
         Approval_Status: "Pending",
+        ...(format.nexdSelectedTemplateId ? { Nexd_Selected_Template: format.nexdSelectedTemplateId } : {}),
       };
 
       // ── DEFAULT or SPECIFIC mode ────────────────────────────────────────────
