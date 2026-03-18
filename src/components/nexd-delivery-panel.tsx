@@ -10,12 +10,21 @@
  */
 import { useState } from "react";
 
+interface DebugCounts {
+  totalBanners: number;
+  withImage: number;
+  approved: number;
+  alreadySynced: number;
+  eligible: number;
+}
+
 interface SyncResult {
   synced: number;
   skipped: number;
   errors: string[];
   syncedNames: string[];
   skippedNames: string[];
+  debug?: DebugCounts;
 }
 
 interface Props {
@@ -138,6 +147,24 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                   </>
                 )}
               </div>
+
+              {/* Debug counts */}
+              {result.debug && (
+                <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+                    Debug — Banner Filter Breakdown
+                  </p>
+                  <table className="text-xs text-blue-800 w-full">
+                    <tbody>
+                      <tr><td className="pr-4 py-0.5 text-blue-500">Total banners in campaign</td><td className="font-mono font-medium">{result.debug.totalBanners}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-blue-500">With Product Image URL</td><td className="font-mono font-medium">{result.debug.withImage}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-blue-500">Approval_Status = Approved</td><td className="font-mono font-medium">{result.debug.approved}</td></tr>
+                      <tr><td className="pr-4 py-0.5 text-blue-500">Already synced (uploaded/published)</td><td className="font-mono font-medium">{result.debug.alreadySynced}</td></tr>
+                      <tr className="border-t border-blue-200"><td className="pr-4 py-0.5 font-semibold">Eligible for sync</td><td className="font-mono font-bold">{result.debug.eligible}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Synced banners */}
               {result.syncedNames.length > 0 && (
