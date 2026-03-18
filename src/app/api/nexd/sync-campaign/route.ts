@@ -279,15 +279,6 @@ export async function POST(request: NextRequest) {
         // b. Get primary slot
         const primarySlot = await getPrimarySlot(resolvedTemplateId);
 
-        console.log("[nexd/sync] About to upload:", {
-          creativeId: creative.creativeId,
-          slotId: primarySlot.slotId,
-          slotName: primarySlot.name,
-          slotType: primarySlot.type,
-          slotRequired: primarySlot.required,
-          imageUrl,
-        });
-
         // c. Upload image to creative slot (debug variant captures full response)
         const { debug } = await smartUploadAssetDebug(
           creative.creativeId,

@@ -306,12 +306,6 @@ export async function smartUploadAssetDebug(
   const uploadPath = `/creatives/${creativeId}/assets/${slotId}`;
   const uploadUrl = `${NEXD_BASE}${uploadPath}`;
 
-  console.log("[nexd] UPLOAD URL:", uploadUrl);
-  console.log("[nexd] CREATIVE ID:", creativeId);
-  console.log("[nexd] SLOT ID:", slotId);
-  console.log("[nexd] FILENAME:", filename);
-  console.log("[nexd] DATA URL PREFIX:", dataUrl.slice(0, 80));
-
   // Make the raw fetch so we can capture status + full response
   const apiKey = getApiKey();
   const uploadRes = await fetch(uploadUrl, {
@@ -325,9 +319,6 @@ export async function smartUploadAssetDebug(
   });
 
   const rawText = await uploadRes.text();
-  console.log("[nexd] UPLOAD STATUS:", uploadRes.status);
-  console.log("[nexd] UPLOAD RESPONSE:", rawText.slice(0, 500));
-
   let parsed: unknown;
   try { parsed = JSON.parse(rawText); } catch { parsed = rawText; }
 
