@@ -1,9 +1,7 @@
 "use client";
-
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import FormatPicker from "@/components/format-picker";
-import VariableLabelsEditor from "@/components/variable-labels-editor";
 import TemplatesManager from "@/components/templates-manager";
 import VideoTemplatesManager from "@/components/video-templates-manager";
 import type { VideoTemplate } from "@/components/video-templates-manager";
@@ -12,17 +10,16 @@ import type { AirtableFormat } from "@/lib/airtable-campaigns";
 import type { CampaignTemplate } from "@/app/api/clients/[clientId]/templates/route";
 import ClientUsersManager from "@/components/admin/client-users-manager";
 import GenerateVariablesFlow from "@/components/generate-variables-flow";
+import VariableSlotToggler from "@/components/variable-slot-toggler";
 
 const TABS = [
   { id: "general", label: "General" },
   { id: "formats", label: "Formats" },
-  { id: "variables", label: "Variables" },
-  { id: "templates", label: "Templates" },
+  { id: "format-templates", label: "Format Templates" },
+  { id: "templates", label: "Campaign Templates" },
   { id: "figma", label: "Figma" },
-  { id: "video", label: "Video" },
   { id: "users", label: "Users" },
 ] as const;
-
 type TabId = (typeof TABS)[number]["id"];
 
 const LANGUAGE_OPTIONS = ["ET", "EN", "RU", "LV", "LT"];
@@ -51,7 +48,6 @@ export default function ClientSettingsTabs({
   const [activeTab, setActiveTab] = useState<TabId>(
     (TABS.find((t) => t.id === initialTab)?.id ?? "general") as TabId
   );
-
   const visibleTabs = allowedTabs
     ? TABS.filter((t) => allowedTabs.includes(t.id))
     : TABS;
@@ -78,7 +74,7 @@ export default function ClientSettingsTabs({
   const [formatsSaving, setFormatsSaving] = useState(false);
   const [formatsFlash, setFormatsFlash] = useState<string | null>(null);
 
-    // ── Figma tab state ──────────────────────────────────────────
+  // ── Figma tab state ────────────────────────────────────────────────────────
   interface FigmaFileEntry {
     key: string;
     name: string;
@@ -111,8 +107,7 @@ export default function ClientSettingsTabs({
   const [newFileName, setNewFileName] = useState("");
   const [newFileOwner, setNewFileOwner] = useState("");
 
-  // ── Video tab state ────────────────────────────────────────────────────────
-  // client.videoTemplates is now parsed by airtable-clients.ts — no cast needed
+  // ── Format Templates tab state ─────────────────────────────────────────────
   const initialVideoTemplates: VideoTemplate[] = (client.videoTemplates as VideoTemplate[] | undefined) ?? [];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -225,6 +220,9 @@ export default function ClientSettingsTabs({
       templates: client.clientTemplates as CampaignTemplate[],
     },
   ];
+
+  // ── Derive initial enabled variable slots from clientVariables ─────────────
+  const initialEnabledSlots = client.clientVariables.map((v) => v.slot);
 
   return (
     <div>
@@ -385,6 +383,14 @@ export default function ClientSettingsTabs({
               </span>
             )}
           </div>
+
+          {/* ── Variable Slots ─────────────────────────────────────────────── */}
+          <div className="pt-4 border-t border-gray-100">
+            <VariableSlotToggler
+              clientId={clientId}
+              initialEnabled={initialEnabledSlots}
+            />
+          </div>
         </div>
       )}
 
@@ -420,18 +426,35 @@ export default function ClientSettingsTabs({
         </div>
       )}
 
-      {/* ── Tab: Variables ────────────────────────────────────────────────── */}
-      {activeTab === "variables" && (
-        <div className="max-w-2xl">
-          <VariableLabelsEditor
+      {/* ── Tab: Format Templates ─────────────────────────────────────────── */}
+      {activeTab === "format-templates" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-base font-medium text-gray-900">Animation Templates</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Define reusable animation timelines for video banner exports. Each template controls
+              which variable layers animate, their effect, and timing.
+            </p>
+          </div>
+
+          <VideoTemplatesManager
             clientId={clientId}
-            clientName={client.name}
-            initialVariables={client.clientVariables}
+            initialTemplates={initialVideoTemplates}
           />
+
+          <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
+            <p className="font-medium mb-1">How video export works</p>
+            <ol className="list-decimal list-inside space-y-1 text-xs">
+              <li>Mark a format as <strong>Is Video</strong> in the Formats table in Airtable.</li>
+              <li>When adding that format to a campaign, select an animation template.</li>
+              <li>In the Figma plugin, use <strong>Export video</strong> to send layer data to the platform.</li>
+              <li>The platform renders a WebM video per banner and stores the URL in <code>Video_URL</code>.</li>
+            </ol>
+          </div>
         </div>
       )}
 
-      {/* ── Tab: Templates ────────────────────────────────────────────────── */}
+      {/* ── Tab: Campaign Templates ───────────────────────────────────────── */}
       {activeTab === "templates" && (
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -465,7 +488,7 @@ export default function ClientSettingsTabs({
         </div>
       )}
 
-       {/* ── Tab: Figma ────────────────────────────────────────────────── */}
+      {/* ── Tab: Figma ────────────────────────────────────────────────────── */}
       {activeTab === "figma" && (
         <div className="max-w-2xl space-y-6">
 
@@ -579,34 +602,7 @@ export default function ClientSettingsTabs({
         </div>
       )}
 
-      {/* ──────────────────── VIDEO TAB ──────────────────── */}
-      {activeTab === "video" && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Animation templates</h3>
-            <p className="text-xs text-gray-500">
-              Define reusable animation timelines for video banner exports. Each template controls
-              which variable layers animate, their effect, and timing.
-            </p>
-          </div>
-
-          <VideoTemplatesManager
-            clientId={clientId}
-            initialTemplates={initialVideoTemplates}
-          />
-
-          <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
-            <p className="font-medium mb-1">How video export works</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>Mark a format as <strong>Is Video</strong> in the Formats table in Airtable.</li>
-              <li>When adding that format to a campaign, select an animation template.</li>
-              <li>In the Figma plugin, use <strong>Export video</strong> to send layer data to the platform.</li>
-              <li>The platform renders a WebM video per banner and stores the URL in <code>Video_URL</code>.</li>
-            </ol>
-          </div>
-        </div>
-      )}
-      {/* ──────────────────── USERS TAB ──────────────────── */}
+      {/* ── Tab: Users ────────────────────────────────────────────────────── */}
       {activeTab === "users" && (
         <ClientUsersManager clientId={clientId} />
       )}
