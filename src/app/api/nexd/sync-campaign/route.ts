@@ -103,9 +103,11 @@ interface BannerDebugCounts {
   eligible: number;
 }
 
-async function fetchAllBannersForCampaign(campaignId: string): Promise<AirtableBanner[]> {
-  // Fetch ALL banners for this campaign with no status filter — filter in JS
-  const formula = `FIND("${campaignId}",ARRAYJOIN({Campaign Link}))`;
+async function fetchAllBannersForCampaign(campaignName: string): Promise<AirtableBanner[]> {
+  // Filter by Campaign_Name text field — same approach as fetchBanners() in airtable.ts
+  // (ARRAYJOIN on a linked record field returns display names, not record IDs)
+  const safeName = campaignName.replace(/"/g, "'");
+  const formula = `FIND("${safeName}",{Campaign_Name})`;
   const banners: AirtableBanner[] = [];
   let offset: string | undefined;
 
@@ -229,7 +231,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Fetch ALL banners for this campaign, then filter in JS
-    const allBanners = await fetchAllBannersForCampaign(campaignId);
+    // Uses Campaign_Name field (same as fetchBanners in airtable.ts) because
+    // ARRAYJOIN on a linked record field returns display names, not record IDs.
+    const allBanners = await fetchAllBannersForCampaign(campaignName);
     const { eligible: banners, debug: debugCounts } = filterEligibleBanners(allBanners);
 
     // 4. Process each eligible banner
