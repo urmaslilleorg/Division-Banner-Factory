@@ -193,19 +193,7 @@ function TemplateRow({ template, mappedFormats, onMapFormats }: TemplateRowProps
 
   return (
     <tr className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
-      <td className={cellCls + " font-medium"}>
-        <div className="flex items-center gap-2">
-          {template.previewUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={template.previewUrl}
-              alt=""
-              className="h-8 w-12 rounded object-cover border border-gray-100 shrink-0"
-            />
-          )}
-          <span>{template.name}</span>
-        </div>
-      </td>
+      <td className={cellCls + " font-medium"}>{template.name}</td>
       <td className={cellCls}>
         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">
           {template.placementType}
