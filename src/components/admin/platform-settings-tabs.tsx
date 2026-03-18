@@ -322,6 +322,7 @@ export default function PlatformSettingsTabs({
       {/* ── Formats tab ───────────────────────────────────────────────────── */}
       {activeTab === "formats" && (
         <div className="space-y-4">
+          <NexdTemplatesSection defaultOpen />
           <div>
             <h2 className="text-base font-semibold text-gray-900">Master Formats</h2>
             <p className="mt-0.5 text-sm text-gray-500">
@@ -329,7 +330,6 @@ export default function PlatformSettingsTabs({
             </p>
           </div>
           <AdminFormatManager initialFormats={formatsData} />
-          <NexdTemplatesSection />
         </div>
       )}
 

@@ -295,8 +295,8 @@ function TemplateRow({ template, mappedFormats, onMapFormats, onUnmapFormat }: T
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function NexdTemplatesSection() {
-  const [open, setOpen] = useState(false);
+export default function NexdTemplatesSection({ defaultOpen = false }: { defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const [templates, setTemplates] = useState<NexdTemplate[]>([]);
   const [allFormats, setAllFormats] = useState<AirtableFormat[]>([]);
   const [loading, setLoading] = useState(false);
