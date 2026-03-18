@@ -215,7 +215,7 @@ function MappedFormatsCell({ mappedFormats, onUnmapFormat }: MappedFormatsCellPr
           onClick={() => setOpen((v) => !v)}
           className="flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"
         >
-          {mappedFormats.length} {mappedFormats.length === 1 ? "format" : "formats"} mapped
+          {mappedFormats.length} {mappedFormats.length === 1 ? "format" : "formats"}
           <svg viewBox="0 0 10 6" className={`h-2.5 w-2.5 shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4" /></svg>
         </button>
         {open && (
