@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ChevronDown, ChevronRight, RefreshCw, Loader2, X, Check } from "lucide-react";
 import type { AirtableFormat } from "@/lib/airtable-campaigns";
 import FormatPicker from "@/components/format-picker";
@@ -261,6 +261,9 @@ export default function NexdTemplatesSection() {
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [mappingTemplate, setMappingTemplate] = useState<NexdTemplate | null>(null);
+  // Track whether we've attempted at least one fetch — prevents infinite loop
+  // when the API returns an empty array (templates.length stays 0 forever).
+  const hasFetched = useRef(false);
 
   // Load formats (needed for mapping display)
   const loadFormats = useCallback(async () => {
@@ -297,13 +300,15 @@ export default function NexdTemplatesSection() {
     }
   }, []);
 
-  // Load on first expand
+  // Load on first expand (only once — hasFetched prevents infinite re-trigger
+  // when the API returns an empty array).
   useEffect(() => {
-    if (open && templates.length === 0 && !loading && !error) {
+    if (open && !hasFetched.current && !loading) {
+      hasFetched.current = true;
       loadTemplates();
       loadFormats();
     }
-  }, [open, templates.length, loading, error, loadTemplates, loadFormats]);
+  }, [open, loading, loadTemplates, loadFormats]);
 
   // Group templates by placementType
   const grouped = useMemo(() => {
@@ -387,6 +392,7 @@ export default function NexdTemplatesSection() {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                hasFetched.current = true; // already fetched, force refresh
                 loadTemplates(true);
               }}
               disabled={refreshing}
@@ -415,7 +421,7 @@ export default function NexdTemplatesSection() {
               <div className="px-5 py-6 text-center">
                 <p className="text-sm text-red-600">{error}</p>
                 <button
-                  onClick={() => loadTemplates()}
+                  onClick={() => { hasFetched.current = false; loadTemplates(); }}
                   className="mt-2 text-xs text-gray-500 underline hover:text-gray-700"
                 >
                   Retry
