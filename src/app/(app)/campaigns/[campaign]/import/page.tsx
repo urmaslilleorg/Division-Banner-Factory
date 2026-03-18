@@ -21,7 +21,7 @@ interface ImportResult {
 
 const BF_FIELDS = [
   { value: "ignore", label: "— ignore —" },
-  { value: "Sync key", label: "🔑 Sync key (required)" },
+  { value: "Sync key", label: "Sync key (required)" },
   { value: "H1", label: "H1" },
   { value: "H2", label: "H2" },
   { value: "H3", label: "H3" },
@@ -218,7 +218,6 @@ export default function ImportPage() {
           onDragOver={(e) => e.preventDefault()}
           onClick={() => fileInputRef.current?.click()}
         >
-          <div className="text-4xl mb-3">📥</div>
           <p className="text-sm font-medium text-gray-700">
             Drop your file here or click to browse
           </p>
@@ -340,7 +339,6 @@ export default function ImportPage() {
                         key={col}
                         className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap"
                       >
-                        {field === "Sync key" ? "🔑 " : ""}
                         {field} <span className="text-gray-400">({col})</span>
                       </th>
                     ))}

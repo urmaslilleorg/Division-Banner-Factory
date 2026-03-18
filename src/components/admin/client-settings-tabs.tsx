@@ -503,8 +503,7 @@ export default function ClientSettingsTabs({
                 onClick={() => setShowGenerateTemplate(true)}
                 className="shrink-0 flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                <span>🖼</span>
-                <span>Generate from banner</span>
+                Generate from banner
               </button>
             )}
           </div>

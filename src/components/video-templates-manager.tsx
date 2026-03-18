@@ -185,7 +185,7 @@ export default function VideoTemplatesManager({
             onClick={() => setShowVideoFlow(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-indigo-200 px-4 py-2 text-sm text-indigo-600 hover:border-indigo-500 hover:text-indigo-900 transition-colors"
           >
-            <span className="text-lg leading-none">🎬</span> Create from video
+            Create from video
           </button>
         </div>
       )}

@@ -463,7 +463,6 @@ function UploadStep({
           </div>
         ) : (
           <div className="space-y-2">
-            <div className="text-4xl">🎬</div>
             <p className="text-sm font-medium text-gray-700">Drop MP4 or WebM here</p>
             <p className="text-xs text-gray-400">or click to browse · max 50 MB</p>
           </div>
@@ -496,7 +495,6 @@ function UploadStep({
             onClick={onSelectManual}
             className="flex flex-col items-start gap-2 rounded-2xl border-2 border-gray-200 p-5 text-left hover:border-gray-900 hover:bg-gray-50 transition-colors"
           >
-            <span className="text-2xl">🎯</span>
             <p className="text-sm font-semibold text-gray-900">Mark manually</p>
             <p className="text-xs text-gray-500">
               Play the video and click to mark entry/exit times for each variable. Full control.
@@ -510,7 +508,6 @@ function UploadStep({
               onClick={onSelectAi}
               className="flex flex-col items-start gap-2 rounded-2xl border-2 border-gray-200 p-5 text-left hover:border-gray-900 hover:bg-gray-50 transition-colors"
             >
-              <span className="text-2xl">✨</span>
               <p className="text-sm font-semibold text-gray-900">Auto-detect with AI</p>
               <p className="text-xs text-gray-500">
                 Claude analyses the video frames and suggests animation timings. You review before saving.
@@ -819,7 +816,6 @@ function AiExtractStep({
   const pct = progress ? Math.round((progress.current / progress.total) * 100) : 0;
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-16">
-      <div className="text-4xl">🎞️</div>
       <div className="space-y-2 text-center">
         <p className="text-sm font-medium text-gray-900">Extracting frames…</p>
         {progress && (
@@ -843,7 +839,6 @@ function AiExtractStep({
 function AiAnalyzeStep() {
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-16">
-      <div className="text-4xl animate-pulse">✨</div>
       <div className="space-y-2 text-center">
         <p className="text-sm font-medium text-gray-900">Analysing with Claude…</p>
         <p className="text-xs text-gray-500">This may take up to 30 seconds.</p>

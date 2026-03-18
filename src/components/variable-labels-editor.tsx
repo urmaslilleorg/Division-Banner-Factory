@@ -88,7 +88,6 @@ export default function VariableLabelsEditor({
             onClick={() => setShowGenerateFlow(true)}
             className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            <span>🖼</span>
             Generate from banner
           </button>
           <span className="text-xs text-gray-400">or configure manually below</span>

@@ -130,7 +130,7 @@ function FormatTemplateEditorModal({
                       : "border-gray-200 text-gray-600 hover:border-gray-400"
                   }`}
                 >
-                  {t === "still" ? "🖼 Still" : "🎬 Video"}
+                  {t === "still" ? "Still" : "Video"}
                 </button>
               ))}
             </div>
@@ -311,7 +311,19 @@ function FormatTemplateCard({
           onClick={() => setExpanded((v) => !v)}
           className="flex items-center gap-2 flex-1 text-left min-w-0"
         >
-          <span className="text-gray-400 text-xs select-none">{expanded ? "▼" : "▶"}</span>
+          <svg
+            className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-150 ${
+              expanded ? "rotate-0" : "-rotate-90"
+            }`}
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M2 4l4 4 4-4" />
+          </svg>
           <span className="text-sm font-semibold text-gray-900 truncate">{template.name}</span>
           <span
             className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -320,7 +332,7 @@ function FormatTemplateCard({
                 : "bg-gray-100 text-gray-600"
             }`}
           >
-            {template.type === "video" ? "🎬 Video" : "🖼 Still"}
+            {template.type === "video" ? "Video" : "Still"}
           </span>
         </button>
         <div className="flex items-center gap-2 shrink-0">
@@ -516,7 +528,7 @@ export default function FormatTemplatesManager({
             onClick={() => setShowGenerateFlow(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-indigo-200 px-4 py-2 text-sm text-indigo-600 hover:border-indigo-500 hover:text-indigo-900 transition-colors"
           >
-            <span className="text-base leading-none">🖼</span> Generate from banner
+            Generate from banner
           </button>
         )}
       </div>

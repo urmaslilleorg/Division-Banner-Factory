@@ -252,7 +252,6 @@ function UploadBannersStep({
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
       >
-        <div className="text-3xl mb-2">🖼️</div>
         <p className="text-sm text-gray-600 font-medium">Drop PNG/JPEG banners here</p>
         <p className="text-xs text-gray-400 mt-1">or click to browse · max {MAX_IMAGES} images · 10 MB each</p>
         <input
@@ -324,7 +323,6 @@ function UploadBannersStep({
 function AnalyzingStep() {
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-16">
-      <div className="text-4xl animate-pulse">✨</div>
       <div className="space-y-2 text-center">
         <p className="text-sm font-medium text-gray-900">Analysing banners with Claude…</p>
         <p className="text-xs text-gray-500">Detecting variables and extracting copy. This may take up to 30 seconds.</p>
