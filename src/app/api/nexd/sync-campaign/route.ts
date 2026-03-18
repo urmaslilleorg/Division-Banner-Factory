@@ -19,6 +19,9 @@ import { fetchAllUsers } from "@/lib/users";
 import {
   createNexdCampaign,
   createNexdCreative,
+  getDemoCreativeId,
+  duplicateNexdCreative,
+  moveCreativeToCampaign,
   getPrimarySlot,
   smartUploadAssetDebug,
   getEmbedTag,
@@ -269,57 +272,56 @@ export async function POST(request: NextRequest) {
       let uploadDebug: UploadDebugInfo | null = null;
       let createDebugCapture: unknown = null;
       try {
-        // a. Create Nexd creative — with automatic recovery if the stored campaign ID is stale
-        let creative;
-        try {
-          creative = await createNexdCreative(
-            nexdCampaignId,
-            bannerName,
-            resolvedTemplateId,
-            width,
-            height
-          );
-        } catch (createErr) {
-          // If the Nexd campaign no longer exists (404), create a fresh one and retry
-          if (String(createErr).includes("404")) {
-            const freshCampaign = await createNexdCampaign(campaignName);
-            nexdCampaignId = freshCampaign.campaignId;
-            await airtablePatch(CAMPAIGNS_TABLE, campaignId, { Nexd_Campaign_ID: nexdCampaignId });
-            creative = await createNexdCreative(
-              nexdCampaignId,
-              bannerName,
-              resolvedTemplateId,
-              width,
-              height
-            );
-          } else {
-            throw createErr;
-          }
-        }
-        createDebugCapture = creative._rawResult; // capture full create response
+        // a. Get demo creative ID for the template (used as duplication source)
+        const demoCreativeId = await getDemoCreativeId(resolvedTemplateId);
 
-        // b. Get primary slot
+        let creativeId: string;
+        if (demoCreativeId) {
+          // b1. Duplicate the demo creative — this preserves the layout
+          creativeId = await duplicateNexdCreative(demoCreativeId, bannerName);
+          createDebugCapture = { method: "duplicate", sourceCreativeId: demoCreativeId, newCreativeId: creativeId };
+          // b2. Move the duplicated creative into the correct Nexd campaign
+          try {
+            await moveCreativeToCampaign(creativeId, nexdCampaignId);
+          } catch (moveErr) {
+            // If the campaign is stale (404), create a fresh one and retry
+            if (String(moveErr).includes("404")) {
+              const freshCampaign = await createNexdCampaign(campaignName);
+              nexdCampaignId = freshCampaign.campaignId;
+              await airtablePatch(CAMPAIGNS_TABLE, campaignId, { Nexd_Campaign_ID: nexdCampaignId });
+              await moveCreativeToCampaign(creativeId, nexdCampaignId);
+            } else {
+              // Non-fatal: creative was duplicated but couldn't be moved — continue anyway
+              createDebugCapture = { ...createDebugCapture as object, moveError: String(moveErr) };
+            }
+          }
+        } else {
+          // Fallback: create from scratch (layout may not apply, but better than failing)
+          const creative = await createNexdCreative(
+            nexdCampaignId, bannerName, resolvedTemplateId, width, height
+          );
+          creativeId = creative.creativeId;
+          createDebugCapture = { method: "create", rawResult: creative._rawResult };
+        }
+
+        // c. Get primary slot
         const primarySlot = await getPrimarySlot(resolvedTemplateId);
 
-        // c. Upload image to creative slot (debug variant captures full response)
-        const { debug } = await smartUploadAssetDebug(
-          creative.creativeId,
-          primarySlot.slotId,
-          imageUrl
-        );
+        // d. Upload image to creative slot (debug variant captures full response)
+        const { debug } = await smartUploadAssetDebug(creativeId, primarySlot.slotId, imageUrl);
         uploadDebug = debug;
 
-        // d. Get embed tag
-        const embedResult = await getEmbedTag(creative.creativeId);
+        // e. Get embed tag
+        const embedResult = await getEmbedTag(creativeId);
 
-        // e. Update banner record in Airtable
+        // f. Update banner record in Airtable
         await airtablePatch(BANNERS_TABLE, banner.id, {
-          Nexd_Creative_ID: creative.creativeId,
+          Nexd_Creative_ID: creativeId,
           Nexd_Embed_Tag: embedResult.tag ?? "",
           Nexd_Status: "uploaded",
         });
 
-        synced.push(`${bannerName} [template=${resolvedTemplateId} slot=${primarySlot.slotId} creative=${creative.creativeId}]`);
+        synced.push(`${bannerName} [template=${resolvedTemplateId} slot=${primarySlot.slotId} creative=${creativeId}]`);
       } catch (bannerErr) {
         const errWithDebug = bannerErr as { uploadDebug?: UploadDebugInfo };
         if (errWithDebug.uploadDebug) uploadDebug = errWithDebug.uploadDebug;

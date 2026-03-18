@@ -161,6 +161,52 @@ export async function createNexdCreative(
   };
 }
 
+/**
+ * Get the demo creative ID for a template.
+ * The demo creative is used as the source for duplicating — this ensures
+ * the layout is properly applied to the new creative.
+ */
+export async function getDemoCreativeId(templateId: string): Promise<string | null> {
+  const data = await nexdRequest<Record<string, unknown>>("GET", `/templates/${templateId}`);
+  // Response shape: { demo_creatives: [{ creative_id: string, ... }], assets: {...}, ... }
+  const demoes = (data?.demo_creatives ?? data?.demo_creative) as Array<{ creative_id?: string; id?: string }> | undefined;
+  if (!demoes || demoes.length === 0) return null;
+  return demoes[0]?.creative_id ?? demoes[0]?.id ?? null;
+}
+
+/**
+ * Duplicate a Nexd creative (typically a template demo creative) with a new name.
+ * Returns the new creative ID.
+ * POST /v2/creatives/duplicate  body: { ids: [sourceId], names: [newName] }
+ */
+export async function duplicateNexdCreative(
+  sourceCreativeId: string,
+  newName: string
+): Promise<string> {
+  const result = await nexdRequest<unknown>(
+    "POST",
+    "/v2/creatives/duplicate",
+    { ids: [sourceCreativeId], names: [newName] }
+  );
+  // Response is an array of created creative objects
+  const items = Array.isArray(result) ? result : [(result as Record<string, unknown>)];
+  const first = items[0] as Record<string, unknown>;
+  const id = first?.creative_id ?? first?.id;
+  if (!id) throw new Error(`duplicateNexdCreative: unexpected response shape: ${JSON.stringify(result).slice(0, 200)}`);
+  return String(id);
+}
+
+/**
+ * Move a creative into a Nexd campaign.
+ * PATCH /creatives/{creativeId}/  body: { campaign_id: campaignId }
+ */
+export async function moveCreativeToCampaign(
+  creativeId: string,
+  campaignId: string
+): Promise<void> {
+  await nexdRequest("PATCH", `/creatives/${creativeId}/`, { campaign_id: campaignId });
+}
+
 export async function deleteNexdCreative(creativeId: string): Promise<void> {
   await nexdRequest("DELETE", `/creatives/${creativeId}`);
 }
