@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Check, X, Loader2, Trash2, ChevronRight, ChevronDown } from "lucide-react";
 
 interface FormatRow {
@@ -40,6 +40,20 @@ export default function AdminFormatManager({ initialFormats }: Props) {
     figmaFrameBase: "",
     nexdTemplateId: "",
   });
+  // Nexd template id → name map (fetched from cached route)
+  const [nexdTemplatesMap, setNexdTemplatesMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/nexd/templates")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.templates) return;
+        const map: Record<string, string> = {};
+        for (const t of data.templates) map[t.id] = t.name;
+        setNexdTemplatesMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
   // All sections collapsed by default; set of open channel names
   const [openChannels, setOpenChannels] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -209,7 +223,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           "Device",
           "Safe area",
           "Output",
-          "Figma frame base",
+          "Nexd",
           "Used by",
           "",
         ].map((h) => (
@@ -308,14 +322,13 @@ export default function AdminFormatManager({ initialFormats }: Props) {
             </select>
           </td>
           <td className={cellCls}>
-            <input
-              className={inputCls}
-              value={editValues.figmaFrameBase}
-              onChange={(e) =>
-                setEditValues((p) => ({ ...p, figmaFrameBase: e.target.value }))
-              }
-              onClick={(e) => e.stopPropagation()}
-            />
+            {f.nexdTemplateId ? (
+              <span className="text-xs font-medium text-emerald-600">
+                {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
+              </span>
+            ) : (
+              <span className="text-gray-300">—</span>
+            )}
           </td>
           <td className={cellCls + " text-xs text-gray-400"}>
             {f.usedBy.length > 0 ? f.usedBy.join(", ") : "—"}
@@ -364,12 +377,14 @@ export default function AdminFormatManager({ initialFormats }: Props) {
               {f.outputFormat}
             </span>
           </td>
-          <td
-            className={
-              cellCls + " font-mono text-xs text-gray-400 max-w-xs truncate"
-            }
-          >
-            {f.figmaFrameBase || "—"}
+          <td className={cellCls}>
+            {f.nexdTemplateId ? (
+              <span className="text-xs font-medium text-emerald-600">
+                {nexdTemplatesMap[f.nexdTemplateId] ?? f.nexdTemplateId}
+              </span>
+            ) : (
+              <span className="text-gray-300">—</span>
+            )}
           </td>
           <td className={cellCls + " text-xs"}>
             {f.usedBy.length > 0 ? (
@@ -509,15 +524,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                     <option>JPG</option>
                   </select>
                 </td>
-                <td className={cellCls}>
-                  <input
-                    className={inputCls}
-                    value={newValues.figmaFrameBase}
-                    onChange={(e) =>
-                      setNewValues((p) => ({ ...p, figmaFrameBase: e.target.value }))
-                    }
-                  />
-                </td>
+                <td className={cellCls + " text-gray-300 text-xs"}>—</td>
                 <td className={cellCls + " text-gray-400 text-xs"}>—</td>
                 <td className={cellCls}>
                   <div className="flex gap-1">
