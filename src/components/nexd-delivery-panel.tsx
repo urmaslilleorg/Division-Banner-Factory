@@ -217,7 +217,7 @@ export function NexdDeliveryPanel({ campaignId, campaignName }: Props) {
                   <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
                     Create Creative Debug — Raw Nexd Response
                   </p>
-                  <pre className="text-xs text-purple-900 bg-purple-100 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(result.createDebug, null, 2)}</pre>
+                  <pre className="text-xs text-purple-900 bg-purple-100 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(result.createDebug as Record<string, unknown>, null, 2)}</pre>
                 </div>
               )}
 
