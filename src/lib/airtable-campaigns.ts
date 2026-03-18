@@ -92,6 +92,8 @@ export interface AirtableFormat {
   outputFormat: string;
   active: boolean;
   isVideo: boolean;
+  /** Nexd template ID for delivery (e.g. "qsfpBY") */
+  nexdTemplateId: string;
 }
 
 export interface BannerSummary {
@@ -226,6 +228,7 @@ export async function fetchFormats(): Promise<AirtableFormat[]> {
     outputFormat: (r.fields["Output_Format"] as string) || "PNG",
     active: (r.fields["Active"] as boolean) || false,
     isVideo: (r.fields["Is_Video"] as boolean) || false,
+    nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
   }));
 }
 
@@ -268,6 +271,7 @@ export async function fetchFormatsByIds(ids: string[]): Promise<AirtableFormat[]
     outputFormat: (r.fields["Output_Format"] as string) || "PNG",
     active: (r.fields["Active"] as boolean) || false,
     isVideo: (r.fields["Is_Video"] as boolean) || false,
+    nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
   }));
 }
 

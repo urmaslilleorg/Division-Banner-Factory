@@ -174,6 +174,18 @@ export default function BannerCard({ banner, onClick }: BannerCardProps) {
               ▶ Video
             </span>
           )}
+
+          {/* Nexd status badge */}
+          {banner.nexdStatus === "published" && (
+            <span className="inline-flex items-center rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+              Nexd Live
+            </span>
+          )}
+          {banner.nexdStatus === "uploaded" && (
+            <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
+              Nexd Ready
+            </span>
+          )}
         </div>
 
         {/* Banner name — monospace identifier */}

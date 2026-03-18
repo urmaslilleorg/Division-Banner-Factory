@@ -13,6 +13,7 @@ interface FormatRow {
   safeArea: string;
   outputFormat: string;
   figmaFrameBase: string;
+  nexdTemplateId: string;
   usedBy: string[];
 }
 
@@ -37,6 +38,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
     safeArea: "",
     outputFormat: "PNG",
     figmaFrameBase: "",
+    nexdTemplateId: "",
   });
   // All sections collapsed by default; set of open channel names
   const [openChannels, setOpenChannels] = useState<Set<string>>(new Set());
@@ -96,6 +98,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
       safeArea: f.safeArea,
       outputFormat: f.outputFormat,
       figmaFrameBase: f.figmaFrameBase,
+      nexdTemplateId: f.nexdTemplateId,
     });
   };
 
@@ -121,6 +124,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                   safeArea: editValues.safeArea ?? f.safeArea,
                   outputFormat: editValues.outputFormat ?? f.outputFormat,
                   figmaFrameBase: editValues.figmaFrameBase ?? f.figmaFrameBase,
+                  nexdTemplateId: editValues.nexdTemplateId ?? f.nexdTemplateId,
                 }
               : f
           )
@@ -165,6 +169,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           safeArea: newValues.safeArea || "",
           outputFormat: newValues.outputFormat || "PNG",
           figmaFrameBase: newValues.figmaFrameBase || "",
+          nexdTemplateId: newValues.nexdTemplateId || "",
           usedBy: [],
         };
         setFormats((prev) => [...prev, newRow]);
@@ -182,6 +187,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           safeArea: "",
           outputFormat: "PNG",
           figmaFrameBase: "",
+          nexdTemplateId: "",
         });
       }
     } finally {
@@ -204,6 +210,7 @@ export default function AdminFormatManager({ initialFormats }: Props) {
           "Safe area",
           "Output",
           "Figma frame base",
+          "Nexd template",
           "Used by",
           "",
         ].map((h) => (
@@ -311,6 +318,17 @@ export default function AdminFormatManager({ initialFormats }: Props) {
               onClick={(e) => e.stopPropagation()}
             />
           </td>
+          <td className={cellCls}>
+            <input
+              className={inputCls}
+              placeholder="e.g. qsfpBY"
+              value={editValues.nexdTemplateId ?? ""}
+              onChange={(e) =>
+                setEditValues((p) => ({ ...p, nexdTemplateId: e.target.value }))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
           <td className={cellCls + " text-xs text-gray-400"}>
             {f.usedBy.length > 0 ? f.usedBy.join(", ") : "—"}
           </td>
@@ -364,6 +382,9 @@ export default function AdminFormatManager({ initialFormats }: Props) {
             }
           >
             {f.figmaFrameBase || "—"}
+          </td>
+          <td className={cellCls + " font-mono text-xs text-gray-400"}>
+            {f.nexdTemplateId || "—"}
           </td>
           <td className={cellCls + " text-xs"}>
             {f.usedBy.length > 0 ? (
@@ -509,6 +530,16 @@ export default function AdminFormatManager({ initialFormats }: Props) {
                     value={newValues.figmaFrameBase}
                     onChange={(e) =>
                       setNewValues((p) => ({ ...p, figmaFrameBase: e.target.value }))
+                    }
+                  />
+                </td>
+                <td className={cellCls}>
+                  <input
+                    className={inputCls}
+                    placeholder="e.g. qsfpBY"
+                    value={newValues.nexdTemplateId ?? ""}
+                    onChange={(e) =>
+                      setNewValues((p) => ({ ...p, nexdTemplateId: e.target.value }))
                     }
                   />
                 </td>

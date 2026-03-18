@@ -110,6 +110,7 @@ export default function AddFormatModal({
           outputFormat: (r.fields["Output_Format"] as string) || "PNG",
           active: (r.fields["Active"] as boolean) || false,
           isVideo: (r.fields["Is_Video"] as boolean) || false,
+          nexdTemplateId: (r.fields["Nexd_Template_ID"] as string) || "",
         }));
         // Filter to client-linked formats only (if clientFormatIds provided)
         const filtered =

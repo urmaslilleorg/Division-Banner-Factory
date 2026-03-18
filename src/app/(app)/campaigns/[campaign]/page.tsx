@@ -7,6 +7,7 @@ import { fetchAllCampaigns, FieldConfig } from "@/lib/airtable-campaigns";
 import { fetchClientBySubdomain } from "@/lib/airtable-clients";
 import CampaignDetailTabs from "@/components/campaign-detail-tabs";
 import { FigmaIntegrationPanel } from "@/components/figma-integration-panel";
+import { NexdDeliveryPanel } from "@/components/nexd-delivery-panel";
 import CampaignStatusBar from "@/components/campaign-status-bar";
 
 /** Parse "March 2026" → "/2026/3?preview=true" */
@@ -327,6 +328,14 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
         hasFigmaToken={!!process.env.FIGMA_ACCESS_TOKEN}
         clientFigmaAssetFile={clientFigmaAssetFile}
       />
+
+      {/* Nexd Delivery — division_admin only */}
+      {userRole === "division_admin" && campaignId && (
+        <NexdDeliveryPanel
+          campaignId={campaignId}
+          campaignName={campaignName}
+        />
+      )}
 
       {/* Two-tab layout: Copy & Assets | Preview */}
       <CampaignDetailTabs

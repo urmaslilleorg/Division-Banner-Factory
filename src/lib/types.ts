@@ -118,6 +118,12 @@ export interface Banner {
   videoUrl: string;
   /** ID of the animation template used for video rendering */
   animationTemplateId: string;
+  /** Nexd creative ID (set after sync to Nexd) */
+  nexdCreativeId: string;
+  /** Nexd delivery status: "" | "uploaded" | "published" */
+  nexdStatus: string;
+  /** Nexd embed tag HTML (set after sync to Nexd) */
+  nexdEmbedTag: string;
 }
 
 /**
@@ -179,5 +185,8 @@ export function parseBannerRecord(record: {
     isVideo: (f["Is_Video"] as boolean) || false,
     videoUrl: (f["Video_URL"] as string) || "",
     animationTemplateId: (f["Animation_Template_Id"] as string) || "",
+    nexdCreativeId: (f["Nexd_Creative_ID"] as string) || "",
+    nexdStatus: (f["Nexd_Status"] as string) || "",
+    nexdEmbedTag: (f["Nexd_Embed_Tag"] as string) || "",
   };
 }

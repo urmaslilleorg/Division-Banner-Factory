@@ -106,6 +106,7 @@ export default async function PlatformSettingsPage({
     safeArea: f.safeArea ?? "",
     outputFormat: f.outputFormat ?? "",
     figmaFrameBase: f.figmaFrameBase ?? "",
+    nexdTemplateId: f.nexdTemplateId ?? "",
     usedBy: usedByMap[f.id] || [],
   }));
 

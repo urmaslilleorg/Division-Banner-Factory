@@ -837,6 +837,49 @@ export default function BannerDetailModal({
               </Button>
             </div>
 
+            {/* Nexd delivery section — shown when banner has been synced to Nexd */}
+            {(banner.nexdCreativeId || banner.nexdStatus) && (
+              <div className="space-y-3 border-t border-gray-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Nexd Delivery</span>
+                  {banner.nexdStatus === "published" && (
+                    <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                      Live
+                    </span>
+                  )}
+                  {banner.nexdStatus === "uploaded" && (
+                    <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">
+                      Ready
+                    </span>
+                  )}
+                </div>
+                {banner.nexdCreativeId && (
+                  <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Creative ID</span>
+                      <span className="font-mono text-gray-700">{banner.nexdCreativeId}</span>
+                    </div>
+                    {banner.nexdEmbedTag && (
+                      <div className="space-y-1">
+                        <span className="text-xs text-gray-500">Embed tag</span>
+                        <pre className="rounded bg-gray-100 p-2 text-[10px] text-gray-600 overflow-x-auto whitespace-pre-wrap break-all">{banner.nexdEmbedTag}</pre>
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(banner.nexdEmbedTag)}
+                          className="text-xs text-gray-400 hover:text-gray-700 underline"
+                        >
+                          Copy embed tag
+                        </button>
+                      </div>
+                    )}
+                    {!banner.nexdEmbedTag && (
+                      <p className="text-xs text-gray-400">Embed tag not yet available — re-sync to refresh.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Comment thread */}
             <div className="space-y-3 border-t border-gray-100 pt-4">
               <div className="flex items-center gap-2 text-sm text-gray-500">

@@ -51,6 +51,7 @@ interface FormatRow {
   safeArea: string;
   outputFormat: string;
   figmaFrameBase: string;
+  nexdTemplateId: string;
   usedBy: string[];
 }
 
