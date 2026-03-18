@@ -256,7 +256,42 @@ export async function duplicateNexdCreative(
   const first = items[0];
   const id = first?.creative_id ?? first?.id;
   if (!id) throw new Error(`duplicateNexdCreative: unexpected response shape: ${JSON.stringify(data).slice(0, 200)}`);
-  return String(id);
+  const creativeId = String(id);
+
+  // Wait for duplication to complete before returning.
+  // Nexd processes duplicates asynchronously (status 70 = duplicating).
+  // Uploading assets before it finishes returns HTTP 425.
+  await waitForDuplicationComplete(creativeId);
+
+  return creativeId;
+}
+
+/**
+ * Poll GET /creatives/{id}/ until status is no longer 70 (duplicating).
+ * Retries up to maxAttempts times with delayMs between each attempt.
+ */
+async function waitForDuplicationComplete(
+  creativeId: string,
+  maxAttempts = 15,
+  delayMs = 1500
+): Promise<void> {
+  const apiKey = getApiKey();
+  const url = `${NEXD_BASE}/creatives/${creativeId}/`;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    });
+    if (!res.ok) continue; // transient error, keep retrying
+
+    const data = await res.json() as { result?: { status?: number } };
+    const status = data.result?.status;
+    // status 70 = duplicating/processing; anything else means ready
+    if (status !== 70) return;
+  }
+  // If we exhausted retries, proceed anyway — upload may still succeed
 }
 
 /**
