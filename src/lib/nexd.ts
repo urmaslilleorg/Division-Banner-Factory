@@ -16,6 +16,16 @@
 
 const NEXD_BASE = "https://api.nexd.com";
 
+/**
+ * Region-specific base URL for endpoints that require routing to the correct
+ * data region (e.g. duplicate creative). Defaults to euw1 (Europe West 1).
+ * Set NEXD_REGION env var to override (e.g. "usw2" for US West).
+ */
+function getNexdRegionalBase(): string {
+  const region = process.env.NEXD_REGION ?? "euw1";
+  return `https://api-${region}.nexd.com`;
+}
+
 function getApiKey(): string {
   const key = process.env.NEXD_API_KEY;
   if (!key) throw new Error("NEXD_API_KEY environment variable is not set");
@@ -212,22 +222,40 @@ export async function duplicateNexdCreative(
   sourceCreativeId: string,
   newName: string
 ): Promise<string> {
-  const result = await nexdRequest<unknown>(
-    "POST",
-    "/v2/creatives/duplicate",
-    { ids: [sourceCreativeId], names: [newName] }
-  );
-  // Response: { items: [...] } or an array directly
-  let items: Record<string, unknown>[];
-  if (Array.isArray(result)) {
-    items = result as Record<string, unknown>[];
-  } else {
-    const r = result as Record<string, unknown>;
-    items = Array.isArray(r.items) ? (r.items as Record<string, unknown>[]) : [r];
+  // IMPORTANT: Use the region-specific API endpoint.
+  // api.nexd.com routes based on the caller's IP (e.g. usw2 from Vercel US).
+  // The duplicate endpoint only finds creatives in the same region as the API
+  // endpoint it hits. Since the account is in euw1, we must use api-euw1.nexd.com.
+  const apiKey = getApiKey();
+  const regionalBase = getNexdRegionalBase();
+  const url = `${regionalBase}/v2/creatives/duplicate`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ids: [sourceCreativeId], names: [newName] }),
+  });
+
+  const text = await res.text();
+  let data: { result?: { items?: Record<string, unknown>[] }; error?: boolean; msg?: string };
+  try { data = JSON.parse(text); } catch {
+    throw new Error(`duplicateNexdCreative: non-JSON response (${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (!res.ok || data.error) {
+    throw new Error(`duplicateNexdCreative: API error (${res.status}): ${data.msg ?? text.slice(0, 200)}`);
+  }
+
+  const items = data.result?.items ?? [];
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error(`duplicateNexdCreative: empty items — source creative "${sourceCreativeId}" not found in region ${process.env.NEXD_REGION ?? "euw1"}. Raw: ${text.slice(0, 200)}`);
   }
   const first = items[0];
   const id = first?.creative_id ?? first?.id;
-  if (!id) throw new Error(`duplicateNexdCreative: unexpected response shape: ${JSON.stringify(result).slice(0, 200)}`);
+  if (!id) throw new Error(`duplicateNexdCreative: unexpected response shape: ${JSON.stringify(data).slice(0, 200)}`);
   return String(id);
 }
 
