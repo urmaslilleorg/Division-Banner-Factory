@@ -151,41 +151,47 @@ export async function publishCreative(creativeId: string): Promise<unknown> {
 // ─── Template slots ───────────────────────────────────────────────────────────
 
 export async function getTemplateSlots(templateId: string): Promise<NexdTemplateSlot[]> {
-  const result = await nexdRequest<{
-    assets: Record<
-      string,
-      {
-        name: string;
-        required: number;
-        type: number;
-        cta_enabled?: boolean;
-        filename: string;
-      }
-    >;
-  }>("GET", `/templates/${templateId}`);
+  // The API may return { assets: {...} } directly or wrapped in result
+  const result = await nexdRequest<Record<string, unknown>>("GET", `/templates/${templateId}`);
 
-  const assets = result.assets ?? {};
-  return Object.entries(assets).map(([slotId, slot]) => ({
+  // Handle both: { assets: {...} } and the raw assets object keyed by slotId
+  type SlotShape = { name: string; required: number; type: number; cta_enabled?: boolean; filename: string };
+  let assetsObj: Record<string, SlotShape>;
+
+  if (result && typeof result === "object" && "assets" in result && result.assets && typeof result.assets === "object") {
+    assetsObj = result.assets as Record<string, SlotShape>;
+  } else {
+    // Treat the result itself as the assets map
+    assetsObj = result as Record<string, SlotShape>;
+  }
+
+  return Object.entries(assetsObj).map(([slotId, slot]) => ({
     slotId,
-    name: slot.name,
-    required: slot.required,
-    type: slot.type,
+    name: slot.name ?? slotId,
+    required: slot.required ?? 0,
+    type: slot.type ?? 0,
     ctaEnabled: slot.cta_enabled ?? false,
-    acceptedFilenames: slot.filename,
+    acceptedFilenames: slot.filename ?? "",
   }));
 }
 
 /**
  * Returns the primary media slot for a template.
- * Primary = type 0 (media), required 1 (mandatory).
+ * Priority: type=0 & required=1 → type=0 → first slot.
  */
 export async function getPrimarySlot(templateId: string): Promise<NexdTemplateSlot> {
   const slots = await getTemplateSlots(templateId);
-  const primary = slots.find((s) => s.type === 0 && s.required === 1);
-  if (!primary) {
-    throw new Error(`No primary media slot found for template ${templateId}`);
+  if (slots.length === 0) {
+    throw new Error(`No asset slots found for template ${templateId}`);
   }
-  return primary;
+  // 1. Ideal: main media slot (type=0, required=1)
+  const primary = slots.find((s) => s.type === 0 && s.required === 1);
+  if (primary) return primary;
+  // 2. Any media slot (type=0)
+  const anyMedia = slots.find((s) => s.type === 0);
+  if (anyMedia) return anyMedia;
+  // 3. First slot regardless of type
+  return slots[0];
 }
 
 // ─── Asset upload ─────────────────────────────────────────────────────────────
@@ -220,55 +226,58 @@ export async function uploadAssetToSlot(
 
 /**
  * Upload an asset to a creative slot using base64-encoded data.
- * Fallback for when the image URL lacks a file extension.
+ * Nexd requires the full data URL format: "data:image/png;base64,XXXXX"
  */
 export async function uploadAssetBase64(
   creativeId: string,
   slotId: string,
   filename: string,
-  base64Data: string
+  base64Data: string,
+  mimeType = "image/jpeg"
 ): Promise<NexdAsset> {
+  // Ensure the data URL prefix is present — Nexd requires "data:<mime>;base64,<data>"
+  const dataUrl = base64Data.startsWith("data:")
+    ? base64Data
+    : `data:${mimeType};base64,${base64Data}`;
+
   const result = await nexdRequest<NexdAsset>(
     "POST",
     `/creatives/${creativeId}/assets/${slotId}`,
-    { filename, data: base64Data }
+    { filename, data: dataUrl }
   );
 
   return result;
 }
 
 /**
- * Smart upload: tries URL upload first, falls back to downloading and
- * re-uploading as base64 if the URL lacks a file extension.
+ * Smart upload: downloads the image and uploads as base64 data URL.
+ * Always uses the base64 path because Airtable attachment URLs lack
+ * file extensions and Nexd requires the data URL format anyway.
  */
 export async function smartUploadAsset(
   creativeId: string,
   slotId: string,
   imageUrl: string
 ): Promise<NexdAsset> {
-  // Extract filename from URL
-  const urlPath = new URL(imageUrl).pathname;
-  const rawFilename = urlPath.split("/").pop() ?? "bg.jpg";
-  const ext = rawFilename.split(".").pop()?.toLowerCase();
-  const supportedExts = ["jpg", "jpeg", "png", "gif", "mp4", "svg", "webp"];
-
-  if (ext && supportedExts.includes(ext)) {
-    // URL has a valid extension — use URL upload
-    return uploadAssetToSlot(creativeId, slotId, rawFilename, imageUrl);
-  }
-
-  // No extension — download and re-upload as base64
+  // Download the image
   const imgRes = await fetch(imageUrl);
   if (!imgRes.ok) {
     throw new Error(`Failed to download image from ${imageUrl}: HTTP ${imgRes.status}`);
   }
+
   const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
-  const extFromMime = contentType.includes("png") ? "png" : "jpg";
-  const filename = `bg.${extFromMime}`;
+  // Determine extension from content-type
+  let ext = "jpg";
+  if (contentType.includes("png")) ext = "png";
+  else if (contentType.includes("gif")) ext = "gif";
+  else if (contentType.includes("webp")) ext = "webp";
+  else if (contentType.includes("svg")) ext = "svg";
+
+  const filename = `creative_asset.${ext}`;
   const buffer = await imgRes.arrayBuffer();
   const base64 = Buffer.from(buffer).toString("base64");
 
-  return uploadAssetBase64(creativeId, slotId, filename, base64);
+  return uploadAssetBase64(creativeId, slotId, filename, base64, contentType.split(";")[0]);
 }
 
 // ─── Embed tag ────────────────────────────────────────────────────────────────

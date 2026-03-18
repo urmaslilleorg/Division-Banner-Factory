@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
         // b. Get primary slot
         const primarySlot = await getPrimarySlot(resolvedTemplateId);
 
-        // c. Upload image
+        // c. Upload image to creative slot
         await smartUploadAsset(creative.creativeId, primarySlot.slotId, imageUrl);
 
         // d. Get embed tag
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
           Nexd_Status: "uploaded",
         });
 
-        synced.push(bannerName);
+        synced.push(`${bannerName} [template=${resolvedTemplateId} slot=${primarySlot.slotId} creative=${creative.creativeId}]`);
       } catch (bannerErr) {
         errors.push(`${bannerName}: ${String(bannerErr)}`);
       }
