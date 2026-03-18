@@ -302,27 +302,31 @@ export interface NexdTemplate {
 }
 
 export async function listNexdTemplates(): Promise<NexdTemplate[]> {
-  const result = await nexdRequest<
-    Array<{
+  // Nexd /templates/list response: { result: { items: [...] }, success, meta }
+  // Each item has: layout_id, name, type_string (placement), template_base (engine),
+  // device, is_video, demo_creatives[0].preview_url
+  const data = await nexdRequest<{
+    items?: Array<{
       layout_id: string;
       name: string;
-      placement_type: string;
-      engine: string;
-      device?: number;
+      type_string?: string;      // "Infeed", "Interstitial", "Responsive", "Skin"
+      template_base?: string;    // "still", "cube", "carousel", etc.
+      device?: number;           // 0=all, 1=mobile, 2=desktop
       is_video?: boolean;
-      preview_url?: string;
-    }>
-  >("GET", "/templates/list");
+      demo_creatives?: Array<{ preview_url?: string }>;
+    }>;
+  }>("GET", "/templates/list");
 
-  if (!Array.isArray(result)) return [];
+  const items = Array.isArray(data) ? data : (data?.items ?? []);
+  if (items.length === 0) return [];
 
-  return result.map((t) => ({
+  return items.map((t) => ({
     id: t.layout_id,
     name: t.name,
-    placementType: t.placement_type,
-    engine: t.engine,
+    placementType: t.type_string ?? "Other",
+    engine: t.template_base ?? "unknown",
     device: t.device ?? 0,
     isVideo: t.is_video ?? false,
-    previewUrl: t.preview_url,
+    previewUrl: t.demo_creatives?.[0]?.preview_url,
   }));
 }
