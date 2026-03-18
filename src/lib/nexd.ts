@@ -162,13 +162,40 @@ export async function createNexdCreative(
 }
 
 /**
- * Get the demo creative ID for a template.
- * The demo creative is used as the source for duplicating — this ensures
- * the layout is properly applied to the new creative.
+ * Apply a Nexd template/layout to an existing creative.
+ * Uses PUT /creatives/{id} with { template_id } — this is the correct way
+ * to assign a layout to a creative via the Nexd API.
+ * The POST /v2/campaigns/{id}/creatives endpoint ignores layout_id.
+ */
+export async function applyTemplateToCreative(
+  creativeId: string,
+  templateId: string
+): Promise<void> {
+  const apiKey = getApiKey();
+  const url = `${NEXD_BASE}/creatives/${creativeId}`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ template_id: templateId }),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown>;
+  try { data = JSON.parse(text); } catch { throw new Error(`applyTemplateToCreative non-JSON (${res.status}): ${text.slice(0, 200)}`); }
+  if (!res.ok || data.error) {
+    throw new Error(`applyTemplateToCreative failed (${res.status}): ${(data as {msg?: string}).msg ?? text.slice(0, 200)}`);
+  }
+}
+
+/**
+ * @deprecated demo_creatives field does not exist in Nexd template API response.
+ * Use applyTemplateToCreative() instead.
  */
 export async function getDemoCreativeId(templateId: string): Promise<string | null> {
   const data = await nexdRequest<Record<string, unknown>>("GET", `/templates/${templateId}`);
-  // Response shape: { demo_creatives: [{ creative_id: string, ... }], assets: {...}, ... }
   const demoes = (data?.demo_creatives ?? data?.demo_creative) as Array<{ creative_id?: string; id?: string }> | undefined;
   if (!demoes || demoes.length === 0) return null;
   return demoes[0]?.creative_id ?? demoes[0]?.id ?? null;
